@@ -1,0 +1,25 @@
+project_id = "irdkyqfrizrrpieejvpb"
+
+[auth.email.template.confirmation]
+subject = "Confirm your Profia Institute account"
+content_path = "./supabase/templates/confirmation.html"
+
+[auth.email.template.invite]
+subject = "You are invited to Profia Institute"
+content_path = "./supabase/templates/invite.html"
+
+[auth.email.template.magic_link]
+subject = "Your Profia Institute sign-in link"
+content_path = "./supabase/templates/magic_link.html"
+
+[auth.email.template.recovery]
+subject = "Reset your Profia Institute password"
+content_path = "./supabase/templates/recovery.html"
+
+[auth.email.template.email_change]
+subject = "Confirm your Profia Institute email change"
+content_path = "./supabase/templates/email_change.html"
+
+[auth.email.template.reauthentication]
+subject = "Your Profia Institute verification code"
+content_path = "./supabase/templates/reauthentication.html"
