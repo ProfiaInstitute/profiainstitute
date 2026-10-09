@@ -23,8 +23,10 @@ import {
   SectionTitle,
 } from "@/components/site/common";
 import { supabase } from "@/integrations/supabase/client";
+import type { Tables } from "@/integrations/supabase/types";
 import {
   SCHOOL_ROUTES,
+  formatKES,
   useActiveIntake,
   useCourses,
   useGeneral,
@@ -184,6 +186,9 @@ export function OnlineCoursesPage() {
   const schools = useSchools();
   const coursesQuery = useQuery({
     queryKey: ["public-online-courses"],
+    staleTime: 0,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: "always",
     queryFn: async () => {
       const { data, error } = await supabase
         .from("courses")
@@ -208,42 +213,14 @@ export function OnlineCoursesPage() {
         {!coursesQuery.isLoading && !coursesQuery.error && coursesQuery.data?.length ? (
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {coursesQuery.data.map((course) => (
-              <article
+              <OnlineCourseCard
                 key={course.id}
-                className="overflow-hidden rounded-xl border bg-card shadow-card"
-              >
-                {course.image_url && (
-                  <img
-                    src={course.image_url}
-                    alt={course.title}
-                    className="h-44 w-full object-cover"
-                    loading="lazy"
-                  />
-                )}
-                <div className="p-5">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-primary">
-                    {schools.data?.find((school) => school.id === course.school_id)?.name ??
-                      "Profia Institute"}
-                  </p>
-                  <h2 className="mt-2 text-lg font-bold text-brand">{course.title}</h2>
-                  {course.description && (
-                    <p className="mt-2 line-clamp-4 text-sm text-muted-foreground">
-                      {course.description}
-                    </p>
-                  )}
-                  {course.application_enabled !== false ? (
-                    <Button asChild size="sm" className="mt-4">
-                      <Link to="/admission" search={{ course: course.id }}>
-                        Apply online
-                      </Link>
-                    </Button>
-                  ) : (
-                    <p className="mt-4 text-sm font-medium text-muted-foreground">
-                      Applications are currently closed.
-                    </p>
-                  )}
-                </div>
-              </article>
+                course={course}
+                schoolName={
+                  schools.data?.find((school) => school.id === course.school_id)?.name ??
+                  "Profia Institute"
+                }
+              />
             ))}
           </div>
         ) : (
@@ -262,6 +239,158 @@ export function OnlineCoursesPage() {
         )}
       </section>
     </>
+  );
+}
+
+function OnlineCourseCard({
+  course,
+  schoolName,
+}: {
+  course: Tables<"courses">;
+  schoolName: string;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const lessonsQuery = useQuery({
+    queryKey: ["public-online-course-lessons", course.id],
+    enabled: expanded,
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc("list_online_course_lessons", {
+        _course_id: course.id,
+      });
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  return (
+    <article className="overflow-hidden rounded-xl border bg-card shadow-card">
+      {course.image_url && (
+        <img
+          src={course.image_url}
+          alt={course.title}
+          className="h-44 w-full object-cover"
+          loading="lazy"
+        />
+      )}
+      <div className="space-y-3 p-5">
+        <p className="text-xs font-semibold uppercase tracking-wide text-primary">{schoolName}</p>
+        <h2 className="text-lg font-bold text-brand">{course.title}</h2>
+        <p className="text-sm font-semibold text-brand">
+          Tuition {course.fees === null ? "Contact admissions" : formatKES(course.fees)}
+        </p>
+        {course.description && (
+          <p className="line-clamp-4 text-sm text-muted-foreground">{course.description}</p>
+        )}
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
+          {course.duration && <span>Duration: {course.duration}</span>}
+          {course.online_lecturer_name && <span>Lecturer: {course.online_lecturer_name}</span>}
+          {course.online_lecturer_email && (
+            <a
+              className="text-primary hover:underline"
+              href={`mailto:${course.online_lecturer_email}`}
+            >
+              {course.online_lecturer_email}
+            </a>
+          )}
+          {course.online_lecturer_phone && (
+            <a
+              className="text-primary hover:underline"
+              href={`tel:${course.online_lecturer_phone}`}
+            >
+              {course.online_lecturer_phone}
+            </a>
+          )}
+        </div>
+        {course.online_intro_video_url && (
+          <a
+            className="inline-block text-sm font-medium text-primary hover:underline"
+            href={course.online_intro_video_url}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Watch free introduction video ↗
+          </a>
+        )}
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" variant="outline" onClick={() => setExpanded((value) => !value)}>
+            {expanded ? "Hide course details" : "View course & free outline"}
+          </Button>
+          <Button asChild size="sm">
+            <Link to="/student" search={{ course: course.id }}>
+              Enroll & start learning
+            </Link>
+          </Button>
+        </div>
+        {expanded && (
+          <div className="space-y-3 border-t pt-3">
+            {course.online_syllabus && (
+              <div>
+                <h3 className="font-semibold text-brand">Syllabus</h3>
+                <p className="whitespace-pre-line text-sm text-muted-foreground">
+                  {course.online_syllabus}
+                </p>
+              </div>
+            )}
+            <div>
+              <h3 className="font-semibold text-brand">Course outline</h3>
+              {lessonsQuery.isLoading ? (
+                <p className="text-sm text-muted-foreground">Loading outline…</p>
+              ) : lessonsQuery.error ? (
+                <p role="alert" className="text-sm text-destructive">
+                  Could not load course outline: {lessonsQuery.error.message}
+                </p>
+              ) : lessonsQuery.data?.length ? (
+                <ol className="mt-2 space-y-2">
+                  {lessonsQuery.data.map((lesson, index) => (
+                    <li key={lesson.id} className="rounded-lg bg-muted/50 p-3 text-sm">
+                      <p className="font-medium">
+                        {index + 1}. {lesson.title}
+                        {lesson.is_preview && (
+                          <span className="ml-2 text-xs font-normal text-primary">
+                            Free preview
+                          </span>
+                        )}
+                        {lesson.locked && (
+                          <span className="ml-2 text-xs font-normal text-muted-foreground">
+                            Available after enrollment
+                          </span>
+                        )}
+                      </p>
+                      {lesson.description && (
+                        <p className="mt-1 text-muted-foreground">{lesson.description}</p>
+                      )}
+                      {lesson.is_preview && lesson.notes && (
+                        <p className="mt-2 whitespace-pre-line text-muted-foreground">
+                          {lesson.notes}
+                        </p>
+                      )}
+                      {lesson.is_preview && lesson.video_url && (
+                        <a
+                          className="mt-2 inline-block font-medium text-primary hover:underline"
+                          href={lesson.video_url}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          Watch free lesson video ↗
+                        </a>
+                      )}
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Course outline is being prepared.
+                </p>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Examination: {formatKES(course.online_exam_fee)} · Certificate:{" "}
+              {formatKES(course.online_certificate_fee)} (paid separately after lessons)
+            </p>
+          </div>
+        )}
+      </div>
+    </article>
   );
 }
 
@@ -450,7 +579,9 @@ export function AnnouncementsPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("announcements")
-        .select("id,title,body,category,created_at,starts_at,ends_at,attachment_url,attachment_type")
+        .select(
+          "id,title,body,category,created_at,starts_at,ends_at,attachment_url,attachment_type",
+        )
         .eq("published", true)
         .eq("show_public", true)
         .order("created_at", { ascending: false });
@@ -604,7 +735,9 @@ export function ArticleDetailPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("articles")
-        .select("slug,title,excerpt,content,featured_image,attachment_url,attachment_type,author,published_at")
+        .select(
+          "slug,title,excerpt,content,featured_image,attachment_url,attachment_type,author,published_at",
+        )
         .eq("slug", slug)
         .in("status", ["published", "scheduled"])
         .lte("published_at", new Date().toISOString())
@@ -684,7 +817,13 @@ function PublicAttachment({
 }) {
   if (type === "video")
     return (
-      <video className="mt-5 max-h-[36rem] w-full rounded-lg bg-black" src={url} controls playsInline preload="metadata">
+      <video
+        className="mt-5 max-h-[36rem] w-full rounded-lg bg-black"
+        src={url}
+        controls
+        playsInline
+        preload="metadata"
+      >
         Your browser does not support video playback.
       </video>
     );

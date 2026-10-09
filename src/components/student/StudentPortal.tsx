@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   BookOpen,
   ClipboardList,
@@ -19,15 +19,20 @@ import { useUser } from "@/lib/auth";
 import { formatKES } from "@/lib/site";
 import type { Tables } from "@/integrations/supabase/types";
 
-type PortalSection = "overview" | "learning" | "assignments" | "results" | "fees" | "profile";
+type PortalSection =
+  "overview" | "online" | "learning" | "assignments" | "results" | "fees" | "profile";
 type Student = Tables<"students">;
 
-export function StudentPortal() {
+export function StudentPortal({ selectedCourseId }: { selectedCourseId: string | null }) {
   const { user, loading } = useUser();
   const [section, setSection] = useState<PortalSection>("overview");
+  const [enrollmentPhone, setEnrollmentPhone] = useState("");
 
   if (loading) return <PortalMessage title="Loading student portal…" />;
-  if (!user) return <StudentSignIn />;
+  if (!user)
+    return (
+      <StudentSignIn selectedCourseId={selectedCourseId} onEnrollmentPhone={setEnrollmentPhone} />
+    );
 
   return (
     <StudentWorkspace
@@ -35,15 +40,25 @@ export function StudentPortal() {
       email={user.email ?? ""}
       section={section}
       onSection={setSection}
+      selectedCourseId={selectedCourseId}
+      enrollmentPhone={enrollmentPhone || String(user.user_metadata?.phone ?? "")}
+      onEnrollmentPhone={setEnrollmentPhone}
     />
   );
 }
 
-function StudentSignIn() {
+function StudentSignIn({
+  selectedCourseId,
+  onEnrollmentPhone,
+}: {
+  selectedCourseId: string | null;
+  onEnrollmentPhone: (phone: string) => void;
+}) {
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -51,19 +66,28 @@ function StudentSignIn() {
     event.preventDefault();
     setBusy(true);
     setError("");
+    if (selectedCourseId && !/^\+?[0-9 ]{9,15}$/.test(phone.trim())) {
+      setBusy(false);
+      setError("Enter a valid mobile number for course enrollment and payments.");
+      return;
+    }
     const result =
       mode === "signin"
         ? await supabase.auth.signInWithPassword({ email, password })
         : await supabase.auth.signUp({
             email,
             password,
-            options: { data: { full_name: name.trim() } },
+            options: {
+              data: { full_name: name.trim(), phone: phone.trim() },
+              emailRedirectTo: `${window.location.origin}/student${selectedCourseId ? `?course=${encodeURIComponent(selectedCourseId)}` : ""}`,
+            },
           });
     setBusy(false);
     if (result.error) setError(result.error.message);
     else if (mode === "signup" && !result.data.session)
-      toast.success("Check your email to confirm your account, then sign in.");
+      toast.success("Check your email to confirm your account, then return to enroll.");
     else toast.success(mode === "signup" ? "Account created" : "Welcome back");
+    if (!result.error && selectedCourseId) onEnrollmentPhone(phone.trim());
   }
 
   return (
@@ -81,7 +105,8 @@ function StudentSignIn() {
             {mode === "signin" ? "Student sign in" : "Create student account"}
           </h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            Use the email address registered with the Institute to link your student record.
+            Existing students can link their record using its registered email. New learners can
+            create an account here and will receive an online student record when they enroll.
           </p>
         </div>
         {mode === "signup" && (
@@ -92,6 +117,19 @@ function StudentSignIn() {
               autoComplete="name"
               value={name}
               onChange={(event) => setName(event.target.value)}
+            />
+          </label>
+        )}
+        {selectedCourseId && (
+          <label className="block space-y-1.5 text-sm font-medium">
+            Mobile money phone number
+            <Input
+              type="tel"
+              required
+              autoComplete="tel"
+              placeholder="07xx xxx xxx"
+              value={phone}
+              onChange={(event) => setPhone(event.target.value)}
             />
           </label>
         )}
@@ -149,18 +187,40 @@ function StudentWorkspace({
   email,
   section,
   onSection,
+  selectedCourseId,
+  enrollmentPhone,
+  onEnrollmentPhone,
 }: {
   userId: string;
   email: string;
   section: PortalSection;
   onSection: (section: PortalSection) => void;
+  selectedCourseId: string | null;
+  enrollmentPhone: string;
+  onEnrollmentPhone: (phone: string) => void;
 }) {
   const queryClient = useQueryClient();
+  const [phoneDraft, setPhoneDraft] = useState(enrollmentPhone);
+  useEffect(() => setPhoneDraft(enrollmentPhone), [enrollmentPhone]);
   const studentQuery = useQuery({
-    queryKey: ["student", "record", userId],
+    queryKey: ["student", "record", userId, selectedCourseId, enrollmentPhone],
+    enabled: !selectedCourseId || Boolean(enrollmentPhone),
     queryFn: async () => {
-      const { data: claimedId, error: claimError } = await supabase.rpc("claim_student_record");
-      if (claimError) throw claimError;
+      let claimedId: string | null;
+      if (selectedCourseId) {
+        const phone = enrollmentPhone;
+        if (!phone) throw new Error("Enter your mobile money phone number to finish enrollment.");
+        const { data, error: enrollError } = await supabase.rpc("enroll_online_course", {
+          _course_id: selectedCourseId,
+          _phone: phone,
+        });
+        if (enrollError) throw enrollError;
+        claimedId = data?.[0]?.student_id ?? null;
+      } else {
+        const { data, error: claimError } = await supabase.rpc("claim_student_record");
+        if (claimError) throw claimError;
+        claimedId = data;
+      }
       if (!claimedId) return null;
       const { data, error } = await supabase
         .from("students")
@@ -172,9 +232,41 @@ function StudentWorkspace({
     },
   });
 
+  function submitEnrollmentPhone(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const phone = phoneDraft.trim();
+    if (!/^\+?[0-9 ]{9,15}$/.test(phone)) {
+      toast.error("Enter a valid mobile number for course enrollment and payments.");
+      return;
+    }
+    onEnrollmentPhone(phone);
+  }
+
   async function signOut() {
     const { error } = await supabase.auth.signOut();
     if (error) toast.error("Could not sign out", { description: error.message });
+  }
+
+  if (selectedCourseId && !enrollmentPhone) {
+    return (
+      <PortalMessage
+        title="Mobile number needed to enroll"
+        detail="Enter the mobile money number that should be linked to your online course enrollment."
+        action={
+          <form onSubmit={submitEnrollmentPhone} className="mt-4 flex flex-col gap-3 sm:flex-row">
+            <Input
+              type="tel"
+              required
+              autoComplete="tel"
+              placeholder="07xx xxx xxx"
+              value={phoneDraft}
+              onChange={(event) => setPhoneDraft(event.target.value)}
+            />
+            <Button type="submit">Continue enrollment</Button>
+          </form>
+        }
+      />
+    );
   }
 
   if (studentQuery.isLoading) return <PortalMessage title="Linking your student record…" />;
@@ -190,11 +282,16 @@ function StudentWorkspace({
     return (
       <PortalMessage
         title="Student record not linked"
-        detail="A student record with this confirmed email address could not be found. Contact the registrar and ask them to add your student record or check your registered email address."
+        detail="No existing student record was found for this account. New learners can enroll in an online course to create their student record automatically."
         action={
-          <Button variant="outline" onClick={() => void signOut()}>
-            <LogOut /> Sign out
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button asChild>
+              <a href="/online-courses">Browse online courses</a>
+            </Button>
+            <Button variant="outline" onClick={() => void signOut()}>
+              <LogOut /> Sign out
+            </Button>
+          </div>
         }
       />
     );
@@ -217,6 +314,7 @@ function StudentWorkspace({
 
   const pageTitle: Record<PortalSection, string> = {
     overview: "My dashboard",
+    online: "My online courses",
     learning: "Learning materials",
     assignments: "Assignments",
     results: "My results",
@@ -225,6 +323,7 @@ function StudentWorkspace({
   };
   const links: { id: PortalSection; title: string; icon: typeof BookOpen }[] = [
     { id: "overview", title: "Overview", icon: GraduationCap },
+    { id: "online", title: "My online courses", icon: BookOpen },
     { id: "learning", title: "Learning materials", icon: BookOpen },
     { id: "assignments", title: "Assignments", icon: ClipboardList },
     { id: "results", title: "Results", icon: FileText },
@@ -277,6 +376,7 @@ function StudentWorkspace({
             <p className="eyebrow">Student services</p>
             <h1 className="mb-6 mt-1 text-2xl font-bold text-brand">{pageTitle[section]}</h1>
             {section === "overview" && <StudentOverview student={student} onNavigate={onSection} />}
+            {section === "online" && <OnlineCoursesSection student={student} />}
             {section === "learning" && <LearningSection courseId={student.course_id} />}
             {section === "assignments" && <AssignmentsSection student={student} />}
             {section === "results" && <ResultsSection studentId={student.id} />}
@@ -303,17 +403,66 @@ function StudentOverview({
   student: Student;
   onNavigate: (section: PortalSection) => void;
 }) {
-  const courseQuery = useQuery({
-    queryKey: ["student", "course", student.course_id],
-    enabled: !!student.course_id,
+  const coursesQuery = useQuery({
+    queryKey: ["student", "course-enrollments", student.id],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const [academic, online] = await Promise.all([
+        supabase.from("enrollments").select("course_id,status").eq("student_id", student.id),
+        supabase
+          .from("online_course_enrollments")
+          .select("course_id,status")
+          .eq("student_id", student.id),
+      ]);
+      if (academic.error) throw academic.error;
+      if (online.error) throw online.error;
+
+      const enrollments = new Map<
+        string,
+        { course_id: string; modes: Set<string>; statuses: Set<string> }
+      >();
+      for (const enrollment of academic.data ?? []) {
+        const row = enrollments.get(enrollment.course_id) ?? {
+          course_id: enrollment.course_id,
+          modes: new Set<string>(),
+          statuses: new Set<string>(),
+        };
+        row.modes.add("Academic");
+        row.statuses.add(enrollment.status);
+        enrollments.set(enrollment.course_id, row);
+      }
+      for (const enrollment of online.data ?? []) {
+        const row = enrollments.get(enrollment.course_id) ?? {
+          course_id: enrollment.course_id,
+          modes: new Set<string>(),
+          statuses: new Set<string>(),
+        };
+        row.modes.add("Online");
+        row.statuses.add(enrollment.status);
+        enrollments.set(enrollment.course_id, row);
+      }
+      if (student.course_id && !enrollments.has(student.course_id)) {
+        enrollments.set(student.course_id, {
+          course_id: student.course_id,
+          modes: new Set([student.study_mode === "online" ? "Online" : "Academic"]),
+          statuses: new Set(["assigned"]),
+        });
+      }
+
+      const ids = [...enrollments.keys()];
+      if (!ids.length) return [];
+      const { data: courses, error: courseError } = await supabase
         .from("courses")
-        .select("title,duration")
-        .eq("id", student.course_id!)
-        .single();
-      if (error) throw error;
-      return data;
+        .select("id,title,duration")
+        .in("id", ids);
+      if (courseError) throw courseError;
+      const courseById = new Map(courses.map((course) => [course.id, course]));
+      return [...enrollments.values()].map((enrollment) => ({
+        course_id: enrollment.course_id,
+        title: courseById.get(enrollment.course_id)?.title ?? "Course no longer available",
+        duration: courseById.get(enrollment.course_id)?.duration ?? null,
+        modes: [...enrollment.modes],
+        statuses: [...enrollment.statuses],
+      }));
     },
   });
   const [results, fees, payments, assignments] = [
@@ -371,8 +520,8 @@ function StudentOverview({
     (payments.data ?? []).reduce((sum, row) => sum + Number(row.amount), 0);
   const metrics = [
     {
-      title: "Course",
-      value: courseQuery.data?.title ?? (student.course_id ? "Loading…" : "Not assigned"),
+      title: "Courses",
+      value: coursesQuery.isLoading ? "…" : String(coursesQuery.data?.length ?? 0),
       icon: BookOpen,
     },
     {
@@ -391,7 +540,7 @@ function StudentOverview({
       icon: Wallet,
     },
   ];
-  const navMap: PortalSection[] = ["learning", "results", "assignments", "fees"];
+  const navMap: PortalSection[] = ["online", "results", "assignments", "fees"];
   return (
     <div className="space-y-6">
       <section className="rounded-2xl bg-gradient-brand p-6 text-brand-foreground shadow-card sm:p-8">
@@ -400,8 +549,50 @@ function StudentOverview({
         </p>
         <h2 className="mt-2 text-2xl font-bold sm:text-3xl">Welcome, {student.first_name}</h2>
         <p className="mt-2 text-sm text-brand-foreground/80">
-          {courseQuery.data?.title ?? "Your student information and learning services"}
+          {coursesQuery.data?.length
+            ? `${coursesQuery.data.length} course${coursesQuery.data.length === 1 ? "" : "s"} enrolled`
+            : "Your student information and learning services"}
         </p>
+      </section>
+      <section className="rounded-xl border bg-card p-5 shadow-card">
+        <h3 className="font-semibold text-brand">Your courses</h3>
+        {coursesQuery.isLoading ? (
+          <p className="mt-2 text-sm text-muted-foreground">Loading course enrolments…</p>
+        ) : coursesQuery.error ? (
+          <p role="alert" className="mt-2 text-sm text-destructive">
+            Could not load all your courses: {coursesQuery.error.message}
+          </p>
+        ) : coursesQuery.data?.length ? (
+          <ul className="mt-3 divide-y">
+            {coursesQuery.data.map((course) => (
+              <li
+                key={course.course_id}
+                className="flex flex-wrap items-center justify-between gap-2 py-3"
+              >
+                <div>
+                  <p className="font-medium">{course.title}</p>
+                  {course.duration && (
+                    <p className="text-xs text-muted-foreground">{course.duration}</p>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {course.modes.map((mode) => (
+                    <Badge key={`${course.course_id}-${mode}`} variant="outline">
+                      {mode}
+                    </Badge>
+                  ))}
+                  {course.statuses.map((status) => (
+                    <Badge key={`${course.course_id}-${status}`} variant="secondary">
+                      {status.replaceAll("_", " ")}
+                    </Badge>
+                  ))}
+                </div>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-2 text-sm text-muted-foreground">No course enrolments are recorded.</p>
+        )}
       </section>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {metrics.map(({ title, value, icon: Icon }, index) => (
@@ -512,6 +703,371 @@ function LearningSection({ courseId }: { courseId: string | null }) {
   );
 }
 
+type OnlineEnrollment = Tables<"online_course_enrollments">;
+type OnlineLesson = Tables<"online_course_lessons">;
+type PaymentStage = "tuition_30" | "tuition_balance" | "certificate_fee" | "exam_fee";
+
+function OnlineCoursesSection({ student }: { student: Student }) {
+  const queryClient = useQueryClient();
+  const [enrollmentId, setEnrollmentId] = useState("");
+  const enrollmentsQuery = useQuery({
+    queryKey: ["student", "online-enrollments", student.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("online_course_enrollments")
+        .select("*")
+        .eq("student_id", student.id)
+        .eq("status", "active")
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      if (!data.length) return [];
+      const { data: courses, error: courseError } = await supabase
+        .from("courses")
+        .select(
+          "id,title,duration,online_syllabus,online_intro_video_url,online_lecturer_name,online_lecturer_email,online_lecturer_phone",
+        )
+        .in(
+          "id",
+          data.map((enrollment) => enrollment.course_id),
+        );
+      if (courseError) throw courseError;
+      const courseById = new Map(courses.map((course) => [course.id, course]));
+      return data.map((enrollment) => ({
+        enrollment,
+        course: courseById.get(enrollment.course_id),
+      }));
+    },
+  });
+  useEffect(() => {
+    const enrollments = enrollmentsQuery.data ?? [];
+    if (!enrollments.some((item) => item.enrollment.id === enrollmentId))
+      setEnrollmentId(enrollments[0]?.enrollment.id ?? "");
+  }, [enrollmentId, enrollmentsQuery.data]);
+  const selected = enrollmentsQuery.data?.find((item) => item.enrollment.id === enrollmentId);
+  const selectedEnrollment = selected?.enrollment;
+  const lessonsQuery = useQuery({
+    queryKey: ["student", "online-lessons", selectedEnrollment?.course_id],
+    enabled: !!selectedEnrollment,
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc("list_online_course_lessons", {
+        _course_id: selectedEnrollment!.course_id,
+      });
+      if (error) throw error;
+      return data;
+    },
+  });
+  const paymentsQuery = useQuery({
+    queryKey: ["student", "online-payments", selectedEnrollment?.id],
+    enabled: !!selectedEnrollment,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("online_course_payments")
+        .select("*")
+        .eq("enrollment_id", selectedEnrollment!.id)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data;
+    },
+  });
+  const paymentMutation = useMutation({
+    mutationFn: async (stage: PaymentStage) => {
+      if (!selectedEnrollment) throw new Error("Choose an online course first.");
+      const { data, error } = await supabase.functions.invoke("create-online-payment", {
+        body: { enrollmentId: selectedEnrollment.id, stage },
+      });
+      if (error) {
+        if ("context" in error && error.context instanceof Response) {
+          const response = await error.context
+            .clone()
+            .json()
+            .catch(() => null);
+          if (typeof response?.error === "string") throw new Error(response.error);
+        }
+        throw error;
+      }
+      if (!data?.success) throw new Error(data?.error ?? "Payment request could not be started.");
+      return data;
+    },
+    onSuccess: async () => {
+      toast.success("PayHero payment request sent", {
+        description:
+          "Approve the mobile money prompt. Access is updated when the payment is verified.",
+      });
+      await queryClient.invalidateQueries({ queryKey: ["student", "online-payments"] });
+    },
+    onError: (error) => toast.error("Could not start payment", { description: error.message }),
+  });
+  const completeLesson = useMutation({
+    mutationFn: async (lessonId: string) => {
+      const { error } = await supabase.rpc("complete_online_lesson", { _lesson_id: lessonId });
+      if (error) throw error;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["student", "online-lessons"] });
+    },
+    onError: (error) =>
+      toast.error("Could not save lesson progress", { description: error.message }),
+  });
+
+  if (enrollmentsQuery.isLoading) return <Loading />;
+  if (enrollmentsQuery.error)
+    return (
+      <ErrorCard error={enrollmentsQuery.error.message} retry={() => enrollmentsQuery.refetch()} />
+    );
+  if (!enrollmentsQuery.data?.length)
+    return (
+      <Empty
+        title="No online courses enrolled"
+        detail="Choose a course from the public Online Courses catalogue to create your student number and start learning."
+      />
+    );
+
+  const confirmedPayments =
+    paymentsQuery.data?.filter((payment) => payment.status === "confirmed") ?? [];
+  const tuitionPaid = confirmedPayments
+    .filter((payment) => payment.stage === "tuition_30" || payment.stage === "tuition_balance")
+    .reduce((sum, payment) => sum + Number(payment.amount), 0);
+  const initialAmount = Math.ceil(Number(selectedEnrollment?.tuition_fee ?? 0) * 0.3);
+  const tuitionTarget = Number(selectedEnrollment?.tuition_fee ?? 0);
+  const allLessons = lessonsQuery.data ?? [];
+  const allLessonsCompleted =
+    allLessons.length > 0 && allLessons.every((lesson) => lesson.completed);
+  const payPending = paymentMutation.isPending;
+
+  return (
+    <div className="space-y-5">
+      <label className="block max-w-xl space-y-1.5 text-sm font-medium">
+        Enrolled courses
+        <select
+          className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+          value={enrollmentId}
+          onChange={(event) => setEnrollmentId(event.target.value)}
+        >
+          {enrollmentsQuery.data.map(({ enrollment, course }) => (
+            <option key={enrollment.id} value={enrollment.id}>
+              {course?.title ?? "Online course"}
+            </option>
+          ))}
+        </select>
+      </label>
+      {selectedEnrollment && selected?.course && (
+        <>
+          <section className="rounded-xl border bg-card p-5 shadow-card">
+            <h2 className="text-xl font-semibold text-brand">{selected.course.title}</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {selected.course.duration ?? "Online study"}
+              {selected.course.online_lecturer_name
+                ? ` · Lecturer: ${selected.course.online_lecturer_name}`
+                : ""}
+            </p>
+            {selected.course.online_intro_video_url && (
+              <a
+                className="mt-2 inline-block text-sm font-medium text-primary hover:underline"
+                href={selected.course.online_intro_video_url}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Watch course introduction ↗
+              </a>
+            )}
+            <div className="mt-4 grid gap-3 sm:grid-cols-3">
+              <FeeMetric label="Tuition paid" value={formatKES(tuitionPaid)} />
+              <FeeMetric
+                label="Tuition balance"
+                value={formatKES(Math.max(0, tuitionTarget - tuitionPaid))}
+              />
+              <FeeMetric
+                label="Exam + certificate fees"
+                value={formatKES(selectedEnrollment.exam_fee + selectedEnrollment.certificate_fee)}
+              />
+            </div>
+            {paymentsQuery.error && (
+              <p role="alert" className="mt-3 text-sm text-destructive">
+                Could not load verified online payments: {paymentsQuery.error.message}
+              </p>
+            )}
+            {tuitionPaid < initialAmount && initialAmount > 0 ? (
+              <Button
+                className="mt-4"
+                disabled={payPending}
+                onClick={() => paymentMutation.mutate("tuition_30")}
+              >
+                {payPending
+                  ? "Connecting to PayHero…"
+                  : `Pay 30% tuition (${formatKES(initialAmount - tuitionPaid)})`}
+              </Button>
+            ) : tuitionPaid < tuitionTarget ? (
+              <Button
+                className="mt-4"
+                disabled={payPending}
+                onClick={() => paymentMutation.mutate("tuition_balance")}
+              >
+                {payPending
+                  ? "Connecting to PayHero…"
+                  : `Pay remaining tuition (${formatKES(tuitionTarget - tuitionPaid)})`}
+              </Button>
+            ) : (
+              <p className="mt-4 text-sm font-medium text-primary">Tuition paid in full.</p>
+            )}
+          </section>
+
+          {lessonsQuery.error ? (
+            <ErrorCard error={lessonsQuery.error.message} retry={() => lessonsQuery.refetch()} />
+          ) : lessonsQuery.isLoading ? (
+            <Loading />
+          ) : (
+            <section className="space-y-3">
+              <h2 className="font-semibold text-brand">Course outline and lessons</h2>
+              {allLessons.length ? (
+                allLessons.map((lesson) => (
+                  <OnlineLessonCard
+                    key={lesson.id}
+                    lesson={lesson}
+                    completing={completeLesson.isPending}
+                    onComplete={() => completeLesson.mutate(lesson.id)}
+                  />
+                ))
+              ) : (
+                <Empty
+                  title="Course outline coming soon"
+                  detail="The lecturer has not published lessons for this course yet."
+                />
+              )}
+            </section>
+          )}
+
+          {tuitionPaid >= tuitionTarget && allLessonsCompleted && (
+            <section className="rounded-xl border bg-card p-5 shadow-card">
+              <h2 className="font-semibold text-brand">Examination and certificate</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                These are separate course charges. Payment is confirmed against your student number.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {selectedEnrollment.exam_fee > 0 && (
+                  <Button
+                    variant="outline"
+                    disabled={
+                      payPending ||
+                      confirmedPayments.some((payment) => payment.stage === "exam_fee")
+                    }
+                    onClick={() => paymentMutation.mutate("exam_fee")}
+                  >
+                    Pay exam fee · {formatKES(selectedEnrollment.exam_fee)}
+                  </Button>
+                )}
+                {selectedEnrollment.certificate_fee > 0 && (
+                  <Button
+                    variant="outline"
+                    disabled={
+                      payPending ||
+                      confirmedPayments.some((payment) => payment.stage === "certificate_fee")
+                    }
+                    onClick={() => paymentMutation.mutate("certificate_fee")}
+                  >
+                    Pay certificate fee · {formatKES(selectedEnrollment.certificate_fee)}
+                  </Button>
+                )}
+              </div>
+            </section>
+          )}
+        </>
+      )}
+      {paymentsQuery.data && (
+        <section className="rounded-xl border bg-card p-5 shadow-card">
+          <h2 className="font-semibold text-brand">Online payment history</h2>
+          <div className="mt-2 divide-y">
+            {paymentsQuery.data.map((payment) => (
+              <div key={payment.id} className="flex flex-wrap justify-between gap-2 py-2 text-sm">
+                <span>
+                  {payment.stage.replaceAll("_", " ")} · {payment.reference}
+                </span>
+                <span>
+                  {formatKES(Number(payment.amount))} · {payment.status}
+                </span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+    </div>
+  );
+}
+
+function OnlineLessonCard({
+  lesson,
+  completing,
+  onComplete,
+}: {
+  lesson: Omit<OnlineLesson, "course_id" | "created_at" | "updated_at"> & {
+    completed: boolean;
+    locked: boolean;
+  };
+  completing: boolean;
+  onComplete: () => void;
+}) {
+  return (
+    <article className="rounded-xl border bg-card p-5 shadow-card">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="font-semibold text-brand">{lesson.title}</h3>
+          <p className="text-xs text-muted-foreground">
+            {lesson.section_title} · {Math.ceil(lesson.duration_seconds / 60)} min
+            {lesson.is_preview ? " · Free preview" : ""}
+          </p>
+        </div>
+        <Badge variant={lesson.locked ? "outline" : lesson.completed ? "default" : "secondary"}>
+          {lesson.locked ? "Locked" : lesson.completed ? "Completed" : "Available"}
+        </Badge>
+      </div>
+      {lesson.description && (
+        <p className="mt-2 text-sm text-muted-foreground">{lesson.description}</p>
+      )}
+      {lesson.locked ? (
+        <p className="mt-3 text-sm text-muted-foreground">
+          Complete the free preview and pay the required tuition stage to unlock this lesson.
+        </p>
+      ) : (
+        <>
+          {lesson.notes && <div className="mt-3 whitespace-pre-line text-sm">{lesson.notes}</div>}
+          {lesson.video_url && (
+            <a
+              className="mt-3 inline-block text-sm font-medium text-primary hover:underline"
+              href={lesson.video_url}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Watch lesson video ↗
+            </a>
+          )}
+          {lesson.file_path && (
+            <PrivateStorageMedia path={lesson.file_path} label="Open lesson file" />
+          )}
+          {!lesson.completed && (
+            <Button
+              className="mt-3"
+              size="sm"
+              variant="outline"
+              disabled={completing}
+              onClick={onComplete}
+            >
+              Mark lesson complete
+            </Button>
+          )}
+        </>
+      )}
+    </article>
+  );
+}
+
+function FeeMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg bg-muted/50 p-3">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="mt-1 font-semibold">{value}</p>
+    </div>
+  );
+}
+
 function AssignmentsSection({ student }: { student: Student }) {
   const assignmentsQuery = useQuery({
     queryKey: ["student", "assignment-list", student.id, student.course_id],
@@ -584,10 +1140,7 @@ function AssignmentsSection({ student }: { student: Student }) {
               </p>
             )}
             {assignment.file_path && (
-              <PrivateStorageMedia
-                path={assignment.file_path}
-                label="Open assignment file"
-              />
+              <PrivateStorageMedia path={assignment.file_path} label="Open assignment file" />
             )}
             {submission?.feedback && (
               <p className="mt-3 rounded-lg bg-accent p-3 text-sm">

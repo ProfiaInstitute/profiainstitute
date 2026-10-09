@@ -272,17 +272,32 @@ function CoursesManager() {
     },
     onError: (error) => toast.error("Could not save course", { description: error.message }),
   });
-  const deleteCourse = useMutation({
+  const archiveCourse = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from("courses").delete().eq("id", id).select("id").single();
+      const { data, error } = await supabase
+        .from("courses")
+        .update({ application_enabled: false, available_online: false, published: false })
+        .eq("id", id)
+        .select("id")
+        .maybeSingle();
       if (error) throw error;
+      if (!data) throw new Error("The course was not archived. Refresh the list and try again.");
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["admin", "courses"] });
-      await queryClient.invalidateQueries({ queryKey: ["courses"] });
-      toast.success("Course deleted");
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["admin", "courses"] }),
+        queryClient.invalidateQueries({ queryKey: ["admin", "lms-courses"] }),
+        queryClient.invalidateQueries({ queryKey: ["courses"] }),
+        queryClient.invalidateQueries({ queryKey: ["public-online-courses"] }),
+        queryClient.invalidateQueries({ queryKey: ["admin", "students"] }),
+        queryClient.invalidateQueries({ queryKey: ["admin", "student-course-enrollments"] }),
+      ]);
+      toast.success("Course archived", {
+        description:
+          "It is hidden from public catalogues while existing student records are preserved.",
+      });
     },
-    onError: (error) => toast.error("Could not delete course", { description: error.message }),
+    onError: (error) => toast.error("Could not archive course", { description: error.message }),
   });
 
   function editCourse(course: Course) {
@@ -398,13 +413,17 @@ function CoursesManager() {
                     type="button"
                     variant="outline"
                     size="sm"
-                    disabled={deleteCourse.isPending}
+                    disabled={archiveCourse.isPending}
                     onClick={() => {
-                      if (window.confirm(`Delete ${course.title}? This action cannot be undone.`))
-                        deleteCourse.mutate(course.id);
+                      if (
+                        window.confirm(
+                          `Archive ${course.title}? It will be hidden from public course lists, while existing student records are preserved.`,
+                        )
+                      )
+                        archiveCourse.mutate(course.id);
                     }}
                   >
-                    Delete
+                    Archive
                   </Button>
                 </div>
               </article>

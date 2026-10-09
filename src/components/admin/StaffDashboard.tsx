@@ -14,6 +14,7 @@ import {
   LogOut,
   Mail,
   Megaphone,
+  MonitorPlay,
   Newspaper,
   Search,
   Settings,
@@ -32,6 +33,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { ManagementPanel } from "@/components/admin/ManagementPanel";
 import { StudentProgressionPanel } from "@/components/admin/StudentProgressionPanel";
+import { OnlineCourseLmsPanel } from "@/components/admin/OnlineCourseLmsPanel";
 import { supabase } from "@/integrations/supabase/client";
 import { can, useRoles, useUser, type AppRole } from "@/lib/auth";
 import {
@@ -54,6 +56,7 @@ type DashboardSection =
   | "results"
   | "fees"
   | "materials"
+  | "lms"
   | "assignments"
   | "progression"
   | "articles"
@@ -73,6 +76,10 @@ type StaffAccount = {
   status: "active" | "pending" | "suspended";
   created_at: string;
 };
+
+function isStaffStatus(status: string): status is StaffAccount["status"] {
+  return status === "active" || status === "pending" || status === "suspended";
+}
 
 const navItems: { id: DashboardSection; title: string; icon: LucideIcon; roles: AppRole[] }[] = [
   {
@@ -113,6 +120,12 @@ const navItems: { id: DashboardSection; title: string; icon: LucideIcon; roles: 
     id: "materials",
     title: "Learning Materials",
     icon: FileText,
+    roles: ["super_admin", "academic_admin"],
+  },
+  {
+    id: "lms",
+    title: "Online Course LMS",
+    icon: MonitorPlay,
     roles: ["super_admin", "academic_admin"],
   },
   {
@@ -166,8 +179,7 @@ export function StaffDashboard() {
         retry={() => rolesQuery.refetch()}
       />
     );
-  if (visibleNav.length === 0)
-    return <InitialAdminSetup userId={user.id} email={user.email} />;
+  if (visibleNav.length === 0) return <InitialAdminSetup userId={user.id} email={user.email} />;
 
   const sectionTitle = navItems.find((item) => item.id === section)?.title ?? "Dashboard";
   const content =
@@ -179,6 +191,8 @@ export function StaffDashboard() {
       <StudentsPanel
         canManage={can(roles, ["academic_admin"])}
         canViewDocuments={can(roles, ["admissions_admin"])}
+        canManageDocuments={can(roles, ["admissions_admin"])}
+        userId={user.id}
       />
     ) : section === "courses" || section === "admissions" ? (
       <ManagementPanel />
@@ -190,6 +204,8 @@ export function StaffDashboard() {
       <StaffSettings />
     ) : section === "progression" ? (
       <StudentProgressionPanel />
+    ) : section === "lms" ? (
+      <OnlineCourseLmsPanel />
     ) : (
       <DataDirectory section={section} />
     );
@@ -287,13 +303,7 @@ export function StaffDashboard() {
   );
 }
 
-function InitialAdminSetup({
-  userId,
-  email,
-}: {
-  userId: string;
-  email: string | undefined;
-}) {
+function InitialAdminSetup({ userId, email }: { userId: string; email: string | undefined }) {
   const queryClient = useQueryClient();
   const setupQuery = useQuery({
     queryKey: ["admin", "bootstrap-available"],
@@ -332,8 +342,10 @@ function InitialAdminSetup({
           <h1 className="text-xl font-bold text-brand">Complete first Super Admin setup</h1>
           <p className="text-sm text-muted-foreground">
             Signed in as{" "}
-            <span className="font-semibold text-foreground">{email || "an account without an email"}</span>.
-            This exact email must be allowlisted in the Supabase database before this account can
+            <span className="font-semibold text-foreground">
+              {email || "an account without an email"}
+            </span>
+            . This exact email must be allowlisted in the Supabase database before this account can
             claim the first Super Admin role. Add it to <code>public.super_admin_setup</code> in the
             Supabase SQL Editor, then return here and claim the role.
           </p>
@@ -423,7 +435,9 @@ function StaffSignIn() {
         else toast.success("Signed in successfully");
       }
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "An unexpected error occurred.");
+      setError(
+        submitError instanceof Error ? submitError.message : "An unexpected error occurred.",
+      );
     } finally {
       setBusy(false);
     }
@@ -824,9 +838,13 @@ const applicationStatuses: Enums<"application_status">[] = [
 function StudentsPanel({
   canManage,
   canViewDocuments,
+  canManageDocuments,
+  userId,
 }: {
   canManage: boolean;
   canViewDocuments: boolean;
+  canManageDocuments: boolean;
+  userId: string;
 }) {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
@@ -836,7 +854,7 @@ function StudentsPanel({
       const { data, error } = await supabase
         .from("students")
         .select(
-          "id,student_number,application_id,first_name,middle_name,last_name,email,phone,status,course_id,intake_id,study_mode,course:courses(title),intake:intakes(name)",
+          "id,student_number,application_id,first_name,middle_name,last_name,email,phone,status,course_id,intake_id,study_mode,intake:intakes(name)",
         )
         .order("created_at", { ascending: false });
       if (error) throw error;
@@ -854,6 +872,95 @@ function StudentsPanel({
         .from("application_documents")
         .select("id,application_id,doc_type,file_name,file_path,created_at")
         .in("application_id", applicationIds);
+      if (error) throw error;
+      return data;
+    },
+  });
+  const studentIds = (studentsQuery.data ?? []).map((student) => student.id);
+  const studentCourseQuery = useQuery({
+    queryKey: ["admin", "student-course-enrollments", studentIds],
+    enabled: studentIds.length > 0,
+    queryFn: async () => {
+      const [academic, online] = await Promise.all([
+        supabase
+          .from("enrollments")
+          .select("student_id,course_id,status")
+          .in("student_id", studentIds),
+        supabase
+          .from("online_course_enrollments")
+          .select("student_id,course_id,status")
+          .in("student_id", studentIds),
+      ]);
+      if (academic.error) throw academic.error;
+      if (online.error) throw online.error;
+
+      const courseIds = [
+        ...new Set([
+          ...(studentsQuery.data ?? []).flatMap((student) =>
+            student.course_id ? [student.course_id] : [],
+          ),
+          ...(academic.data ?? []).map((enrollment) => enrollment.course_id),
+          ...(online.data ?? []).map((enrollment) => enrollment.course_id),
+        ]),
+      ];
+      const { data: courses, error: coursesError } = courseIds.length
+        ? await supabase.from("courses").select("id,title").in("id", courseIds)
+        : { data: [], error: null };
+      if (coursesError) throw coursesError;
+      const courseNames = new Map(courses.map((course) => [course.id, course.title]));
+      const rows = new Map<
+        string,
+        Map<string, { title: string; modes: Set<string>; statuses: Set<string> }>
+      >();
+      const addCourse = (studentId: string, courseId: string, mode: string, status: string) => {
+        const studentCourses = rows.get(studentId) ?? new Map();
+        const course = studentCourses.get(courseId) ?? {
+          title: courseNames.get(courseId) ?? "Course no longer available",
+          modes: new Set<string>(),
+          statuses: new Set<string>(),
+        };
+        course.modes.add(mode);
+        course.statuses.add(status);
+        studentCourses.set(courseId, course);
+        rows.set(studentId, studentCourses);
+      };
+      for (const enrollment of academic.data ?? [])
+        addCourse(enrollment.student_id, enrollment.course_id, "Academic", enrollment.status);
+      for (const enrollment of online.data ?? [])
+        addCourse(enrollment.student_id, enrollment.course_id, "Online", enrollment.status);
+      for (const student of studentsQuery.data ?? []) {
+        if (student.course_id && !rows.get(student.id)?.has(student.course_id)) {
+          addCourse(
+            student.id,
+            student.course_id,
+            student.study_mode === "online" ? "Online" : "Academic",
+            "assigned",
+          );
+        }
+      }
+
+      return Object.fromEntries(
+        [...rows].map(([studentId, coursesForStudent]) => [
+          studentId,
+          [...coursesForStudent.entries()].map(([courseId, course]) => ({
+            course_id: courseId,
+            title: course.title,
+            modes: [...course.modes],
+            statuses: [...course.statuses],
+          })),
+        ]),
+      );
+    },
+  });
+  const enrolledStudentDocumentsQuery = useQuery({
+    queryKey: ["admin", "student-documents", studentIds],
+    enabled: canViewDocuments && studentIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("student_documents")
+        .select("id,student_id,document_type,file_name,file_path,created_at")
+        .in("student_id", studentIds)
+        .order("created_at", { ascending: false });
       if (error) throw error;
       return data;
     },
@@ -1085,42 +1192,112 @@ function StudentsPanel({
                 {student.phone ? ` · ${student.phone}` : ""}
               </p>
               <p className="mt-1 text-xs text-muted-foreground">
-                {relationName(student.course)} · {relationName(student.intake)}
+                Intake: {relationName(student.intake)}
               </p>
-              {canViewDocuments && student.application_id && (
+              {studentCourseQuery.error ? (
+                <p role="alert" className="mt-2 text-xs text-destructive">
+                  Could not load course enrolments: {studentCourseQuery.error.message}
+                  <button
+                    type="button"
+                    className="ml-2 font-semibold underline"
+                    onClick={() => void studentCourseQuery.refetch()}
+                  >
+                    Retry
+                  </button>
+                </p>
+              ) : (
+                <div className="mt-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Course enrolments
+                  </p>
+                  {studentCourseQuery.isLoading ? (
+                    <p className="mt-1 text-xs text-muted-foreground">Loading courses…</p>
+                  ) : studentCourseQuery.data?.[student.id]?.length ? (
+                    <ul className="mt-1 space-y-1">
+                      {studentCourseQuery.data[student.id].map((course) => (
+                        <li
+                          key={course.course_id}
+                          className="flex flex-wrap items-center gap-1.5 text-xs"
+                        >
+                          <span className="font-medium">{course.title}</span>
+                          {course.modes.map((mode) => (
+                            <Badge key={`${course.course_id}-${mode}`} variant="outline">
+                              {mode}
+                            </Badge>
+                          ))}
+                          {course.statuses.map((status) => (
+                            <Badge key={`${course.course_id}-${status}`} variant="secondary">
+                              {status.replaceAll("_", " ")}
+                            </Badge>
+                          ))}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="mt-1 text-xs text-muted-foreground">No course enrolments.</p>
+                  )}
+                </div>
+              )}
+              {canViewDocuments && (
                 <div className="mt-3 border-t pt-3">
                   <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Application documents
+                    Student documents
                   </p>
-                  {studentDocumentsQuery.isLoading ? (
-                    <p className="text-xs text-muted-foreground">Loading documents…</p>
-                  ) : studentDocumentsQuery.error ? (
+                  {enrolledStudentDocumentsQuery.isLoading ? (
+                    <p className="text-xs text-muted-foreground">Loading student documents…</p>
+                  ) : enrolledStudentDocumentsQuery.error ? (
                     <p role="alert" className="text-xs text-destructive">
-                      Could not load documents: {studentDocumentsQuery.error.message}
+                      Could not load student documents:{" "}
+                      {enrolledStudentDocumentsQuery.error.message}
                       <button
                         type="button"
                         className="ml-2 font-semibold underline"
-                        onClick={() => void studentDocumentsQuery.refetch()}
+                        onClick={() => void enrolledStudentDocumentsQuery.refetch()}
                       >
                         Retry
                       </button>
                     </p>
+                  ) : canManageDocuments ? (
+                    <StudentDocumentUpload
+                      studentId={student.id}
+                      userId={userId}
+                      documents={(enrolledStudentDocumentsQuery.data ?? []).filter(
+                        (document) => document.student_id === student.id,
+                      )}
+                      onUploaded={() =>
+                        void queryClient.invalidateQueries({
+                          queryKey: ["admin", "student-documents"],
+                        })
+                      }
+                    />
                   ) : (
-                    (studentDocumentsQuery.data ?? [])
-                      .filter((document) => document.application_id === student.application_id)
+                    (enrolledStudentDocumentsQuery.data ?? [])
+                      .filter((document) => document.student_id === student.id)
                       .map((document) => (
-                        <ApplicationDocumentDownload key={document.id} document={document} />
+                        <StudentDocumentDownload key={document.id} document={document} />
                       ))
                   )}
-                  {!studentDocumentsQuery.isLoading &&
-                    !studentDocumentsQuery.error &&
-                    !(studentDocumentsQuery.data ?? []).some(
-                      (document) => document.application_id === student.application_id,
-                    ) && (
-                      <p className="text-xs text-muted-foreground">
-                        No application documents uploaded.
+                  {student.application_id && (
+                    <div className="mt-3 border-t pt-2">
+                      <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        Application documents
                       </p>
-                    )}
+                      {studentDocumentsQuery.isLoading ? (
+                        <p className="text-xs text-muted-foreground">Loading documents…</p>
+                      ) : studentDocumentsQuery.error ? (
+                        <p role="alert" className="text-xs text-destructive">
+                          Could not load application documents:{" "}
+                          {studentDocumentsQuery.error.message}
+                        </p>
+                      ) : (
+                        (studentDocumentsQuery.data ?? [])
+                          .filter((document) => document.application_id === student.application_id)
+                          .map((document) => (
+                            <ApplicationDocumentDownload key={document.id} document={document} />
+                          ))
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -1299,12 +1476,13 @@ function StaffSettings() {
   const staffQuery = useQuery({
     queryKey: ["admin", "staff"],
     queryFn: async () => {
-      const { data, error } = await supabase.functions.invoke("manage-staff", {
-        body: { action: "list" },
-      });
+      const { data, error } = await supabase.rpc("list_staff");
       if (error) throw error;
-      if (data?.error) throw new Error(data.error);
-      return (data?.accounts ?? []) as StaffAccount[];
+      return data.map((staff) => {
+        if (!isStaffStatus(staff.status))
+          throw new Error("The staff directory returned an unknown account status.");
+        return { ...staff, status: staff.status };
+      });
     },
   });
   const [bootstrap, setBootstrap] = useState<boolean | null>(null);
@@ -1344,7 +1522,10 @@ function StaffSettings() {
       if (error) {
         let description = error.message;
         if ("context" in error && error.context instanceof Response) {
-          const responseBody = await error.context.clone().json().catch(() => null);
+          const responseBody = await error.context
+            .clone()
+            .json()
+            .catch(() => null);
           if (typeof responseBody?.error === "string") description = responseBody.error;
         }
         toast.error("Could not invite staff member", { description });
@@ -1419,8 +1600,16 @@ function StaffSettings() {
       await queryClient.invalidateQueries({ queryKey: ["admin", "staff"] });
     } catch (error) {
       let description = error instanceof Error ? error.message : "An unexpected error occurred.";
-      if (error && typeof error === "object" && "context" in error && error.context instanceof Response) {
-        const body = await error.context.clone().json().catch(() => null);
+      if (
+        error &&
+        typeof error === "object" &&
+        "context" in error &&
+        error.context instanceof Response
+      ) {
+        const body = await error.context
+          .clone()
+          .json()
+          .catch(() => null);
         if (typeof body?.error === "string") description = body.error;
       }
       toast.error("Could not update staff account", { description });
@@ -1504,7 +1693,9 @@ function StaffSettings() {
           <option value="super_admin">Super Admin</option>
         </select>
         <div className="flex gap-2">
-          <Button disabled={saving} onClick={() => void setStaffRole(true)}>Grant role</Button>
+          <Button disabled={saving} onClick={() => void setStaffRole(true)}>
+            Grant role
+          </Button>
           <Button disabled={saving} variant="outline" onClick={() => void setStaffRole(false)}>
             Revoke role
           </Button>
@@ -1520,7 +1711,9 @@ function StaffSettings() {
             <div>
               <h2 className="font-semibold text-brand">Staff directory</h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                {visibleStaff.length} {visibleStaff.length === 1 ? "staff account" : "staff accounts"}
+                {visibleStaff.length}{" "}
+                {visibleStaff.length === 1 ? "staff account" : "staff accounts"} · roles from the
+                database
               </p>
             </div>
             <Input
@@ -1533,7 +1726,9 @@ function StaffSettings() {
           </div>
           {visibleStaff.length === 0 ? (
             <EmptyPanel
-              title={staffQuery.data?.length ? "No staff match your search" : "No staff accounts yet"}
+              title={
+                staffQuery.data?.length ? "No staff match your search" : "No staff accounts yet"
+              }
               detail={
                 staffQuery.data?.length
                   ? "Try a different name, email or role."
@@ -1551,9 +1746,7 @@ function StaffSettings() {
                     <p className="truncate font-medium">
                       {staff.full_name || staff.email || staff.user_id}
                     </p>
-                    {staff.email && (
-                      <p className="truncate text-muted-foreground">{staff.email}</p>
-                    )}
+                    {staff.email && <p className="truncate text-muted-foreground">{staff.email}</p>}
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {staff.roles.map((staffRole) => (
@@ -1561,9 +1754,7 @@ function StaffSettings() {
                         {staffRole.replaceAll("_", " ")}
                       </Badge>
                     ))}
-                    {staff.roles.length === 0 && (
-                      <Badge variant="outline">No role assigned</Badge>
-                    )}
+                    {staff.roles.length === 0 && <Badge variant="outline">No role assigned</Badge>}
                     <Badge
                       variant={staff.status === "active" ? "secondary" : "outline"}
                       className={
@@ -2065,16 +2256,14 @@ function DirectoryCreateForm({
     setSaving(true);
     let error: { message: string } | null = null;
     let uploadedPath: string | null = null;
-    if (
-      values.file &&
-      fileType &&
-      (section === "materials" || section === "assignments")
-    ) {
+    if (values.file && fileType && (section === "materials" || section === "assignments")) {
       uploadedPath = `${values.course_id}/${section}/${crypto.randomUUID()}-${safeUploadFileName(values.file.name)}`;
-      const { error: uploadError } = await supabase.storage.from("learning").upload(uploadedPath, values.file, {
-        contentType: fileType,
-        upsert: false,
-      });
+      const { error: uploadError } = await supabase.storage
+        .from("learning")
+        .upload(uploadedPath, values.file, {
+          contentType: fileType,
+          upsert: false,
+        });
       if (uploadError) {
         setSaving(false);
         toast.error("Could not upload course file", { description: uploadError.message });
@@ -2164,13 +2353,16 @@ function DirectoryCreateForm({
     setSaving(false);
     if (error) {
       if (uploadedPath) {
-        const { error: cleanupError } = await supabase.storage.from("learning").remove([uploadedPath]);
+        const { error: cleanupError } = await supabase.storage
+          .from("learning")
+          .remove([uploadedPath]);
         if (cleanupError)
-          toast.error("Could not clean up the uploaded file", { description: cleanupError.message });
+          toast.error("Could not clean up the uploaded file", {
+            description: cleanupError.message,
+          });
       }
       toast.error("Could not save record", { description: error.message });
-    }
-    else {
+    } else {
       toast.success("Record saved");
       setValues({
         title: "",
@@ -2365,7 +2557,10 @@ function DirectoryCreateForm({
               value={values.url}
               onChange={(e) => setValues({ ...values, url: e.target.value })}
             />
-            <ContentFileInput file={values.file} onFile={(file) => setValues({ ...values, file })} />
+            <ContentFileInput
+              file={values.file}
+              onFile={(file) => setValues({ ...values, file })}
+            />
           </>
         )}
         {section === "assignments" && (
@@ -2377,7 +2572,10 @@ function DirectoryCreateForm({
               value={values.due_date}
               onChange={(e) => setValues({ ...values, due_date: e.target.value })}
             />
-            <ContentFileInput file={values.file} onFile={(file) => setValues({ ...values, file })} />
+            <ContentFileInput
+              file={values.file}
+              onFile={(file) => setValues({ ...values, file })}
+            />
           </>
         )}
         <Button className="sm:col-span-2" disabled={saving || optionsQuery.isLoading}>
@@ -2429,10 +2627,12 @@ function ContentCreateForm({
     let uploadedUrl: string | null = null;
     if (values.file && contentType) {
       uploadedPath = `content/${crypto.randomUUID()}-${safeUploadFileName(values.file.name)}`;
-      const { error: uploadError } = await supabase.storage.from("media").upload(uploadedPath, values.file, {
-        contentType,
-        upsert: false,
-      });
+      const { error: uploadError } = await supabase.storage
+        .from("media")
+        .upload(uploadedPath, values.file, {
+          contentType,
+          upsert: false,
+        });
       if (uploadError) {
         setSaving(false);
         toast.error("Could not upload content file", { description: uploadError.message });
@@ -2484,11 +2684,12 @@ function ContentCreateForm({
       if (uploadedPath) {
         const { error: cleanupError } = await supabase.storage.from("media").remove([uploadedPath]);
         if (cleanupError)
-          toast.error("Could not clean up the uploaded file", { description: cleanupError.message });
+          toast.error("Could not clean up the uploaded file", {
+            description: cleanupError.message,
+          });
       }
       toast.error("Could not save content", { description: error.message });
-    }
-    else {
+    } else {
       toast.success("Content saved as a draft");
       setValues({ title: "", content: "", excerpt: "", url: "", caption: "", alt: "", file: null });
       onSaved();
@@ -2655,11 +2856,7 @@ function LoadingState() {
   );
 }
 
-function ApplicationDocumentDownload({
-  document,
-}: {
-  document: Tables<"application_documents">;
-}) {
+function ApplicationDocumentDownload({ document }: { document: Tables<"application_documents"> }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -2684,7 +2881,167 @@ function ApplicationDocumentDownload({
       <span className="text-muted-foreground">
         {document.doc_type}: {document.file_name ?? "Uploaded document"}
       </span>
-      <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void download()}>
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        disabled={busy}
+        onClick={() => void download()}
+      >
+        {busy ? "Preparing…" : "Download"}
+      </Button>
+      {error && (
+        <span role="alert" className="text-xs text-destructive">
+          Could not download: {error}
+        </span>
+      )}
+    </div>
+  );
+}
+
+type StudentDocumentRow = Pick<
+  Tables<"student_documents">,
+  "id" | "student_id" | "document_type" | "file_name" | "file_path" | "created_at"
+>;
+
+function StudentDocumentUpload({
+  studentId,
+  userId,
+  documents,
+  onUploaded,
+}: {
+  studentId: string;
+  userId: string;
+  documents: StudentDocumentRow[];
+  onUploaded: () => void;
+}) {
+  const [documentType, setDocumentType] = useState("KCSE certificate");
+  const [busy, setBusy] = useState(false);
+
+  async function upload(event: React.ChangeEvent<HTMLInputElement>) {
+    const input = event.currentTarget;
+    const file = input.files?.[0];
+    input.value = "";
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("Student documents must be 5 MB or smaller.");
+      return;
+    }
+    const extension = file.name.split(".").pop()?.toLowerCase();
+    const mime = ["application/pdf", "image/jpeg", "image/png"].includes(file.type)
+      ? file.type
+      : extension === "pdf"
+        ? "application/pdf"
+        : extension === "jpg" || extension === "jpeg"
+          ? "image/jpeg"
+          : extension === "png"
+            ? "image/png"
+            : "";
+    if (!["application/pdf", "image/jpeg", "image/png"].includes(mime)) {
+      toast.error("Upload a PDF, JPG, or PNG document.");
+      return;
+    }
+
+    setBusy(true);
+    const filePath = `${studentId}/${crypto.randomUUID()}-${safeUploadFileName(file.name)}`;
+    const { error: uploadError } = await supabase.storage
+      .from("student-documents")
+      .upload(filePath, file, { contentType: mime, upsert: false });
+    if (uploadError) {
+      setBusy(false);
+      toast.error("Could not upload student document", { description: uploadError.message });
+      return;
+    }
+
+    const { error: metadataError } = await supabase.from("student_documents").insert({
+      student_id: studentId,
+      document_type: documentType,
+      file_name: file.name,
+      file_path: filePath,
+      uploaded_by: userId,
+    });
+    setBusy(false);
+    if (metadataError) {
+      const { error: cleanupError } = await supabase.storage
+        .from("student-documents")
+        .remove([filePath]);
+      if (cleanupError)
+        console.error("Could not clean up unlinked student document:", cleanupError.message);
+      toast.error("Could not save student document", { description: metadataError.message });
+      return;
+    }
+    toast.success("Student document uploaded");
+    onUploaded();
+  }
+
+  return (
+    <div className="mt-3 space-y-2">
+      {!documents.length && (
+        <p className="text-xs text-muted-foreground">No student documents uploaded.</p>
+      )}
+      {documents.map((document) => (
+        <StudentDocumentDownload key={document.id} document={document} />
+      ))}
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <select
+          aria-label="Student document type"
+          className={selectClass}
+          value={documentType}
+          onChange={(event) => setDocumentType(event.target.value)}
+          disabled={busy}
+        >
+          <option>KCSE certificate</option>
+          <option>KCPE certificate</option>
+          <option>Other certificate</option>
+          <option>Birth certificate</option>
+          <option>ID or passport</option>
+        </select>
+        <Input
+          aria-label="Upload student document"
+          type="file"
+          accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
+          disabled={busy}
+          onChange={(event) => void upload(event)}
+        />
+      </div>
+      {busy && <p className="text-xs text-muted-foreground">Uploading document…</p>}
+      <p className="text-xs text-muted-foreground">
+        PDF, JPG, or PNG · up to 5 MB per file. Uploading again keeps previous versions.
+      </p>
+    </div>
+  );
+}
+
+function StudentDocumentDownload({ document }: { document: StudentDocumentRow }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function download() {
+    setBusy(true);
+    setError("");
+    const { data, error: signedUrlError } = await supabase.storage
+      .from("student-documents")
+      .createSignedUrl(document.file_path, 60, { download: document.file_name });
+    setBusy(false);
+    if (signedUrlError) {
+      setError(signedUrlError.message);
+      return;
+    }
+    window.location.assign(data.signedUrl);
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-sm">
+      <span className="text-muted-foreground">
+        {document.document_type}: {document.file_name}
+      </span>
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        disabled={busy}
+        onClick={() => void download()}
+      >
         {busy ? "Preparing…" : "Download"}
       </Button>
       {error && (

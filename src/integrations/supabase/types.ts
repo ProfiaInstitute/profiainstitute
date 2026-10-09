@@ -589,6 +589,13 @@ export type Database = {
           fees: number | null;
           id: string;
           image_url: string | null;
+          online_certificate_fee: number;
+          online_exam_fee: number;
+          online_intro_video_url: string | null;
+          online_lecturer_email: string | null;
+          online_lecturer_name: string | null;
+          online_lecturer_phone: string | null;
+          online_syllabus: string | null;
           published: boolean;
           requirements: string | null;
           school_id: string;
@@ -610,6 +617,13 @@ export type Database = {
           fees?: number | null;
           id?: string;
           image_url?: string | null;
+          online_certificate_fee?: number;
+          online_exam_fee?: number;
+          online_intro_video_url?: string | null;
+          online_lecturer_email?: string | null;
+          online_lecturer_name?: string | null;
+          online_lecturer_phone?: string | null;
+          online_syllabus?: string | null;
           published?: boolean;
           requirements?: string | null;
           school_id: string;
@@ -631,6 +645,13 @@ export type Database = {
           fees?: number | null;
           id?: string;
           image_url?: string | null;
+          online_certificate_fee?: number;
+          online_exam_fee?: number;
+          online_intro_video_url?: string | null;
+          online_lecturer_email?: string | null;
+          online_lecturer_name?: string | null;
+          online_lecturer_phone?: string | null;
+          online_syllabus?: string | null;
           published?: boolean;
           requirements?: string | null;
           school_id?: string;
@@ -1054,6 +1075,162 @@ export type Database = {
           },
         ];
       };
+      online_course_enrollments: {
+        Row: {
+          certificate_fee: number;
+          course_id: string;
+          created_at: string;
+          exam_fee: number;
+          id: string;
+          status: string;
+          student_id: string;
+          tuition_fee: number;
+        };
+        Insert: {
+          certificate_fee?: number;
+          course_id: string;
+          created_at?: string;
+          exam_fee?: number;
+          id?: string;
+          status?: string;
+          student_id: string;
+          tuition_fee: number;
+        };
+        Update: {
+          certificate_fee?: number;
+          course_id?: string;
+          created_at?: string;
+          exam_fee?: number;
+          id?: string;
+          status?: string;
+          student_id?: string;
+          tuition_fee?: number;
+        };
+        Relationships: [];
+      };
+      online_course_lessons: {
+        Row: {
+          course_id: string;
+          created_at: string;
+          description: string | null;
+          duration_seconds: number;
+          file_path: string | null;
+          file_type: string | null;
+          id: string;
+          is_preview: boolean;
+          notes: string | null;
+          published: boolean;
+          section_title: string;
+          sort_order: number;
+          title: string;
+          updated_at: string;
+          video_url: string | null;
+        };
+        Insert: {
+          course_id: string;
+          created_at?: string;
+          description?: string | null;
+          duration_seconds?: number;
+          file_path?: string | null;
+          file_type?: string | null;
+          id?: string;
+          is_preview?: boolean;
+          notes?: string | null;
+          published?: boolean;
+          section_title?: string;
+          sort_order?: number;
+          title: string;
+          updated_at?: string;
+          video_url?: string | null;
+        };
+        Update: {
+          course_id?: string;
+          created_at?: string;
+          description?: string | null;
+          duration_seconds?: number;
+          file_path?: string | null;
+          file_type?: string | null;
+          id?: string;
+          is_preview?: boolean;
+          notes?: string | null;
+          published?: boolean;
+          section_title?: string;
+          sort_order?: number;
+          title?: string;
+          updated_at?: string;
+          video_url?: string | null;
+        };
+        Relationships: [];
+      };
+      online_course_payments: {
+        Row: {
+          amount: number;
+          course_id: string;
+          created_at: string;
+          enrollment_id: string;
+          id: string;
+          paid_at: string | null;
+          provider: string;
+          provider_checkout_id: string | null;
+          raw: Json;
+          reference: string;
+          stage: string;
+          status: string;
+          student_id: string;
+          updated_at: string;
+        };
+        Insert: {
+          amount: number;
+          course_id: string;
+          created_at?: string;
+          enrollment_id: string;
+          id?: string;
+          paid_at?: string | null;
+          provider?: string;
+          provider_checkout_id?: string | null;
+          raw?: Json;
+          reference: string;
+          stage: string;
+          status?: string;
+          student_id: string;
+          updated_at?: string;
+        };
+        Update: {
+          amount?: number;
+          course_id?: string;
+          created_at?: string;
+          enrollment_id?: string;
+          id?: string;
+          paid_at?: string | null;
+          provider?: string;
+          provider_checkout_id?: string | null;
+          raw?: Json;
+          reference?: string;
+          stage?: string;
+          status?: string;
+          student_id?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      online_lesson_progress: {
+        Row: {
+          completed_at: string;
+          lesson_id: string;
+          student_id: string;
+        };
+        Insert: {
+          completed_at?: string;
+          lesson_id: string;
+          student_id: string;
+        };
+        Update: {
+          completed_at?: string;
+          lesson_id?: string;
+          student_id?: string;
+        };
+        Relationships: [];
+      };
       profiles: {
         Row: {
           avatar_url: string | null;
@@ -1403,6 +1580,44 @@ export type Database = {
           },
         ];
       };
+      student_documents: {
+        Row: {
+          created_at: string;
+          document_type: string;
+          file_name: string;
+          file_path: string;
+          id: string;
+          student_id: string;
+          uploaded_by: string;
+        };
+        Insert: {
+          created_at?: string;
+          document_type: string;
+          file_name: string;
+          file_path: string;
+          id?: string;
+          student_id: string;
+          uploaded_by: string;
+        };
+        Update: {
+          created_at?: string;
+          document_type?: string;
+          file_name?: string;
+          file_path?: string;
+          id?: string;
+          student_id?: string;
+          uploaded_by?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "student_documents_student_id_fkey";
+            columns: ["student_id"];
+            isOneToOne: false;
+            referencedRelation: "students";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       submissions: {
         Row: {
           assignment_id: string;
@@ -1502,20 +1717,27 @@ export type Database = {
       };
       claim_first_super_admin: { Args: never; Returns: boolean };
       claim_student_record: { Args: never; Returns: string };
+      can_access_online_lesson: { Args: { _lesson_id: string }; Returns: boolean };
+      can_access_online_lesson_file: { Args: { _file_path: string }; Returns: boolean };
       claim_due_progression_followups: {
-        Args: { _limit?: number }
+        Args: { _limit?: number };
         Returns: {
-          id: string
-          message: string
-          next_course: string
-          next_course_id: string
-          student_email: string
-          student_name: string
-          student_number: string
-          subject: string
-        }[]
-      }
+          id: string;
+          message: string;
+          next_course: string;
+          next_course_id: string;
+          student_email: string;
+          student_name: string;
+          student_number: string;
+          subject: string;
+        }[];
+      };
       enroll_application: { Args: { _application_id: string }; Returns: string };
+      enroll_online_course: {
+        Args: { _course_id: string; _phone: string };
+        Returns: { enrollment_id: string; student_id: string; student_number: string }[];
+      };
+      complete_online_lesson: { Args: { _lesson_id: string }; Returns: undefined };
       has_any_role: {
         Args: {
           _roles: Database["public"]["Enums"]["app_role"][];
@@ -1534,10 +1756,51 @@ export type Database = {
       list_staff: {
         Args: never;
         Returns: {
+          created_at: string;
           email: string;
           full_name: string;
           roles: Database["public"]["Enums"]["app_role"][];
+          status: string;
           user_id: string;
+        }[];
+      };
+      list_online_course_lessons: {
+        Args: { _course_id: string };
+        Returns: {
+          completed: boolean;
+          description: string | null;
+          duration_seconds: number;
+          file_path: string | null;
+          file_type: string | null;
+          id: string;
+          is_preview: boolean;
+          locked: boolean;
+          notes: string | null;
+          section_title: string;
+          sort_order: number;
+          title: string;
+          video_url: string | null;
+        }[];
+      };
+      list_student_progression_followups: {
+        Args: never;
+        Returns: {
+          attempts: number;
+          created_at: string;
+          due_at: string;
+          grade: string | null;
+          id: string;
+          last_error: string | null;
+          next_course: string;
+          score: number | null;
+          sent_at: string | null;
+          source_course: string;
+          status: string;
+          student_email: string;
+          student_id: string;
+          student_name: string;
+          student_number: string;
+          unit_name: string;
         }[];
       };
       log_action: {
@@ -1552,8 +1815,8 @@ export type Database = {
       my_course_id: { Args: never; Returns: string };
       my_student_id: { Args: never; Returns: string };
       next_student_number: { Args: never; Returns: string };
-      queue_existing_progression_followups: { Args: never; Returns: number }
-      retry_progression_followup: { Args: { _followup_id: string }; Returns: undefined }
+      queue_existing_progression_followups: { Args: never; Returns: number };
+      retry_progression_followup: { Args: { _followup_id: string }; Returns: undefined };
       set_role_by_email: {
         Args: {
           _email: string;

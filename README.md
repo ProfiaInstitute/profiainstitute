@@ -2504,9 +2504,12 @@ To bootstrap the first Super Admin:
    Supabase provides `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` to deployed
    functions. Keep the service-role key out of the frontend and source control.
 
-Students can register at `/student` using the email already recorded on their
-student record. After email confirmation and sign-in, the portal securely links
-the account to the matching unclaimed student record.
+Existing students can register at `/student` using the email already recorded
+on their student record. After email confirmation and sign-in, the portal
+securely links the account to the matching unclaimed student record. New
+learners can select an online course, create a portal account, verify their
+email, and complete enrollment; the online enrollment process creates a
+student record and student number when no existing record matches.
 
 ### Student progression email follow-ups
 
@@ -2516,7 +2519,9 @@ create a rule for a source course, next-level course, qualifying published exam
 result, minimum score, and delay. New qualifying results are queued
 automatically; use **Queue eligible existing results** to backfill results
 published before a rule was created. Students receive an invitation to apply
-for the next course; staff still review and confirm enrolment.
+for the next course; staff still review and confirm enrolment. Apply
+`0007_student_progression_directory.sql` after the other numbered migrations to
+show linked student, exam result, and course details in the scheduled list.
 
 ### Application supporting documents
 
@@ -2537,6 +2542,31 @@ content. Learning materials and assignments use the private `learning` bucket,
 are stored under the course folder, and are only accessible to that course's
 students and authorized academic staff. Video and audio players use native
 controls and retain sound.
+
+### Staff directory
+
+Apply `0006_staff_directory.sql` after `0005_content_media_uploads.sql` to
+provide the Super Admin staff directory from the database. Apply migrations in
+numeric order; each migration has a unique number.
+
+### Online course enrollment
+
+Apply `0008_online_course_lms.sql` to add the online-course LMS. If the initial
+LMS migration has already been applied, also apply
+`0009_online_course_enrollment_conflict.sql`. This fixes an ambiguous column
+reference when an existing student account enrolls in an online course.
+
+Apply `0010_student_documents.sql` to add private supporting-document storage
+for student records and `0011_online_enrollment_admin_read.sql` to let
+admissions staff see online course enrollments in the Students directory.
+Apply `0012_preserve_archived_course_access.sql` so archived courses disappear
+from public catalogues while previously enrolled students retain course details
+and online lessons.
+The Students panel supports PDF, JPG, and PNG files up to 5 MB and provides
+staff-only signed downloads. Course deletion from the catalogue is performed
+by archiving/unpublishing the course so historical enrollments and records are
+preserved; removing a course from the LMS public catalogue disables its online
+availability without deleting its academic course record.
 
 Email delivery requires a verified sender on the Institute's domain and a
 Resend account. Deploy the function with the Supabase CLI:

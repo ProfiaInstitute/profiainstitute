@@ -39,10 +39,7 @@ export function StudentProgressionPanel() {
   const coursesQuery = useQuery({
     queryKey: ["admin", "progression-courses"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("courses")
-        .select("id,title,course_code")
-        .order("title");
+      const { data, error } = await supabase.from("courses").select("id,title").order("title");
       if (error) throw error;
       return data;
     },
@@ -61,11 +58,7 @@ export function StudentProgressionPanel() {
   const followupsQuery = useQuery({
     queryKey: ["admin", "progression-followups"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("progression_followups")
-        .select("*")
-        .order("created_at", { ascending: false })
-        .limit(100);
+      const { data, error } = await supabase.rpc("list_student_progression_followups");
       if (error) throw error;
       return data;
     },
@@ -184,6 +177,7 @@ export function StudentProgressionPanel() {
   const dueCount =
     followupsQuery.data?.filter((item) => item.status === "pending" || item.status === "failed")
       .length ?? 0;
+  const hasActiveRule = rulesQuery.data?.some((rule) => rule.enabled) ?? false;
 
   return (
     <div className="space-y-6">
@@ -238,7 +232,6 @@ export function StudentProgressionPanel() {
               <option value="">Select current level</option>
               {coursesQuery.data?.map((course) => (
                 <option key={course.id} value={course.id}>
-                  {course.course_code ? `${course.course_code} · ` : ""}
                   {course.title}
                 </option>
               ))}
@@ -254,7 +247,6 @@ export function StudentProgressionPanel() {
               <option value="">Select next level</option>
               {coursesQuery.data?.map((course) => (
                 <option key={course.id} value={course.id}>
-                  {course.course_code ? `${course.course_code} · ` : ""}
                   {course.title}
                 </option>
               ))}
@@ -397,7 +389,8 @@ export function StudentProgressionPanel() {
         <div>
           <h2 className="font-semibold text-brand">Scheduled student follow-ups</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Latest 100 messages. Failed messages can be retried.
+            Latest 100 messages, including student, result, and course details. Failed messages can
+            be retried.
           </p>
         </div>
         {followupsQuery.data?.length ? (
@@ -407,6 +400,23 @@ export function StudentProgressionPanel() {
               className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card p-4"
             >
               <div>
+                <p className="font-medium">
+                  {followup.student_name || followup.student_number}
+                  <span className="ml-2 text-xs font-normal text-muted-foreground">
+                    {followup.student_number}
+                  </span>
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  {followup.student_email || "No email on record"}
+                </p>
+                <p className="mt-1 text-sm">
+                  {followup.source_course} → {followup.next_course}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {followup.unit_name}
+                  {followup.score !== null ? ` · ${followup.score}%` : ""}
+                  {followup.grade ? ` · ${followup.grade}` : ""}
+                </p>
                 <div className="flex items-center gap-2">
                   <Badge
                     variant={
@@ -423,6 +433,11 @@ export function StudentProgressionPanel() {
                     Due {new Date(followup.due_at).toLocaleString("en-KE")}
                   </span>
                 </div>
+                {followup.sent_at && (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Sent {new Date(followup.sent_at).toLocaleString("en-KE")}
+                  </p>
+                )}
                 {followup.last_error && (
                   <p className="mt-2 max-w-xl text-xs text-destructive">{followup.last_error}</p>
                 )}
@@ -442,7 +457,11 @@ export function StudentProgressionPanel() {
         ) : (
           <EmptyState
             title="No follow-ups scheduled"
-            detail="Follow-ups will appear after exam results match an active rule."
+            detail={
+              hasActiveRule
+                ? "No qualifying results have been queued. Publish an exam result that matches an active rule, or queue eligible existing results to check past results."
+                : "Create and activate a progression rule first. Follow-ups are created only for active students with published exam results that match the rule."
+            }
           />
         )}
       </section>
@@ -492,8 +511,9 @@ function PanelError({
       </p>
       {migrationRequired && (
         <p className="mt-2 text-sm text-muted-foreground">
-          Apply <code>drizzle/migrations/0003_student_progression_followups.sql</code> in the
-          Supabase SQL Editor, then retry.
+          Apply <code>drizzle/migrations/0003_student_progression_followups.sql</code> and{" "}
+          <code>drizzle/migrations/0007_student_progression_directory.sql</code> in the Supabase SQL
+          Editor, then retry.
         </p>
       )}
       <Button variant="outline" className="mt-3" onClick={retry}>
