@@ -32,6 +32,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { ManagementPanel } from "@/components/admin/ManagementPanel";
+import { FaqManagementPanel } from "@/components/admin/FaqManagementPanel";
 import { StudentProgressionPanel } from "@/components/admin/StudentProgressionPanel";
 import { OnlineCourseLmsPanel } from "@/components/admin/OnlineCourseLmsPanel";
 import { supabase } from "@/integrations/supabase/client";
@@ -49,6 +50,7 @@ type DashboardSection =
   | "dashboard"
   | "applications"
   | "students"
+  | "faqs"
   | "courses"
   | "schools"
   | "admissions"
@@ -99,6 +101,12 @@ const navItems: { id: DashboardSection; title: string; icon: LucideIcon; roles: 
     title: "Students",
     icon: Users,
     roles: ["super_admin", "academic_admin", "admissions_admin"],
+  },
+  {
+    id: "faqs",
+    title: "FAQs & Search Insights",
+    icon: Search,
+    roles: ["super_admin", "content_admin"],
   },
   { id: "courses", title: "Courses", icon: BookOpen, roles: ["super_admin", "academic_admin"] },
   {
@@ -194,6 +202,8 @@ export function StaffDashboard() {
         canManageDocuments={can(roles, ["admissions_admin"])}
         userId={user.id}
       />
+    ) : section === "faqs" ? (
+      <FaqManagementPanel />
     ) : section === "courses" || section === "admissions" ? (
       <ManagementPanel />
     ) : section === "reports" ? (

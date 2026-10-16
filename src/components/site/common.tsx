@@ -1,16 +1,18 @@
 import { Link } from "@tanstack/react-router";
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import {
   Briefcase,
   Clock,
   GraduationCap,
   Hammer,
   MessageCircle,
+  Search,
   Sparkles,
   Wrench,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Accordion,
@@ -19,8 +21,14 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { supabase } from "@/integrations/supabase/client";
+import type { Tables } from "@/integrations/supabase/types";
 import { formatKES, useGeneral, useMedia, whatsappLink } from "@/lib/site";
 import { cn } from "@/lib/utils";
+
+type FaqSearchItem = Pick<
+  Tables<"faqs">,
+  "id" | "question" | "answer" | "category" | "school_id" | "sort_order"
+>;
 
 export function WhatsAppButton({
   text,
@@ -261,26 +269,68 @@ export function ErrorNote({
 }
 
 export function FaqSection({ schoolId }: { schoolId?: string }) {
-  const { data } = useQuery({
+  const { data, error } = useQuery({
     queryKey: ["faqs", schoolId ?? "general"],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("faqs")
-        .select("*")
+        .select("id,question,answer,category,school_id,sort_order")
         .eq("published", true)
         .order("sort_order");
       if (error) throw error;
-      return (data ?? []).filter((f) => !f.school_id || f.school_id === schoolId);
+      return (data ?? []).filter(
+        (faq) => !schoolId || !faq.school_id || faq.school_id === schoolId,
+      );
     },
   });
+  const [searchInput, setSearchInput] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
+  const trackedFaqIds = useRef(new Set<string>());
+  const visibleFaqs = useMemo(() => {
+    return searchFaqs(data ?? [], searchTerm);
+  }, [data, searchTerm]);
   const groups = useMemo(() => {
-    const m = new Map<string, NonNullable<typeof data>>();
-    (data ?? []).forEach((f) => m.set(f.category, [...(m.get(f.category) ?? []), f]));
+    const m = new Map<string, typeof visibleFaqs>();
+    visibleFaqs.forEach((f) => m.set(f.category, [...(m.get(f.category) ?? []), f]));
     return [...m.entries()];
-  }, [data]);
+  }, [visibleFaqs]);
   const [active, setActive] = useState<string | null>(null);
   const current = groups.find(([k]) => k === active) ?? groups[0];
-  if (!groups.length) return null;
+  function submitSearch(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const term = searchInput.trim().slice(0, 120);
+    const normalizedTerm = normalizeFaqSearch(term);
+    if (!normalizedTerm) {
+      setSearchTerm("");
+      return;
+    }
+    setSearchTerm(term);
+    const match = searchFaqs(data ?? [], term)[0];
+    if (term && match && !trackedFaqIds.current.has(match.id)) {
+      trackedFaqIds.current.add(match.id);
+      void supabase
+        .rpc("record_faq_search", {
+          _faq_id: match.id,
+          _bucket: Math.floor(Math.random() * 16),
+        })
+        .then(({ error: trackingError }) => {
+          if (trackingError) console.error("Could not record FAQ search insight", trackingError);
+        })
+        .catch((trackingError: unknown) => {
+          console.error("Could not record FAQ search insight", trackingError);
+        });
+    }
+  }
+  if (error)
+    return (
+      <section className="bg-cream py-10">
+        <div className="container-site text-center text-sm text-muted-foreground">
+          Frequently asked questions are temporarily unavailable. Please contact admissions for
+          assistance.
+        </div>
+      </section>
+    );
+  if (!groups.length && !searchTerm) return null;
   return (
     <section className="bg-cream py-16">
       <div className="container-site">
@@ -289,6 +339,27 @@ export function FaqSection({ schoolId }: { schoolId?: string }) {
           title="Frequently Asked Questions"
           subtitle="Everything you need to know about Profia Institute"
         />
+        <form onSubmit={submitSearch} className="mx-auto mb-8 flex max-w-2xl gap-2">
+          <label className="sr-only" htmlFor="faq-search">
+            Search frequently asked questions
+          </label>
+          <Input
+            id="faq-search"
+            value={searchInput}
+            maxLength={120}
+            onChange={(event) => setSearchInput(event.target.value)}
+            placeholder="Search admissions, fees, courses, and more"
+          />
+          <Button type="submit" disabled={!searchInput.trim()}>
+            <Search className="h-4 w-4" />
+            Search
+          </Button>
+        </form>
+        {searchTerm && !groups.length && (
+          <p className="mb-6 text-center text-sm text-muted-foreground" role="status">
+            No published FAQ matches “{searchTerm}”. Please contact admissions and we will help.
+          </p>
+        )}
         <div className="grid gap-6 md:grid-cols-4">
           <div className="flex gap-2 overflow-x-auto md:flex-col">
             {groups.map(([k]) => (
@@ -319,8 +390,50 @@ export function FaqSection({ schoolId }: { schoolId?: string }) {
             </Accordion>
           </div>
         </div>
+        {searchTerm && (
+          <button
+            type="button"
+            className="mt-5 text-sm font-semibold text-primary underline"
+            onClick={() => {
+              setSearchInput("");
+              setSearchTerm("");
+            }}
+          >
+            Clear search
+          </button>
+        )}
       </div>
     </section>
+  );
+}
+
+function normalizeFaqSearch(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
+}
+
+function searchFaqs(faqs: FaqSearchItem[], term: string) {
+  const terms = normalizeFaqSearch(term).split(" ").filter(Boolean);
+  if (!terms.length) return faqs;
+
+  return faqs
+    .filter((faq) => {
+      const searchableText = normalizeFaqSearch(`${faq.question} ${faq.answer} ${faq.category}`);
+      return terms.every((word) => searchableText.includes(word));
+    })
+    .sort((left, right) => faqSearchScore(right, terms) - faqSearchScore(left, terms));
+}
+
+function faqSearchScore(faq: FaqSearchItem, terms: string[]) {
+  const question = normalizeFaqSearch(faq.question);
+  const answer = normalizeFaqSearch(`${faq.answer} ${faq.category}`);
+  return (
+    terms.reduce((score, word) => score + (question.includes(word) ? 2 : 0), 0) +
+    terms.reduce((score, word) => score + (answer.includes(word) ? 1 : 0), 0)
   );
 }
 

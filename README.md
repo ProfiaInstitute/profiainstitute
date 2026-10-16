@@ -2568,6 +2568,27 @@ by archiving/unpublishing the course so historical enrollments and records are
 preserved; removing a course from the LMS public catalogue disables its online
 availability without deleting its academic course record.
 
+### FAQ search insights and database load
+
+Apply `0013_faq_insights_and_query_indexes.sql` after the existing migrations.
+It adds indexes for the student portal's enrollment, result, fee, and payment
+lookups, plus daily sharded counters for matched FAQ searches. Search insight
+records contain only FAQ IDs, dates, and aggregate counts; they do not retain
+search text, account IDs, names, email addresses, or IP addresses. Content Admins
+and Super Admins can manage FAQs and review the previous 30 days of aggregate
+search counts from `/admin` → **FAQs & Search Insights**. Visitors can search
+published FAQ answers on the Contact page.
+
+The client query cache uses a 30-second default freshness window and one retry
+for failed reads to avoid unnecessary refetch and retry bursts; explicitly
+configured query freshness and mutation invalidations remain in effect. These
+changes reduce avoidable database work but do not by themselves guarantee a
+specific concurrency limit. Capacity for 1,000–10,000 active users depends on
+the Supabase compute plan, read/write mix, and peak request rate; validate with
+a representative load test and monitor database CPU, query latency, connection
+usage, and Edge Function errors in the Supabase dashboard before increasing
+production traffic.
+
 Email delivery requires a verified sender on the Institute's domain and a
 Resend account. Deploy the function with the Supabase CLI:
 

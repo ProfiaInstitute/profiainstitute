@@ -810,6 +810,35 @@ export type Database = {
           },
         ];
       };
+      faq_search_insights: {
+        Row: {
+          bucket: number;
+          faq_id: string;
+          search_count: number;
+          search_date: string;
+        };
+        Insert: {
+          bucket: number;
+          faq_id: string;
+          search_count?: number;
+          search_date?: string;
+        };
+        Update: {
+          bucket?: number;
+          faq_id?: string;
+          search_count?: number;
+          search_date?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "faq_search_insights_faq_id_fkey";
+            columns: ["faq_id"];
+            isOneToOne: false;
+            referencedRelation: "faqs";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       fees: {
         Row: {
           academic_year: string | null;
@@ -1719,6 +1748,19 @@ export type Database = {
       claim_student_record: { Args: never; Returns: string };
       can_access_online_lesson: { Args: { _lesson_id: string }; Returns: boolean };
       can_access_online_lesson_file: { Args: { _file_path: string }; Returns: boolean };
+      record_faq_search: {
+        Args: { _bucket: number; _faq_id: string };
+        Returns: undefined;
+      };
+      list_faq_search_insights: {
+        Args: { _days?: number };
+        Returns: {
+          category: string;
+          faq_id: string;
+          question: string;
+          search_count: number;
+        }[];
+      };
       claim_due_progression_followups: {
         Args: { _limit?: number };
         Returns: {

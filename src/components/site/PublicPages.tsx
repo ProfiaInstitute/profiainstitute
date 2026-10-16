@@ -19,6 +19,7 @@ import {
   CardGridSkeleton,
   EmptyState,
   ErrorNote,
+  FaqSection,
   PageHero,
   SectionTitle,
 } from "@/components/site/common";
@@ -971,6 +972,7 @@ export function ContactPage() {
           <Button disabled={busy}>{busy ? "Sending…" : "Send message"}</Button>
         </form>
       </section>
+      <FaqSection />
     </>
   );
 }
