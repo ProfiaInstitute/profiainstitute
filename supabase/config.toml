@@ -1,5 +1,11 @@
 project_id = "irdkyqfrizrrpieejvpb"
 
+[functions.mpesa-c2b-validation]
+verify_jwt = false
+
+[functions.mpesa-c2b-callback]
+verify_jwt = false
+
 [auth.email.template.confirmation]
 subject = "Confirm your Profia Institute account"
 content_path = "./supabase/templates/confirmation.html"

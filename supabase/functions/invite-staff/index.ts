@@ -62,7 +62,7 @@ Deno.serve(async (request: Request) => {
 
   let redirectTo: string;
   try {
-    redirectTo = new URL("/admin", publicSiteUrl).toString();
+    redirectTo = new URL("/admin?setupPassword=1", publicSiteUrl).toString();
   } catch {
     console.error("PUBLIC_SITE_URL is not a valid URL.");
     return json({ error: "The staff invitation redirect URL is not configured correctly." }, 500);
@@ -72,6 +72,7 @@ Deno.serve(async (request: Request) => {
     email,
     {
       redirectTo,
+      data: { staff_role: role },
     },
   );
   if (inviteError || !invitation.user) {
@@ -82,7 +83,7 @@ Deno.serve(async (request: Request) => {
     return json(
       {
         error: inviteError?.message.toLowerCase().includes("already registered")
-          ? "An account already exists for this email. Use the existing-account role controls instead."
+          ? "An account already exists for this email. Ask the staff member to sign in, or use another email address."
           : (inviteError?.message ?? "The invitation was not created."),
       },
       400,

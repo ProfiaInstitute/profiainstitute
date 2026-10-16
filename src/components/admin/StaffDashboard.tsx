@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Activity,
@@ -19,6 +19,7 @@ import {
   Search,
   Settings,
   ShieldCheck,
+  KeyRound,
   RotateCcw,
   Trash2,
   UserPlus,
@@ -165,7 +166,12 @@ const navItems: { id: DashboardSection; title: string; icon: LucideIcon; roles: 
   },
   { id: "audit", title: "Audit Logs", icon: Activity, roles: ["super_admin"] },
   { id: "staff", title: "Staff", icon: Users, roles: ["super_admin"] },
-  { id: "settings", title: "Settings", icon: Settings, roles: ["super_admin"] },
+  {
+    id: "settings",
+    title: "Account settings",
+    icon: Settings,
+    roles: ["super_admin", "admissions_admin", "academic_admin", "content_admin"],
+  },
 ];
 
 export function StaffDashboard() {
@@ -175,9 +181,29 @@ export function StaffDashboard() {
   const visibleNav = navItems.filter((item) => item.roles.some((role) => can(roles, [role])));
   const [section, setSection] = useState<DashboardSection>("dashboard");
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [passwordSetup, setPasswordSetup] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      new URLSearchParams(window.location.search).get("setupPassword") === "1",
+  );
 
   if (loading || (user && rolesQuery.isLoading))
     return <FullPageMessage title="Loading secure workspace…" />;
+  if (passwordSetup) {
+    return (
+      <StaffPasswordSetup
+        email={user?.email ?? null}
+        onComplete={() => {
+          window.history.replaceState({}, "", "/admin");
+          setPasswordSetup(false);
+        }}
+        onExpired={() => {
+          window.history.replaceState({}, "", "/admin");
+          setPasswordSetup(false);
+        }}
+      />
+    );
+  }
   if (!user) return <StaffSignIn />;
   if (rolesQuery.error)
     return (
@@ -209,7 +235,7 @@ export function StaffDashboard() {
     ) : section === "reports" ? (
       <ReportsPanel />
     ) : section === "settings" ? (
-      <StaffSettings />
+      <StaffPasswordSettings email={user.email ?? ""} />
     ) : section === "staff" ? (
       <StaffSettings />
     ) : section === "progression" ? (
@@ -371,9 +397,9 @@ function InitialAdminSetup({ userId, email }: { userId: string; email: string | 
         <ShieldCheck className="h-7 w-7 text-primary" />
         <h1 className="text-xl font-bold text-brand">Awaiting staff approval</h1>
         <p className="text-sm text-muted-foreground">
-          Your account{email ? ` (${email})` : ""} is registered, but does not have an admin role
-          yet. A Super Admin must review your account and grant access before you can use the
-          workspace.
+          Your account{email ? ` (${email})` : ""} does not have a staff role. Staff access is
+          created through an invitation from a Super Admin. Ask the Institute administrator to
+          invite you to the correct role.
         </p>
         <Button
           variant="outline"
@@ -390,60 +416,186 @@ function InitialAdminSetup({ userId, email }: { userId: string; email: string | 
   );
 }
 
-function StaffSignIn() {
-  const [email, setEmail] = useState("");
-  const [fullName, setFullName] = useState("");
+function StaffPasswordSetup({
+  email,
+  onComplete,
+  onExpired,
+}: {
+  email: string | null;
+  onComplete: () => void;
+  onExpired: () => void;
+}) {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [mode, setMode] = useState<"signin" | "signup">("signin");
-  const [signupComplete, setSignupComplete] = useState(false);
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError("");
+    if (password.length < 8) {
+      setError("Use a password with at least 8 characters.");
+      return;
+    }
+    if (password !== confirmPassword) {
+      setError("The passwords do not match.");
+      return;
+    }
+    setBusy(true);
+    const { error: passwordError } = await supabase.auth.updateUser({ password });
+    setBusy(false);
+    if (passwordError) {
+      setError(passwordError.message);
+      return;
+    }
+    toast.success("Password set", {
+      description: "Your staff account is ready. You can now use the admin workspace.",
+    });
+    onComplete();
+  }
+
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-brand px-4 py-10">
+      {email ? (
+        <form
+          onSubmit={submit}
+          className="w-full max-w-md space-y-5 rounded-2xl border bg-card p-7 shadow-card"
+        >
+          <p className="eyebrow">Staff account setup</p>
+          <div>
+            <h1 className="mt-2 text-2xl font-bold text-brand">Set your staff password</h1>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Invitation accepted for {email}. Choose a password to finish setting up your account.
+            </p>
+          </div>
+          <label className="block space-y-1.5 text-sm font-medium">
+            New password
+            <Input
+              type="password"
+              required
+              minLength={8}
+              autoComplete="new-password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+            />
+          </label>
+          <label className="block space-y-1.5 text-sm font-medium">
+            Confirm new password
+            <Input
+              type="password"
+              required
+              minLength={8}
+              autoComplete="new-password"
+              value={confirmPassword}
+              onChange={(event) => setConfirmPassword(event.target.value)}
+            />
+          </label>
+          {error && <ErrorBanner message={error} />}
+          <Button className="w-full" disabled={busy}>
+            {busy ? "Saving password…" : "Save password and continue"}
+          </Button>
+        </form>
+      ) : (
+        <section className="w-full max-w-md space-y-4 rounded-2xl border bg-card p-7 shadow-card">
+          <ShieldCheck className="h-8 w-8 text-primary" />
+          <h1 className="text-2xl font-bold text-brand">Invitation link unavailable</h1>
+          <p className="text-sm text-muted-foreground">
+            This invitation link may have expired or already been used. Ask your Super Admin to send
+            a new invitation, then open its link again.
+          </p>
+          <Button className="w-full" onClick={onExpired}>
+            Return to staff sign in
+          </Button>
+        </section>
+      )}
+    </div>
+  );
+}
+
+function StaffPasswordSettings({ email }: { email: string }) {
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const queryClient = useQueryClient();
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (password.length < 8) {
+      toast.error("Use a password with at least 8 characters.");
+      return;
+    }
+    if (password !== confirmPassword) {
+      toast.error("The passwords do not match.");
+      return;
+    }
+    setBusy(true);
+    const { error } = await supabase.auth.updateUser({ password });
+    setBusy(false);
+    if (error) toast.error("Could not update password", { description: error.message });
+    else {
+      toast.success("Password updated");
+      setPassword("");
+      setConfirmPassword("");
+      await queryClient.invalidateQueries({ queryKey: ["my_roles"] });
+    }
+  }
+
+  return (
+    <form
+      onSubmit={submit}
+      className="max-w-2xl space-y-5 rounded-xl border bg-card p-5 shadow-card"
+    >
+      <div className="flex items-start gap-3">
+        <KeyRound className="mt-0.5 h-5 w-5 text-primary" />
+        <div>
+          <h2 className="font-semibold text-brand">Change your password</h2>
+          <p className="mt-1 text-sm text-muted-foreground">Update the password for {email}.</p>
+        </div>
+      </div>
+      <label className="block space-y-1.5 text-sm font-medium">
+        New password
+        <Input
+          type="password"
+          required
+          minLength={8}
+          autoComplete="new-password"
+          value={password}
+          onChange={(event) => setPassword(event.target.value)}
+        />
+      </label>
+      <label className="block space-y-1.5 text-sm font-medium">
+        Confirm new password
+        <Input
+          type="password"
+          required
+          minLength={8}
+          autoComplete="new-password"
+          value={confirmPassword}
+          onChange={(event) => setConfirmPassword(event.target.value)}
+        />
+      </label>
+      <Button disabled={busy}>{busy ? "Saving password…" : "Update password"}</Button>
+    </form>
+  );
+}
+
+function StaffSignIn() {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true);
     setError("");
     try {
-      if (mode === "signup") {
-        if (!fullName.trim()) {
-          setError("Enter your full name.");
-          return;
-        }
-        if (password.length < 8) {
-          setError("Use a password with at least 8 characters.");
-          return;
-        }
-        if (password !== confirmPassword) {
-          setError("The passwords do not match.");
-          return;
-        }
-        const { error: signupError } = await supabase.auth.signUp({
-          email: email.trim().toLowerCase(),
-          password,
-          options: {
-            data: { full_name: fullName.trim() },
-            emailRedirectTo: `${window.location.origin}/admin`,
-          },
-        });
-        if (signupError) setError(signupError.message);
-        else {
-          setSignupComplete(true);
-          setMode("signin");
-          setPassword("");
-          setConfirmPassword("");
-          toast.success("Admin account created", {
-            description: "Confirm your email, then wait for a Super Admin to grant your role.",
-          });
-        }
-      } else {
-        const { error: signInError } = await supabase.auth.signInWithPassword({
-          email: email.trim().toLowerCase(),
-          password,
-        });
-        if (signInError) setError(signInError.message);
-        else toast.success("Signed in successfully");
-      }
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: email.trim().toLowerCase(),
+        password,
+      });
+      if (signInError) setError(signInError.message);
+      else toast.success("Signed in successfully");
     } catch (submitError) {
       setError(
         submitError instanceof Error ? submitError.message : "An unexpected error occurred.",
@@ -464,27 +616,12 @@ function StaffSignIn() {
         </a>
         <div>
           <p className="eyebrow">Secure staff access</p>
-          <h1 className="mt-2 text-2xl font-bold text-brand">
-            {mode === "signin" ? "Admin sign in" : "Create admin account"}
-          </h1>
+          <h1 className="mt-2 text-2xl font-bold text-brand">Admin sign in</h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            {mode === "signin"
-              ? "Sign in or create an account for Super Admin approval."
-              : "Admin accounts do not receive access until a Super Admin assigns a role."}
+            Staff accounts are created by invitation from a Super Admin. If you need access, contact
+            the Institute administrator.
           </p>
         </div>
-        {mode === "signup" && (
-          <label className="block space-y-1.5 text-sm font-medium">
-            Full name
-            <Input
-              required
-              autoComplete="name"
-              maxLength={120}
-              value={fullName}
-              onChange={(event) => setFullName(event.target.value)}
-            />
-          </label>
-        )}
         <label className="block space-y-1.5 text-sm font-medium">
           Email
           <Input
@@ -500,57 +637,15 @@ function StaffSignIn() {
           <Input
             type="password"
             required
-            minLength={mode === "signup" ? 8 : undefined}
-            autoComplete={mode === "signup" ? "new-password" : "current-password"}
+            autoComplete="current-password"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
           />
         </label>
-        {mode === "signup" && (
-          <label className="block space-y-1.5 text-sm font-medium">
-            Confirm password
-            <Input
-              type="password"
-              required
-              minLength={8}
-              autoComplete="new-password"
-              value={confirmPassword}
-              onChange={(event) => setConfirmPassword(event.target.value)}
-            />
-          </label>
-        )}
-        {signupComplete && (
-          <div className="rounded-lg border border-primary/30 bg-cream p-3 text-sm text-muted-foreground">
-            Your account is registered. If email confirmation is enabled, confirm your address
-            before signing in. A Super Admin must grant your role before admin access is available.
-          </div>
-        )}
         {error && <ErrorBanner message={error} />}
         <Button className="w-full" disabled={busy}>
-          {busy
-            ? mode === "signup"
-              ? "Creating account…"
-              : "Signing in…"
-            : mode === "signup"
-              ? "Create account"
-              : "Sign in"}
+          {busy ? "Signing in…" : "Sign in"}
         </Button>
-        <button
-          type="button"
-          className="w-full text-sm font-medium text-primary hover:underline"
-          onClick={() => {
-            setMode(mode === "signin" ? "signup" : "signin");
-            setError("");
-            setSignupComplete(false);
-          }}
-        >
-          {mode === "signin" ? "Need an account? Sign up" : "Already registered? Sign in"}
-        </button>
-        <p className="text-xs leading-relaxed text-muted-foreground">
-          {mode === "signup"
-            ? "Signing up does not grant admin access. A Super Admin must assign your role."
-            : "The first Super Admin must be allowlisted in the database; subsequent accounts are approved by a Super Admin."}
-        </p>
       </form>
     </div>
   );
@@ -1558,31 +1653,6 @@ function StaffSettings() {
       setSaving(false);
     }
   }
-  async function setStaffRole(grant: boolean, targetEmail = email) {
-    if (!targetEmail.trim()) {
-      toast.error("Enter the staff member's account email.");
-      return;
-    }
-    setSaving(true);
-    try {
-      const { error } = await supabase.rpc("set_role_by_email", {
-        _email: targetEmail.trim().toLowerCase(),
-        _role: role,
-        _grant: grant,
-      });
-      if (error) toast.error("Could not update staff role", { description: error.message });
-      else {
-        toast.success(grant ? "Staff role granted" : "Staff role removed");
-        await queryClient.invalidateQueries({ queryKey: ["admin", "staff"] });
-      }
-    } catch (error) {
-      toast.error("Could not update staff role", {
-        description: error instanceof Error ? error.message : "An unexpected error occurred.",
-      });
-    } finally {
-      setSaving(false);
-    }
-  }
   async function manageStaffAccount(
     staff: StaffAccount,
     action: "suspend" | "reactivate" | "delete",
@@ -1654,7 +1724,8 @@ function StaffSettings() {
         <div>
           <h2 className="font-semibold text-brand">Invite staff</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Send a secure Supabase invitation and assign the staff member’s role.
+            Send a secure invitation with the selected role. Staff set their password from the
+            invitation link before entering the workspace.
           </p>
         </div>
         <Input
@@ -1678,38 +1749,6 @@ function StaffSettings() {
           <UserPlus className="mr-2 h-4 w-4" />
           {saving ? "Sending invitation…" : "Invite staff"}
         </Button>
-      </section>
-      <section className="space-y-4 rounded-xl border bg-card p-5 shadow-card">
-        <div>
-          <h2 className="font-semibold text-brand">Manage staff access</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Grant or revoke roles for accounts that already exist in the system.
-          </p>
-        </div>
-        <Input
-          type="email"
-          placeholder="Existing staff account email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-        />
-        <select
-          className={selectClass}
-          value={role}
-          onChange={(e) => setRole(e.target.value as AppRole)}
-        >
-          <option value="admissions_admin">Admissions Admin</option>
-          <option value="academic_admin">Academic Admin</option>
-          <option value="content_admin">Content Admin</option>
-          <option value="super_admin">Super Admin</option>
-        </select>
-        <div className="flex gap-2">
-          <Button disabled={saving} onClick={() => void setStaffRole(true)}>
-            Grant role
-          </Button>
-          <Button disabled={saving} variant="outline" onClick={() => void setStaffRole(false)}>
-            Revoke role
-          </Button>
-        </div>
       </section>
       {staffQuery.error ? (
         <ErrorPanel error={staffQuery.error} retry={() => staffQuery.refetch()} />
@@ -1781,15 +1820,6 @@ function StaffSettings() {
                     </Badge>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    {staff.roles.length === 0 && staff.email && (
-                      <Button
-                        size="sm"
-                        disabled={saving || accountAction === staff.user_id}
-                        onClick={() => void setStaffRole(true, staff.email!)}
-                      >
-                        Grant {role.replaceAll("_", " ")}
-                      </Button>
-                    )}
                     {staff.roles.length > 0 && (
                       <Button
                         size="sm"

@@ -35,7 +35,7 @@ Deno.serve(async (request: Request) => {
   });
   let query = supabase
     .from("online_course_payments")
-    .select("id,reference,amount,status,provider_checkout_id")
+    .select("id,student_id,reference,amount,status,provider_checkout_id")
     .eq("status", "pending");
   query = reference.startsWith("PRF-ONLINE-")
     ? query.eq("reference", reference)
@@ -67,7 +67,10 @@ Deno.serve(async (request: Request) => {
     return json({ error: "PayHero has not confirmed this payment yet." }, 502);
   }
   const verified = await verificationResponse.json().catch(() => null);
-  const verifiedExternalReference = findValue(verified, ["external_reference", "externalReference"]);
+  const verifiedExternalReference = findValue(verified, [
+    "external_reference",
+    "externalReference",
+  ]);
   const verifiedAmount = findValue(verified, ["amount", "Amount", "transaction_amount"]);
   if (verifiedExternalReference && verifiedExternalReference !== payment.reference) {
     console.error("PayHero status response reference did not match the pending payment.");
@@ -81,6 +84,27 @@ Deno.serve(async (request: Request) => {
   const status = normalizeStatus(findValue(verified, ["status", "Status", "payment_status"]));
   const resultCode = findValue(verified, ["ResultCode", "result_code", "resultCode"]);
   if (isSuccessful(status, resultCode)) {
+    const { error: ledgerError } = await supabase.from("payments").upsert(
+      {
+        student_id: payment.student_id,
+        amount: payment.amount,
+        method: "M-Pesa STK Push",
+        provider: "payhero",
+        reference: payment.reference,
+        status: "confirmed",
+        paid_at: new Date().toISOString(),
+        raw: { verified: true, verified_status: status },
+      },
+      { onConflict: "provider,reference", ignoreDuplicates: true },
+    );
+    if (ledgerError) {
+      console.error(
+        "Could not record verified PayHero payment in the student ledger:",
+        ledgerError.message,
+      );
+      return json({ error: "The payment was verified, but could not be recorded." }, 500);
+    }
+
     const { error: updateError } = await supabase
       .from("online_course_payments")
       .update({
@@ -128,7 +152,12 @@ function findValue(value: unknown, keys: string[]): string | null {
 }
 
 function normalizeStatus(status: string | null) {
-  return status?.trim().toLowerCase().replaceAll(/[\s_-]+/g, "") ?? "";
+  return (
+    status
+      ?.trim()
+      .toLowerCase()
+      .replaceAll(/[\s_-]+/g, "") ?? ""
+  );
 }
 
 function isSuccessful(status: string, resultCode: string | null) {

@@ -3,6 +3,32 @@
 PROFIA INSTITUTE — COMPLETE WEBSITE REBUILD + STUDENT PORTAL + ADMIN SYSTEM
 
 
+## Course billing and M-Pesa Paybill
+
+Course charges are snapshotted to student fee statements at enrollment. The
+student portal shows charges, confirmed payments, and the outstanding balance.
+Students use their student number as the Paybill account reference. Safaricom
+Daraja C2B callbacks confirm receipts; student-entered receipt numbers are not
+accepted as proof of payment.
+
+Apply `drizzle/migrations/0014_course_billing_mpesa.sql` before deploying the
+M-Pesa callbacks. Configure `MPESA_BUSINESS_SHORTCODE` and
+`MPESA_C2B_CALLBACK_TOKEN` as Edge Function secrets, and set the public
+frontend build variable `VITE_MPESA_PAYBILL_NUMBER`. Register the callback
+URLs with Safaricom/NCBA after the Paybill is enabled for Daraja C2B. Online
+course STK payments continue to require `PAYHERO_API_USERNAME`,
+`PAYHERO_API_PASSWORD`, and `PAYHERO_CHANNEL_ID`.
+
+## Staff invitations
+
+Super Admins invite staff from **Admin → Staff**, selecting the role before
+the invitation is sent. Invitees set their password using the invitation link;
+public staff sign-up and post-sign-up role assignment are disabled. Apply
+`drizzle/migrations/0015_staff_invite_password_setup.sql`, configure
+`PUBLIC_SITE_URL`, and allow the `/admin?setupPassword=1` redirect in Supabase
+Auth URL settings before using invitations.
+
+
 
 Rebuild the existing Profia Institute website into a modern, professional, fully responsive and fully functional education platform.
 

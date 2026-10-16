@@ -3,9 +3,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   BookOpen,
   ClipboardList,
+  Copy,
   FileText,
   GraduationCap,
   LogOut,
+  RefreshCw,
   UserRound,
   Wallet,
 } from "lucide-react";
@@ -380,7 +382,9 @@ function StudentWorkspace({
             {section === "learning" && <LearningSection courseId={student.course_id} />}
             {section === "assignments" && <AssignmentsSection student={student} />}
             {section === "results" && <ResultsSection studentId={student.id} />}
-            {section === "fees" && <FeesSection studentId={student.id} />}
+            {section === "fees" && (
+              <FeesSection studentId={student.id} studentNumber={student.student_number} />
+            )}
             {section === "profile" && (
               <ProfileSection
                 student={student}
@@ -1295,7 +1299,7 @@ function ResultsSection({ studentId }: { studentId: string }) {
   );
 }
 
-function FeesSection({ studentId }: { studentId: string }) {
+function FeesSection({ studentId, studentNumber }: { studentId: string; studentNumber: string }) {
   const query = useQuery({
     queryKey: ["student", "fees", studentId],
     queryFn: async () => {
@@ -1316,24 +1320,99 @@ function FeesSection({ studentId }: { studentId: string }) {
       if (payments.error) throw payments.error;
       return { fees: fees.data, payments: payments.data };
     },
+    refetchInterval: 20_000,
   });
   if (query.isLoading) return <Loading />;
   if (query.error) return <ErrorCard error={query.error.message} retry={() => query.refetch()} />;
   const billed = query.data?.fees.reduce((sum, fee) => sum + Number(fee.amount), 0) ?? 0;
   const paid = query.data?.payments.reduce((sum, payment) => sum + Number(payment.amount), 0) ?? 0;
+  const hasCredit = paid > billed;
+  const balanceLabel = hasCredit ? "Credit" : "Balance";
+  const balanceAmount = Math.abs(billed - paid);
+  const paybillNumber = import.meta.env["VITE_MPESA_PAYBILL_NUMBER"]?.trim();
+  async function copyPaymentDetail(value: string, label: string) {
+    try {
+      await navigator.clipboard.writeText(value);
+      toast.success(`${label} copied`);
+    } catch (error) {
+      toast.error(`Could not copy ${label.toLowerCase()}`, {
+        description: error instanceof Error ? error.message : "Clipboard access is unavailable.",
+      });
+    }
+  }
   return (
     <div className="space-y-4">
       <section className="grid gap-3 sm:grid-cols-3">
         {[
           ["Total charges", billed],
           ["Payments", paid],
-          ["Balance", billed - paid],
+          [balanceLabel, balanceAmount],
         ].map(([label, amount]) => (
           <div key={String(label)} className="rounded-xl border bg-card p-4 shadow-card">
             <p className="text-sm text-muted-foreground">{label}</p>
             <p className="mt-2 text-xl font-bold text-brand">{formatKES(Number(amount))}</p>
           </div>
         ))}
+      </section>
+      <section className="rounded-xl border bg-card p-5 shadow-card">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="font-semibold text-brand">Pay fees with M-Pesa</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Pay any amount toward your balance using the Institute Paybill. Your balance updates
+              after Safaricom confirms the transaction.
+            </p>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={query.isFetching}
+            onClick={() => void query.refetch()}
+          >
+            <RefreshCw /> Refresh balance
+          </Button>
+        </div>
+        {paybillNumber ? (
+          <dl className="mt-4 grid gap-3 sm:grid-cols-2">
+            {[
+              ["Paybill number", paybillNumber],
+              ["Account number", studentNumber],
+            ].map(([label, value]) => (
+              <div
+                key={label}
+                className="flex items-center justify-between gap-3 rounded-lg bg-muted/50 p-3"
+              >
+                <div>
+                  <dt className="text-xs text-muted-foreground">{label}</dt>
+                  <dd className="mt-1 font-semibold text-brand">{value}</dd>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  aria-label={`Copy ${label.toLowerCase()}`}
+                  onClick={() => void copyPaymentDetail(value, label)}
+                >
+                  <Copy />
+                </Button>
+              </div>
+            ))}
+          </dl>
+        ) : (
+          <p className="mt-4 rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm text-muted-foreground">
+            The Institute Paybill number has not been configured yet. Contact the accounts office
+            before making a payment.
+          </p>
+        )}
+        <ol className="mt-4 list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
+          <li>Open M-Pesa and choose Lipa na M-Pesa, then Paybill.</li>
+          <li>
+            Enter the Paybill number shown above and your student number as the account number.
+          </li>
+          <li>Enter the amount you want to pay and complete the transaction.</li>
+          <li>Your confirmed payment and remaining balance will appear here automatically.</li>
+        </ol>
       </section>
       <section className="rounded-xl border bg-card p-5 shadow-card">
         <h2 className="font-semibold text-brand">Fee statement</h2>
