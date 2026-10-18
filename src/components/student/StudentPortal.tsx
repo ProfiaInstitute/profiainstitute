@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   BookOpen,
   ClipboardList,
-  Copy,
+  Download,
   FileText,
   GraduationCap,
   LogOut,
@@ -43,7 +43,7 @@ export function StudentPortal({ selectedCourseId }: { selectedCourseId: string |
       section={section}
       onSection={setSection}
       selectedCourseId={selectedCourseId}
-      enrollmentPhone={enrollmentPhone || String(user.user_metadata?.phone ?? "")}
+      enrollmentPhone={enrollmentPhone || String(user.user_metadata?.["phone"] ?? "")}
       onEnrollmentPhone={setEnrollmentPhone}
     />
   );
@@ -383,7 +383,11 @@ function StudentWorkspace({
             {section === "assignments" && <AssignmentsSection student={student} />}
             {section === "results" && <ResultsSection studentId={student.id} />}
             {section === "fees" && (
-              <FeesSection studentId={student.id} studentNumber={student.student_number} />
+              <FeesSection
+                studentId={student.id}
+                studentNumber={student.student_number}
+                userId={userId}
+              />
             )}
             {section === "profile" && (
               <ProfileSection
@@ -1299,11 +1303,21 @@ function ResultsSection({ studentId }: { studentId: string }) {
   );
 }
 
-function FeesSection({ studentId, studentNumber }: { studentId: string; studentNumber: string }) {
+function FeesSection({
+  studentId,
+  studentNumber,
+  userId,
+}: {
+  studentId: string;
+  studentNumber: string;
+  userId: string;
+}) {
+  const queryClient = useQueryClient();
+  const [amount, setAmount] = useState("");
   const query = useQuery({
     queryKey: ["student", "fees", studentId],
     queryFn: async () => {
-      const [fees, payments] = await Promise.all([
+      const [fees, payments, documents, notifications] = await Promise.all([
         supabase
           .from("fees")
           .select("*")
@@ -1315,13 +1329,103 @@ function FeesSection({ studentId, studentNumber }: { studentId: string; studentN
           .eq("student_id", studentId)
           .eq("status", "confirmed")
           .order("paid_at", { ascending: false }),
+        supabase
+          .from("fee_documents")
+          .select("id,payment_id,document_type,storage_path,created_at")
+          .eq("student_id", studentId)
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("notifications")
+          .select("id,title,body,created_at")
+          .eq("user_id", userId)
+          .eq("category", "fees")
+          .order("created_at", { ascending: false })
+          .limit(10),
       ]);
       if (fees.error) throw fees.error;
       if (payments.error) throw payments.error;
-      return { fees: fees.data, payments: payments.data };
+      if (documents.error) throw documents.error;
+      if (notifications.error) throw notifications.error;
+      return {
+        fees: fees.data,
+        payments: payments.data,
+        documents: documents.data,
+        notifications: notifications.data,
+      };
     },
     refetchInterval: 20_000,
   });
+  const paymentMutation = useMutation({
+    mutationFn: async () => {
+      const parsedAmount = Number(amount);
+      if (!Number.isSafeInteger(parsedAmount) || parsedAmount <= 0)
+        throw new Error("Enter a whole-number amount greater than zero.");
+      const { data, error } = await supabase.functions.invoke("create-fee-payment", {
+        body: { amount: parsedAmount },
+      });
+      if (error) {
+        if ("context" in error && error.context instanceof Response) {
+          const response = await error.context
+            .clone()
+            .json()
+            .catch(() => null);
+          if (typeof response?.error === "string") throw new Error(response.error);
+        }
+        throw error;
+      }
+      if (!data?.success) throw new Error(data?.error ?? "Payment request could not be started.");
+      return data;
+    },
+    onSuccess: async (data) => {
+      toast.success("PayHero payment prompt sent", {
+        description: `Approve the KES ${formatKES(Number(data.amount))} prompt on your phone. Your account will update after PayHero confirms payment.`,
+      });
+      setAmount("");
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["student", "fees", studentId] }),
+        queryClient.invalidateQueries({ queryKey: ["student", "fee-total", studentId] }),
+        queryClient.invalidateQueries({ queryKey: ["student", "payment-total", studentId] }),
+      ]);
+    },
+    onError: (error) =>
+      toast.error("Could not start payment", {
+        description: error instanceof Error ? error.message : "Please retry.",
+      }),
+  });
+  const statementMutation = useMutation({
+    mutationFn: async () => {
+      const { data, error } = await supabase.functions.invoke("generate-fee-statement");
+      if (error) {
+        if ("context" in error && error.context instanceof Response) {
+          const response = await error.context
+            .clone()
+            .json()
+            .catch(() => null);
+          if (typeof response?.error === "string") throw new Error(response.error);
+        }
+        throw error;
+      }
+      if (!data?.success || typeof data.signedUrl !== "string")
+        throw new Error(data?.error ?? "Could not prepare your fee statement.");
+      return data.signedUrl;
+    },
+    onSuccess: (signedUrl) => {
+      window.open(signedUrl, "_blank", "noopener,noreferrer");
+      void queryClient.invalidateQueries({ queryKey: ["student", "fees", studentId] });
+    },
+    onError: (error) =>
+      toast.error("Could not download fee statement", {
+        description: error instanceof Error ? error.message : "Please retry.",
+      }),
+  });
+  async function downloadReceipt(path: string) {
+    const { data, error } = await supabase.storage.from("fee-documents").createSignedUrl(path, 300);
+    if (error) {
+      toast.error("Could not prepare receipt download", { description: error.message });
+      return;
+    }
+    window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+  }
   if (query.isLoading) return <Loading />;
   if (query.error) return <ErrorCard error={query.error.message} retry={() => query.refetch()} />;
   const billed = query.data?.fees.reduce((sum, fee) => sum + Number(fee.amount), 0) ?? 0;
@@ -1329,17 +1433,12 @@ function FeesSection({ studentId, studentNumber }: { studentId: string; studentN
   const hasCredit = paid > billed;
   const balanceLabel = hasCredit ? "Credit" : "Balance";
   const balanceAmount = Math.abs(billed - paid);
-  const paybillNumber = import.meta.env["VITE_MPESA_PAYBILL_NUMBER"]?.trim();
-  async function copyPaymentDetail(value: string, label: string) {
-    try {
-      await navigator.clipboard.writeText(value);
-      toast.success(`${label} copied`);
-    } catch (error) {
-      toast.error(`Could not copy ${label.toLowerCase()}`, {
-        description: error instanceof Error ? error.message : "Clipboard access is unavailable.",
-      });
-    }
+  const receiptByPayment = new Map<string, string>();
+  for (const document of query.data?.documents ?? []) {
+    if (document.document_type === "receipt" && document.payment_id)
+      receiptByPayment.set(document.payment_id, document.storage_path);
   }
+  const outstanding = Math.max(0, billed - paid);
   return (
     <div className="space-y-4">
       <section className="grid gap-3 sm:grid-cols-3">
@@ -1357,65 +1456,63 @@ function FeesSection({ studentId, studentNumber }: { studentId: string; studentN
       <section className="rounded-xl border bg-card p-5 shadow-card">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 className="font-semibold text-brand">Pay fees with M-Pesa</h2>
+            <h2 className="font-semibold text-brand">Pay fees with PayHero</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Pay any amount toward your balance using the Institute Paybill. Your balance updates
-              after Safaricom confirms the transaction.
+              Request a secure mobile money prompt for your registered phone. Your student account
+              is credited automatically after PayHero confirms the payment.
             </p>
           </div>
           <Button
             type="button"
             size="sm"
             variant="outline"
-            disabled={query.isFetching}
+            disabled={query.isFetching || statementMutation.isPending}
             onClick={() => void query.refetch()}
           >
             <RefreshCw /> Refresh balance
           </Button>
         </div>
-        {paybillNumber ? (
-          <dl className="mt-4 grid gap-3 sm:grid-cols-2">
-            {[
-              ["Paybill number", paybillNumber],
-              ["Account number", studentNumber],
-            ].map(([label, value]) => (
-              <div
-                key={label}
-                className="flex items-center justify-between gap-3 rounded-lg bg-muted/50 p-3"
-              >
-                <div>
-                  <dt className="text-xs text-muted-foreground">{label}</dt>
-                  <dd className="mt-1 font-semibold text-brand">{value}</dd>
-                </div>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  aria-label={`Copy ${label.toLowerCase()}`}
-                  onClick={() => void copyPaymentDetail(value, label)}
-                >
-                  <Copy />
-                </Button>
-              </div>
-            ))}
-          </dl>
-        ) : (
-          <p className="mt-4 rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm text-muted-foreground">
-            The Institute Paybill number has not been configured yet. Contact the accounts office
-            before making a payment.
-          </p>
-        )}
-        <ol className="mt-4 list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
-          <li>Open M-Pesa and choose Lipa na M-Pesa, then Paybill.</li>
-          <li>
-            Enter the Paybill number shown above and your student number as the account number.
-          </li>
-          <li>Enter the amount you want to pay and complete the transaction.</li>
-          <li>Your confirmed payment and remaining balance will appear here automatically.</li>
-        </ol>
+        <form
+          className="mt-4 flex flex-wrap items-end gap-3"
+          onSubmit={(event) => {
+            event.preventDefault();
+            paymentMutation.mutate();
+          }}
+        >
+          <label className="min-w-52 flex-1 space-y-1.5 text-sm font-medium">
+            Amount to pay (KES)
+            <Input
+              type="number"
+              min="1"
+              max={Math.floor(outstanding)}
+              step="1"
+              required
+              disabled={outstanding < 1 || paymentMutation.isPending}
+              value={amount}
+              onChange={(event) => setAmount(event.target.value)}
+              placeholder={`Balance: ${formatKES(outstanding)}`}
+            />
+          </label>
+          <Button type="submit" disabled={outstanding < 1 || paymentMutation.isPending}>
+            {paymentMutation.isPending ? "Sending prompt…" : "Send payment prompt"}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={statementMutation.isPending}
+            onClick={() => statementMutation.mutate()}
+          >
+            <Download />
+            {statementMutation.isPending ? "Preparing…" : "Download fee statement"}
+          </Button>
+        </form>
+        <p className="mt-3 text-xs text-muted-foreground">
+          The PayHero channel must be connected to the school’s Equity Bank Paybill. Only approve a
+          prompt you requested.
+        </p>
       </section>
       <section className="rounded-xl border bg-card p-5 shadow-card">
-        <h2 className="font-semibold text-brand">Fee statement</h2>
+        <h2 className="font-semibold text-brand">Billed charges · {studentNumber}</h2>
         {query.data?.fees.length ? (
           <div className="mt-3 divide-y">
             {query.data.fees.map((fee) => (
@@ -1442,7 +1539,19 @@ function FeesSection({ studentId, studentNumber }: { studentId: string; studentN
                   {payment.method} · {new Date(payment.paid_at).toLocaleDateString("en-KE")}
                   {payment.reference ? ` · ${payment.reference}` : ""}
                 </span>
-                <span className="font-semibold">{formatKES(payment.amount)}</span>
+                <span className="flex items-center gap-3 font-semibold">
+                  {formatKES(payment.amount)}
+                  {receiptByPayment.has(payment.id) && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => void downloadReceipt(receiptByPayment.get(payment.id)!)}
+                    >
+                      <Download /> Receipt
+                    </Button>
+                  )}
+                </span>
               </div>
             ))}
           </div>
@@ -1452,6 +1561,22 @@ function FeesSection({ studentId, studentNumber }: { studentId: string; studentN
           </p>
         )}
       </section>
+      {query.data?.notifications.length ? (
+        <section className="rounded-xl border bg-card p-5 shadow-card">
+          <h2 className="font-semibold text-brand">Payment notifications</h2>
+          <ul className="mt-3 divide-y">
+            {query.data.notifications.map((notification) => (
+              <li key={notification.id} className="py-3">
+                <p className="text-sm font-medium">{notification.title}</p>
+                <p className="mt-1 text-sm text-muted-foreground">{notification.body}</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {new Date(notification.created_at).toLocaleString("en-KE")}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
     </div>
   );
 }

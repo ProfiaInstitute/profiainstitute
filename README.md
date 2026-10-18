@@ -3,21 +3,36 @@
 PROFIA INSTITUTE — COMPLETE WEBSITE REBUILD + STUDENT PORTAL + ADMIN SYSTEM
 
 
-## Course billing and M-Pesa Paybill
+## Course billing and PayHero fee payments
 
-Course charges are snapshotted to student fee statements at enrollment. The
-student portal shows charges, confirmed payments, and the outstanding balance.
-Students use their student number as the Paybill account reference. Safaricom
-Daraja C2B callbacks confirm receipts; student-entered receipt numbers are not
-accepted as proof of payment.
+Course charges are snapshotted to student fee statements at enrollment. From
+**Student Portal → Fees**, students can request a PayHero mobile-money prompt
+for an amount up to their outstanding balance. The PayHero channel must be
+connected to the school's Equity Bank Paybill. Confirmed PayHero callbacks are
+verified against PayHero before they are assigned to the requesting student's
+account; the Admin Fees module then reflects updated transactions and balances.
+Student-entered receipt numbers are not accepted as proof of payment.
 
-Apply `drizzle/migrations/0014_course_billing_mpesa.sql` before deploying the
-M-Pesa callbacks. Configure `MPESA_BUSINESS_SHORTCODE` and
-`MPESA_C2B_CALLBACK_TOKEN` as Edge Function secrets, and set the public
-frontend build variable `VITE_MPESA_PAYBILL_NUMBER`. Register the callback
-URLs with Safaricom/NCBA after the Paybill is enabled for Daraja C2B. Online
-course STK payments continue to require `PAYHERO_API_USERNAME`,
-`PAYHERO_API_PASSWORD`, and `PAYHERO_CHANNEL_ID`.
+Apply `drizzle/migrations/0014_course_billing_mpesa.sql` and then
+`drizzle/migrations/0016_payhero_fee_payments_documents.sql` before using fee
+payments. Deploy the `create-fee-payment`, `payhero-callback`, and
+`generate-fee-statement` Supabase Edge Functions. Configure the Edge Function
+secrets `PAYHERO_API_USERNAME`, `PAYHERO_API_PASSWORD`, and
+`PAYHERO_CHANNEL_ID`; the channel ID must be the PayHero channel connected to
+the Equity Bank Paybill. `payhero-callback` must accept unauthenticated provider
+callbacks (`verify_jwt = false`); it verifies payment status server-to-server
+with PayHero before recording a payment.
+
+Confirmed payments generate a receipt PDF containing student details, amount,
+date, and transaction reference. Receipts use the system favicon, are stored in
+the private `fee-documents` bucket, and are linked in the student portal with an
+in-app payment notification. Students can also generate a current fee statement
+PDF from the portal. `FEE_RECEIPT_LOGO_URL` is optional; by default the
+functions load `https://www.profiainstitute.com/favicon.png`.
+
+The optional Daraja C2B callback remains available for direct Safaricom
+Paybill payments when separately configured with `MPESA_BUSINESS_SHORTCODE`
+and `MPESA_C2B_CALLBACK_TOKEN`. It is not required for PayHero STK payments.
 
 ## Staff invitations
 

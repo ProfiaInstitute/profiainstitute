@@ -1,0 +1,224 @@
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
+
+Deno.serve(async (request: Request) => {
+  if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (request.method !== "POST") return json({ error: "Method not allowed." }, 405);
+
+  const supabaseUrl = Deno.env.get("SUPABASE_URL");
+  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  const username = Deno.env.get("PAYHERO_API_USERNAME");
+  const password = Deno.env.get("PAYHERO_API_PASSWORD");
+  const channelId = Deno.env.get("PAYHERO_CHANNEL_ID");
+  if (!supabaseUrl || !serviceRoleKey || !username || !password || !channelId) {
+    console.error("PayHero fee payment is not configured.");
+    return json(
+      { error: "Online fee payments are not configured. Contact the accounts office." },
+      503,
+    );
+  }
+
+  const token = request.headers.get("Authorization")?.match(/^Bearer\s+(.+)$/i)?.[1];
+  if (!token) return json({ error: "Sign in to pay your fees." }, 401);
+  const supabase = createClient(supabaseUrl, serviceRoleKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const { data: authData, error: authError } = await supabase.auth.getUser(token);
+  if (authError || !authData.user)
+    return json({ error: "Your session is invalid or expired." }, 401);
+
+  let body: { amount?: unknown };
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "The payment request is not valid JSON." }, 400);
+  }
+  if (typeof body.amount !== "number" || !Number.isSafeInteger(body.amount) || body.amount <= 0) {
+    return json({ error: "Enter a whole-number amount greater than zero." }, 400);
+  }
+
+  const { data: student, error: studentError } = await supabase
+    .from("students")
+    .select("id,student_number,first_name,last_name,phone")
+    .eq("user_id", authData.user.id)
+    .maybeSingle();
+  if (studentError || !student)
+    return json({ error: "Your student account could not be found." }, 403);
+
+  const [{ data: charges, error: chargesError }, { data: payments, error: paymentsError }] =
+    await Promise.all([
+      supabase.from("fees").select("amount").eq("student_id", student.id),
+      supabase.from("payments").select("amount,status").eq("student_id", student.id),
+    ]);
+  if (chargesError || paymentsError) {
+    console.error(
+      "Could not calculate fee balance:",
+      chargesError?.message ?? paymentsError?.message,
+    );
+    return json({ error: "Could not calculate your fee balance. Please retry." }, 500);
+  }
+  const billed = (charges ?? []).reduce((sum, fee) => sum + Number(fee.amount), 0);
+  const paid = (payments ?? [])
+    .filter((payment) => payment.status === "confirmed")
+    .reduce((sum, payment) => sum + Number(payment.amount), 0);
+  const balance = Math.floor(billed - paid);
+  if (balance <= 0) return json({ error: "There is no outstanding fee balance to pay." }, 409);
+  if (body.amount > balance)
+    return json(
+      { error: `Payment amount cannot exceed your outstanding balance of KES ${balance}.` },
+      409,
+    );
+  if ((payments ?? []).some((payment) => payment.status === "pending"))
+    return json(
+      { error: "A fee payment is already awaiting confirmation. Wait before retrying." },
+      409,
+    );
+
+  const phone = normalizeKenyanPhone(student.phone ?? "");
+  if (!phone) {
+    return json(
+      { error: "Add a valid Kenyan mobile number to your student profile before paying." },
+      400,
+    );
+  }
+
+  const reference = `PRF-FEE-${crypto.randomUUID()}`;
+  const { data: payment, error: insertError } = await supabase
+    .from("payments")
+    .insert({
+      student_id: student.id,
+      amount: body.amount,
+      method: "PayHero M-Pesa STK",
+      provider: "payhero",
+      reference,
+      status: "pending",
+      raw: { payment_type: "student_fees" },
+    })
+    .select("id,reference,amount")
+    .single();
+  if (insertError || !payment) {
+    if (insertError?.code === "23505")
+      return json(
+        { error: "A fee payment is already awaiting confirmation. Wait before retrying." },
+        409,
+      );
+    console.error("Could not create fee payment:", insertError?.message);
+    return json({ error: "Could not create a payment request. Please retry." }, 500);
+  }
+
+  let gatewayResponse: Response;
+  try {
+    gatewayResponse = await fetch("https://backend.payhero.co.ke/api/v2/payments", {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${btoa(`${username}:${password}`)}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        amount: body.amount,
+        phone_number: phone,
+        channel_id: channelId,
+        provider: "m-pesa",
+        external_reference: payment.reference,
+        customer_name: `${student.first_name} ${student.last_name}`.trim(),
+        transaction_description: `School fees · ${student.student_number}`,
+        callback_url: `${supabaseUrl.replace(/\/$/, "")}/functions/v1/payhero-callback`,
+      }),
+    });
+  } catch (error) {
+    await markPaymentFailed(supabase, payment.id, errorMessage(error));
+    return json({ error: "Could not connect to PayHero. No payment was confirmed." }, 502);
+  }
+
+  const gatewayBody = await gatewayResponse.json().catch(() => null);
+  if (!gatewayResponse.ok) {
+    await markPaymentFailed(
+      supabase,
+      payment.id,
+      `PayHero returned HTTP ${gatewayResponse.status}.`,
+    );
+    console.error("PayHero fee payment request failed:", gatewayResponse.status);
+    return json(
+      { error: "PayHero could not start the payment. Please retry or contact support." },
+      502,
+    );
+  }
+
+  const checkoutId = findValue(gatewayBody, [
+    "CheckoutRequestID",
+    "checkout_request_id",
+    "checkout_id",
+  ]);
+  const { error: updateError } = await supabase
+    .from("payments")
+    .update({
+      raw: {
+        payment_type: "student_fees",
+        request_accepted: true,
+        provider_checkout_id: checkoutId,
+      },
+    })
+    .eq("id", payment.id)
+    .eq("status", "pending");
+  if (updateError) {
+    console.error("Could not save PayHero fee checkout identifier:", updateError.message);
+    return json(
+      {
+        error:
+          "PayHero accepted the request, but its status could not be saved. Contact support before retrying.",
+      },
+      500,
+    );
+  }
+  return json({ success: true, reference: payment.reference, amount: payment.amount }, 200);
+});
+
+function normalizeKenyanPhone(phone: string) {
+  const digits = phone.replace(/\D/g, "");
+  const normalized = digits.startsWith("0")
+    ? `254${digits.slice(1)}`
+    : digits.startsWith("7") || digits.startsWith("1")
+      ? `254${digits}`
+      : digits;
+  return /^254[17]\d{8}$/.test(normalized) ? normalized : null;
+}
+
+function findValue(value: unknown, keys: string[]): string | null {
+  if (!value || typeof value !== "object") return null;
+  for (const [key, item] of Object.entries(value)) {
+    if (keys.includes(key) && (typeof item === "string" || typeof item === "number"))
+      return String(item);
+    const nested = findValue(item, keys);
+    if (nested) return nested;
+  }
+  return null;
+}
+
+async function markPaymentFailed(
+  supabase: ReturnType<typeof createClient>,
+  id: string,
+  reason: string,
+) {
+  const { error } = await supabase
+    .from("payments")
+    .update({ status: "failed", raw: { payment_type: "student_fees", error: reason } })
+    .eq("id", id)
+    .eq("status", "pending");
+  if (error) console.error("Could not mark failed PayHero fee payment:", error.message);
+}
+
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "Unknown PayHero request error.";
+}
+
+function json(body: Record<string, unknown>, status: number) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}

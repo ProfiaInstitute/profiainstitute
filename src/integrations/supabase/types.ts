@@ -839,6 +839,48 @@ export type Database = {
           },
         ];
       };
+      fee_documents: {
+        Row: {
+          created_at: string;
+          document_type: string;
+          id: string;
+          payment_id: string | null;
+          storage_path: string;
+          student_id: string;
+        };
+        Insert: {
+          created_at?: string;
+          document_type: string;
+          id?: string;
+          payment_id?: string | null;
+          storage_path: string;
+          student_id: string;
+        };
+        Update: {
+          created_at?: string;
+          document_type?: string;
+          id?: string;
+          payment_id?: string | null;
+          storage_path?: string;
+          student_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "fee_documents_payment_id_fkey";
+            columns: ["payment_id"];
+            isOneToOne: true;
+            referencedRelation: "payments";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "fee_documents_student_id_fkey";
+            columns: ["student_id"];
+            isOneToOne: false;
+            referencedRelation: "students";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       fees: {
         Row: {
           academic_year: string | null;
@@ -1028,6 +1070,7 @@ export type Database = {
           created_at: string;
           id: string;
           read: boolean;
+          reference_id: string | null;
           title: string;
           user_id: string;
         };
@@ -1037,6 +1080,7 @@ export type Database = {
           created_at?: string;
           id?: string;
           read?: boolean;
+          reference_id?: string | null;
           title: string;
           user_id: string;
         };
@@ -1046,6 +1090,7 @@ export type Database = {
           created_at?: string;
           id?: string;
           read?: boolean;
+          reference_id?: string | null;
           title?: string;
           user_id?: string;
         };
@@ -1730,6 +1775,17 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
+      admin_fee_account_summary: {
+        Args: never;
+        Returns: {
+          billed: number;
+          first_name: string;
+          last_name: string;
+          paid: number;
+          student_id: string;
+          student_number: string;
+        }[];
+      };
       attach_application_document: {
         Args: {
           _application_id: string;

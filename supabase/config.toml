@@ -1,10 +1,19 @@
-project_id = "irdkyqfrizrrpieejvpb"
+project_id = "mnufqsnsaiaiqzhvpinf"
 
 [functions.mpesa-c2b-validation]
 verify_jwt = false
 
 [functions.mpesa-c2b-callback]
 verify_jwt = false
+
+[functions.payhero-callback]
+verify_jwt = false
+
+[functions.create-fee-payment]
+verify_jwt = true
+
+[functions.generate-fee-statement]
+verify_jwt = true
 
 [auth.email.template.confirmation]
 subject = "Confirm your Profia Institute account"

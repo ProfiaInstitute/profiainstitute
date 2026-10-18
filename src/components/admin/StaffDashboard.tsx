@@ -242,6 +242,11 @@ export function StaffDashboard() {
       <StudentProgressionPanel />
     ) : section === "lms" ? (
       <OnlineCourseLmsPanel />
+    ) : section === "fees" ? (
+      <>
+        <FeeManagementPanel />
+        <DataDirectory section={section} />
+      </>
     ) : (
       <DataDirectory section={section} />
     );
@@ -1862,6 +1867,135 @@ function StaffSettings() {
         </section>
       )}
     </div>
+  );
+}
+
+function FeeManagementPanel() {
+  const query = useQuery({
+    queryKey: ["admin", "fee-management"],
+    queryFn: async () => {
+      const [accounts, payments] = await Promise.all([
+        supabase.rpc("admin_fee_account_summary"),
+        supabase
+          .from("payments")
+          .select("id,student_id,amount,method,provider,reference,status,paid_at")
+          .order("paid_at", { ascending: false })
+          .limit(200),
+      ]);
+      if (accounts.error) throw accounts.error;
+      if (payments.error) throw payments.error;
+      return { accounts: accounts.data, payments: payments.data };
+    },
+    refetchInterval: 20_000,
+  });
+  if (query.error) return <ErrorPanel error={query.error} retry={() => query.refetch()} />;
+  if (query.isLoading || !query.data) return <LoadingState />;
+
+  const { accounts: accountRows, payments } = query.data;
+  const totalBilled = accountRows.reduce((sum, account) => sum + Number(account.billed), 0);
+  const totalPaid = accountRows.reduce((sum, account) => sum + Number(account.paid), 0);
+  const accounts = accountRows
+    .filter((account) => Number(account.billed) > 0 || Number(account.paid) > 0)
+    .map((account) => ({ ...account, billed: Number(account.billed), paid: Number(account.paid) }))
+    .sort((a, b) => b.billed - b.paid - (a.billed - a.paid));
+  const studentById = new Map(accountRows.map((account) => [account.student_id, account]));
+
+  return (
+    <section className="space-y-5 rounded-xl border bg-card p-5 shadow-card">
+      <div>
+        <h2 className="font-semibold text-brand">Fees and transactions</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Confirmed PayHero and Paybill transactions are credited to each student account.
+        </p>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-3">
+        {[
+          ["Total billed", totalBilled],
+          ["Confirmed payments", totalPaid],
+          ["Outstanding balance", totalBilled - totalPaid],
+        ].map(([label, value]) => (
+          <div key={String(label)} className="rounded-lg border bg-muted/30 p-4">
+            <p className="text-sm text-muted-foreground">{label}</p>
+            <p className="mt-2 text-lg font-bold text-brand">{formatKES(Number(value))}</p>
+          </div>
+        ))}
+      </div>
+      <div>
+        <h3 className="mb-2 text-sm font-semibold text-brand">Student balances</h3>
+        {accounts.length ? (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[600px] text-left text-sm">
+              <thead>
+                <tr className="border-b text-xs uppercase text-muted-foreground">
+                  <th className="px-3 py-2">Student</th>
+                  <th className="px-3 py-2">Billed</th>
+                  <th className="px-3 py-2">Paid</th>
+                  <th className="px-3 py-2">Balance</th>
+                </tr>
+              </thead>
+              <tbody>
+                {accounts.map((student) => (
+                  <tr key={student.student_id} className="border-b last:border-0">
+                    <td className="px-3 py-2.5">
+                      {student.first_name} {student.last_name} ({student.student_number})
+                    </td>
+                    <td className="px-3 py-2.5">{formatKES(student.billed)}</td>
+                    <td className="px-3 py-2.5">{formatKES(student.paid)}</td>
+                    <td className="px-3 py-2.5">{formatKES(student.billed - student.paid)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">No student fee accounts are available.</p>
+        )}
+      </div>
+      <div>
+        <h3 className="mb-2 text-sm font-semibold text-brand">Latest payment transactions</h3>
+        {payments.length ? (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[720px] text-left text-sm">
+              <thead>
+                <tr className="border-b text-xs uppercase text-muted-foreground">
+                  <th className="px-3 py-2">Student</th>
+                  <th className="px-3 py-2">Transaction reference</th>
+                  <th className="px-3 py-2">Method</th>
+                  <th className="px-3 py-2">Status</th>
+                  <th className="px-3 py-2">Date</th>
+                  <th className="px-3 py-2 text-right">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {payments.map((payment) => {
+                  const student = studentById.get(payment.student_id);
+                  return (
+                    <tr key={payment.id} className="border-b last:border-0">
+                      <td className="px-3 py-2.5">
+                        {student
+                          ? `${student.first_name} ${student.last_name} (${student.student_number})`
+                          : "Unknown student"}
+                      </td>
+                      <td className="px-3 py-2.5">{payment.reference ?? "—"}</td>
+                      <td className="px-3 py-2.5">{payment.method}</td>
+                      <td className="px-3 py-2.5 capitalize">{payment.status}</td>
+                      <td className="px-3 py-2.5">
+                        {new Date(payment.paid_at).toLocaleDateString("en-KE")}
+                      </td>
+                      <td className="px-3 py-2.5 text-right">{formatKES(payment.amount)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            No payment transactions have been recorded.
+          </p>
+        )}
+      </div>
+    </section>
   );
 }
 
