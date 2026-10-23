@@ -1437,6 +1437,7 @@ export type Database = {
           published: boolean;
           score: number | null;
           semester: string | null;
+          source_submission_id: string | null;
           student_id: string;
           unit_id: string | null;
           unit_name: string;
@@ -1450,6 +1451,7 @@ export type Database = {
           published?: boolean;
           score?: number | null;
           semester?: string | null;
+          source_submission_id?: string | null;
           student_id: string;
           unit_id?: string | null;
           unit_name: string;
@@ -1463,6 +1465,7 @@ export type Database = {
           published?: boolean;
           score?: number | null;
           semester?: string | null;
+          source_submission_id?: string | null;
           student_id?: string;
           unit_id?: string | null;
           unit_name?: string;
@@ -1481,6 +1484,13 @@ export type Database = {
             columns: ["unit_id"];
             isOneToOne: false;
             referencedRelation: "course_units";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "results_source_submission_id_fkey";
+            columns: ["source_submission_id"];
+            isOneToOne: true;
+            referencedRelation: "submissions";
             referencedColumns: ["id"];
           },
         ];
@@ -1882,6 +1892,15 @@ export type Database = {
           title: string;
           video_url: string | null;
         }[];
+      };
+      mark_assignment_submission: {
+        Args: {
+          _feedback: string | null;
+          _grade: string;
+          _score: number;
+          _submission_id: string;
+        };
+        Returns: string;
       };
       list_student_progression_followups: {
         Args: never;

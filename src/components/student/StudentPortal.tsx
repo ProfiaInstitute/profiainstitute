@@ -18,8 +18,9 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 import { useUser } from "@/lib/auth";
+import { isAssignmentOpenForSubmission } from "@/lib/assignments";
 import { formatKES } from "@/lib/site";
-import type { Tables } from "@/integrations/supabase/types";
+import type { Database, Tables } from "@/integrations/supabase/types";
 
 type PortalSection =
   "overview" | "online" | "learning" | "assignments" | "results" | "fees" | "profile";
@@ -712,7 +713,8 @@ function LearningSection({ courseId }: { courseId: string | null }) {
 }
 
 type OnlineEnrollment = Tables<"online_course_enrollments">;
-type OnlineLesson = Tables<"online_course_lessons">;
+type OnlineLessonProgress =
+  Database["public"]["Functions"]["list_online_course_lessons"]["Returns"][number];
 type PaymentStage = "tuition_30" | "tuition_balance" | "certificate_fee" | "exam_fee";
 
 function OnlineCoursesSection({ student }: { student: Student }) {
@@ -879,14 +881,19 @@ function OnlineCoursesSection({ student }: { student: Student }) {
               </a>
             )}
             <div className="mt-4 grid gap-3 sm:grid-cols-3">
-              <FeeMetric label="Tuition paid" value={formatKES(tuitionPaid)} />
+              <FeeMetric label="Tuition paid" value={formatKES(tuitionPaid) ?? "KES 0"} />
               <FeeMetric
                 label="Tuition balance"
-                value={formatKES(Math.max(0, tuitionTarget - tuitionPaid))}
+                value={formatKES(Math.max(0, tuitionTarget - tuitionPaid)) ?? "KES 0"}
               />
               <FeeMetric
                 label="Exam + certificate fees"
-                value={formatKES(selectedEnrollment.exam_fee + selectedEnrollment.certificate_fee)}
+                value={
+                  formatKES(
+                    Number(selectedEnrollment.exam_fee ?? 0) +
+                      Number(selectedEnrollment.certificate_fee ?? 0),
+                  ) ?? "KES 0"
+                }
               />
             </div>
             {paymentsQuery.error && (
@@ -951,7 +958,7 @@ function OnlineCoursesSection({ student }: { student: Student }) {
                 These are separate course charges. Payment is confirmed against your student number.
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
-                {selectedEnrollment.exam_fee > 0 && (
+                {Number(selectedEnrollment.exam_fee ?? 0) > 0 && (
                   <Button
                     variant="outline"
                     disabled={
@@ -960,10 +967,10 @@ function OnlineCoursesSection({ student }: { student: Student }) {
                     }
                     onClick={() => paymentMutation.mutate("exam_fee")}
                   >
-                    Pay exam fee · {formatKES(selectedEnrollment.exam_fee)}
+                    Pay exam fee · {formatKES(Number(selectedEnrollment.exam_fee ?? 0))}
                   </Button>
                 )}
-                {selectedEnrollment.certificate_fee > 0 && (
+                {Number(selectedEnrollment.certificate_fee ?? 0) > 0 && (
                   <Button
                     variant="outline"
                     disabled={
@@ -972,7 +979,8 @@ function OnlineCoursesSection({ student }: { student: Student }) {
                     }
                     onClick={() => paymentMutation.mutate("certificate_fee")}
                   >
-                    Pay certificate fee · {formatKES(selectedEnrollment.certificate_fee)}
+                    Pay certificate fee ·{" "}
+                    {formatKES(Number(selectedEnrollment.certificate_fee ?? 0))}
                   </Button>
                 )}
               </div>
@@ -1006,7 +1014,7 @@ function OnlineLessonCard({
   completing,
   onComplete,
 }: {
-  lesson: Omit<OnlineLesson, "course_id" | "created_at" | "updated_at"> & {
+  lesson: OnlineLessonProgress & {
     completed: boolean;
     locked: boolean;
   };
@@ -1077,6 +1085,7 @@ function FeeMetric({ label, value }: { label: string; value: string }) {
 }
 
 function AssignmentsSection({ student }: { student: Student }) {
+  const [currentTime, setCurrentTime] = useState(() => Date.now());
   const assignmentsQuery = useQuery({
     queryKey: ["student", "assignment-list", student.id, student.course_id],
     enabled: !!student.course_id,
@@ -1085,7 +1094,8 @@ function AssignmentsSection({ student }: { student: Student }) {
         .from("assignments")
         .select("*")
         .eq("course_id", student.course_id!)
-        .eq("published", true);
+        .eq("published", true)
+        .order("due_date", { ascending: true });
       if (error) throw error;
       return data;
     },
@@ -1102,6 +1112,10 @@ function AssignmentsSection({ student }: { student: Student }) {
       return data;
     },
   });
+  useEffect(() => {
+    const timer = window.setInterval(() => setCurrentTime(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
   if (!student.course_id)
     return (
       <Empty
@@ -1129,12 +1143,20 @@ function AssignmentsSection({ student }: { student: Student }) {
         const submission = submissionsQuery.data?.find(
           (row) => row.assignment_id === assignment.id,
         );
+        const submissionOpen = isAssignmentOpenForSubmission(assignment.due_date, currentTime);
+        const deadlinePassed = !submissionOpen;
         return (
           <article key={assignment.id} className="rounded-xl border bg-card p-5 shadow-card">
             <div className="flex flex-wrap items-start justify-between gap-2">
               <h2 className="font-semibold text-brand">{assignment.title}</h2>
               <Badge variant={submission ? "default" : "secondary"}>
-                {submission?.status ?? "Not submitted"}
+                {submission?.grade
+                  ? "Marked"
+                  : submission
+                    ? "Submitted"
+                    : deadlinePassed
+                      ? "Closed"
+                      : "Not submitted"}
               </Badge>
             </div>
             {assignment.instructions && (
@@ -1144,7 +1166,7 @@ function AssignmentsSection({ student }: { student: Student }) {
             )}
             {assignment.due_date && (
               <p className="mt-3 text-xs text-muted-foreground">
-                Due {new Date(assignment.due_date).toLocaleString("en-KE")}
+                Submission deadline: {new Date(assignment.due_date).toLocaleString("en-KE")}
               </p>
             )}
             {assignment.file_path && (
@@ -1155,15 +1177,37 @@ function AssignmentsSection({ student }: { student: Student }) {
                 Feedback: {submission.feedback}
               </p>
             )}
+            {submission?.grade && (
+              <p className="mt-3 text-sm font-medium">Grade: {submission.grade}</p>
+            )}
+            {submission?.comment && (
+              <p className="mt-3 whitespace-pre-wrap rounded-lg bg-muted/50 p-3 text-sm">
+                Your submission: {submission.comment}
+              </p>
+            )}
             {submissionsQuery.isLoading ? (
               <p className="mt-4 border-t pt-4 text-sm text-muted-foreground">
                 Checking your submission…
               </p>
-            ) : submissionsQuery.error ? null : (
+            ) : submissionsQuery.error ? null : submission ? (
+              <div className="mt-4 space-y-2 border-t pt-4">
+                {submission.file_path && (
+                  <SubmissionFileLink path={submission.file_path} label="View submitted file" />
+                )}
+                <p className="text-sm text-muted-foreground">
+                  Submitted {new Date(submission.submitted_at).toLocaleString("en-KE")}. Only one
+                  submission is allowed; this assignment remains available for revision.
+                </p>
+              </div>
+            ) : deadlinePassed ? (
+              <p className="mt-4 border-t pt-4 text-sm font-medium text-muted-foreground">
+                Submission closed. This assignment remains available for revision.
+              </p>
+            ) : (
               <SubmitAssignment
                 student={student}
                 assignmentId={assignment.id}
-                {...(submission?.id ? { existingId: submission.id } : {})}
+                dueDate={assignment.due_date ?? ""}
               />
             )}
           </article>
@@ -1181,56 +1225,81 @@ function AssignmentsSection({ student }: { student: Student }) {
 function SubmitAssignment({
   student,
   assignmentId,
-  existingId,
+  dueDate,
 }: {
   student: Student;
   assignmentId: string;
-  existingId?: string;
+  dueDate: string;
 }) {
   const queryClient = useQueryClient();
   const [file, setFile] = useState<File | null>(null);
   const [comment, setComment] = useState("");
   const [busy, setBusy] = useState(false);
+
   async function submit() {
+    if (!isAssignmentOpenForSubmission(dueDate)) {
+      toast.error("The submission deadline has passed.");
+      return;
+    }
     if (!file && !comment.trim()) {
       toast.error("Add a file or a submission comment.");
       return;
     }
+    const maxFileSize = 50 * 1024 * 1024;
+    if (file && file.size > maxFileSize) {
+      toast.error("Submission file is too large", {
+        description: "Choose a file up to 50 MB.",
+      });
+      return;
+    }
     setBusy(true);
-    let filePath: string | null = null;
-    if (file) {
-      const path = `${student.id}/${assignmentId}/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
-      const { error: uploadError } = await supabase.storage.from("submissions").upload(path, file);
-      if (uploadError) {
-        setBusy(false);
-        toast.error("Could not upload submission", { description: uploadError.message });
+    let uploadedPath: string | null = null;
+    try {
+      if (file) {
+        const safeFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+        const path = `${student.id}/${assignmentId}/${Date.now()}-${safeFileName}`;
+        const { error: uploadError } = await supabase.storage
+          .from("submissions")
+          .upload(path, file, {
+            ...(file.type ? { contentType: file.type } : {}),
+            upsert: false,
+          });
+        if (uploadError) {
+          toast.error("Could not upload submission", { description: uploadError.message });
+          return;
+        }
+        uploadedPath = path;
+      }
+
+      const { error: saveError } = await supabase.from("submissions").insert({
+        assignment_id: assignmentId,
+        student_id: student.id,
+        file_path: uploadedPath,
+        comment: comment.trim() || null,
+      });
+
+      if (saveError) {
+        let description = saveError.message;
+        if (uploadedPath) {
+          const { error: cleanupError } = await supabase.storage
+            .from("submissions")
+            .remove([uploadedPath]);
+          if (cleanupError) {
+            description += ` The uploaded file could not be cleaned up: ${cleanupError.message}`;
+          }
+        }
+        toast.error("Could not submit assignment", { description });
         return;
       }
-      filePath = path;
-    }
-    const { error } = existingId
-      ? await supabase
-          .from("submissions")
-          .update({
-            file_path: filePath,
-            comment: comment.trim() || null,
-            status: "submitted",
-            submitted_at: new Date().toISOString(),
-          })
-          .eq("id", existingId)
-      : await supabase.from("submissions").insert({
-          assignment_id: assignmentId,
-          student_id: student.id,
-          file_path: filePath,
-          comment: comment.trim() || null,
-        });
-    setBusy(false);
-    if (error) toast.error("Could not submit assignment", { description: error.message });
-    else {
+
       toast.success("Assignment submitted");
+      setFile(null);
+      setComment("");
       await queryClient.invalidateQueries({
         queryKey: ["student", "assignment-submissions", student.id],
       });
+    } finally {
+      setBusy(false);
     }
   }
   return (
@@ -1244,13 +1313,42 @@ function SubmitAssignment({
         <input
           className="mt-1 block w-full text-sm"
           type="file"
+          disabled={busy}
           onChange={(event) => setFile(event.target.files?.[0] ?? null)}
         />
       </label>
       <Button className="mt-2" size="sm" disabled={busy} onClick={() => void submit()}>
-        {busy ? "Submitting…" : existingId ? "Update submission" : "Submit assignment"}
+        {busy ? "Submitting…" : "Submit assignment"}
       </Button>
     </div>
+  );
+}
+
+function SubmissionFileLink({ path, label }: { path: string; label: string }) {
+  const fileQuery = useQuery({
+    queryKey: ["student", "submission-file-url", path],
+    queryFn: async () => {
+      const { data, error } = await supabase.storage.from("submissions").createSignedUrl(path, 300);
+      if (error) throw error;
+      return data.signedUrl;
+    },
+    staleTime: 4 * 60_000,
+  });
+
+  if (fileQuery.isLoading)
+    return <p className="text-sm text-muted-foreground">Preparing submission download…</p>;
+  if (fileQuery.error)
+    return <ErrorCard error={fileQuery.error.message} retry={() => void fileQuery.refetch()} />;
+  return (
+    <a
+      className="inline-flex text-sm font-medium text-primary underline"
+      href={fileQuery.data}
+      target="_blank"
+      rel="noreferrer"
+      download
+    >
+      {label} ↗
+    </a>
   );
 }
 

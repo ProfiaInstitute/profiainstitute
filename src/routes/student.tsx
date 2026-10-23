@@ -4,7 +4,7 @@ import { StudentPortal } from "@/components/student/StudentPortal";
 
 export const Route = createFileRoute("/student")({
   validateSearch: (search: Record<string, unknown>) => ({
-    course: typeof search.course === "string" ? search.course : undefined,
+    course: typeof search["course"] === "string" ? search["course"] : undefined,
   }),
   head: () =>
     seo(

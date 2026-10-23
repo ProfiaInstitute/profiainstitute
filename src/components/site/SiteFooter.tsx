@@ -102,7 +102,7 @@ export function SiteFooter() {
               </Link>
             </li>
             <li>
-              <Link to="/student" className="hover:text-primary">
+              <Link to="/student" search={{ course: undefined }} className="hover:text-primary">
                 Student portal
               </Link>
             </li>

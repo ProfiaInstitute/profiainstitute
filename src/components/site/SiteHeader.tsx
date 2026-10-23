@@ -43,7 +43,7 @@ export function SiteHeader() {
             >
               Track application
             </Link>
-            <Link to="/student" className="hover:text-primary">
+            <Link to="/student" search={{ course: undefined }} className="hover:text-primary">
               Student portal
             </Link>
             <Link to="/contact" className="hidden sm:inline hover:text-primary">
@@ -154,7 +154,7 @@ export function SiteHeader() {
               ))}
               <div className="mt-3 grid grid-cols-2 gap-2 border-t pt-3">
                 <Button asChild variant="outline">
-                  <Link to="/student" onClick={() => setOpen(false)}>
+                  <Link to="/student" search={{ course: undefined }} onClick={() => setOpen(false)}>
                     Student portal
                   </Link>
                 </Button>

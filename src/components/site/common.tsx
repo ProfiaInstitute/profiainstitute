@@ -308,11 +308,12 @@ export function FaqSection({ schoolId }: { schoolId?: string }) {
     const match = searchFaqs(data ?? [], term)[0];
     if (term && match && !trackedFaqIds.current.has(match.id)) {
       trackedFaqIds.current.add(match.id);
-      void supabase
-        .rpc("record_faq_search", {
+      void Promise.resolve(
+        supabase.rpc("record_faq_search", {
           _faq_id: match.id,
           _bucket: Math.floor(Math.random() * 16),
-        })
+        }),
+      )
         .then(({ error: trackingError }) => {
           if (trackingError) console.error("Could not record FAQ search insight", trackingError);
         })

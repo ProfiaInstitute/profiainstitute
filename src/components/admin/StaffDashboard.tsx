@@ -36,6 +36,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { ManagementPanel } from "@/components/admin/ManagementPanel";
 import { FaqManagementPanel } from "@/components/admin/FaqManagementPanel";
 import { StudentProgressionPanel } from "@/components/admin/StudentProgressionPanel";
+import { AssignmentSubmissionsPanel } from "@/components/admin/AssignmentSubmissionsPanel";
 import { OnlineCourseLmsPanel } from "@/components/admin/OnlineCourseLmsPanel";
 import { PayHeroSettingsPanel } from "@/components/admin/PayHeroSettingsPanel";
 import { FeeStatementTemplatePanel } from "@/components/admin/FeeStatementTemplatePanel";
@@ -1333,7 +1334,7 @@ function StudentsPanel({
                     <p className="mt-1 text-xs text-muted-foreground">Loading courses…</p>
                   ) : studentCourseQuery.data?.[student.id]?.length ? (
                     <ul className="mt-1 space-y-1">
-                      {studentCourseQuery.data[student.id].map((course) => (
+                      {studentCourseQuery.data?.[student.id]?.map((course) => (
                         <li
                           key={course.course_id}
                           className="flex flex-wrap items-center gap-1.5 text-xs"
@@ -1654,7 +1655,7 @@ function StaffSettings() {
         });
       } else {
         toast.success("Staff invitation sent", {
-          description: `An invitation was sent to ${normalizedEmail}.`,
+          description: `Supabase Auth accepted an invitation request for ${normalizedEmail}. Delivery depends on the configured Auth email provider.`,
         });
         setEmail("");
         await queryClient.invalidateQueries({ queryKey: ["admin", "staff"] });
@@ -1739,7 +1740,8 @@ function StaffSettings() {
           <h2 className="font-semibold text-brand">Invite staff</h2>
           <p className="mt-1 text-sm text-muted-foreground">
             Send a secure invitation with the selected role. Staff set their password from the
-            invitation link before entering the workspace.
+            invitation link before entering the workspace. Invitation email delivery requires a
+            working Supabase Auth email/SMTP configuration.
           </p>
         </div>
         <Input
@@ -2479,11 +2481,6 @@ function DataDirectory({ section }: { section: DashboardSection }) {
       toast.success("Record updated");
       await queryClient.invalidateQueries({ queryKey: ["admin", "directory", section] });
       await queryClient.invalidateQueries({ queryKey: ["admin", "overview"] });
-      if (section === "fees") {
-        await queryClient.invalidateQueries({ queryKey: ["admin", "fee-management"] });
-        await queryClient.invalidateQueries({ queryKey: ["student", "fees"] });
-        await queryClient.invalidateQueries({ queryKey: ["student", "fee-total"] });
-      }
       if (section === "media") await queryClient.invalidateQueries({ queryKey: ["media"] });
     }
   }
@@ -2491,6 +2488,7 @@ function DataDirectory({ section }: { section: DashboardSection }) {
     const entries = Object.entries(row).filter(
       ([key]) =>
         !["raw", "details", "upload_token"].includes(key) &&
+        key !== "source_submission_id" &&
         !(section === "fees" && (key === "student" || key === "id" || key.endsWith("_id"))),
     );
     if (section === "fees") entries.unshift(["student", row["student"]]);
@@ -2552,6 +2550,7 @@ function DataDirectory({ section }: { section: DashboardSection }) {
           }
         />
       )}
+      {section === "assignments" && <AssignmentSubmissionsPanel />}
       {query.data?.length ? (
         <div className="mt-4 overflow-x-auto">
           <table className="w-full min-w-[640px] border-collapse text-left text-sm">
@@ -2791,6 +2790,13 @@ function DirectoryCreateForm({
     if ((section === "materials" || section === "assignments") && !values.course_id) {
       toast.error("Select a course before uploading course materials.");
       return;
+    }
+    if (section === "assignments") {
+      const deadline = new Date(values.due_date);
+      if (!values.due_date || !Number.isFinite(deadline.getTime())) {
+        toast.error("Set a valid assignment submission deadline.");
+        return;
+      }
     }
     const fileType = values.file ? supportedContentType(values.file) : null;
     if (values.file && (!fileType || values.file.size > MAX_CONTENT_UPLOAD_SIZE)) {
@@ -3113,13 +3119,16 @@ function DirectoryCreateForm({
         )}
         {section === "assignments" && (
           <>
-            <Input
-              className="sm:col-span-2"
-              type="datetime-local"
-              aria-label="Assignment due date"
-              value={values.due_date}
-              onChange={(e) => setValues({ ...values, due_date: e.target.value })}
-            />
+            <label className="space-y-1 text-sm font-medium sm:col-span-2">
+              Submission deadline (local date and time)
+              <Input
+                type="datetime-local"
+                aria-label="Assignment submission deadline"
+                required
+                value={values.due_date}
+                onChange={(e) => setValues({ ...values, due_date: e.target.value })}
+              />
+            </label>
             <ContentFileInput
               file={values.file}
               onFile={(file) => setValues({ ...values, file })}

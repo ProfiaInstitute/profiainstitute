@@ -2549,11 +2549,13 @@ To bootstrap the first Super Admin:
    reviews them in `/admin` → **Staff** and explicitly grants a role. Email
    confirmation is controlled by Supabase Authentication settings.
 5. Deploy the `invite-staff` and `manage-staff` Supabase Edge Functions and set
-   `PUBLIC_SITE_URL` to the deployed website URL. Configure Supabase
-   Authentication email delivery and allow the website's `/admin` URL as an
-   authentication redirect URL. A Super Admin can also invite staff by email
-   from the **Staff** module. Existing account roles can be granted or revoked
-   there; staff accounts can be suspended, reactivated, or permanently deleted.
+   `PUBLIC_SITE_URL` to the deployed website URL. Configure a production SMTP
+   provider in Supabase Authentication, verify its sender domain, and allow the
+   website's `/admin` URL as an authentication redirect URL. The Staff module
+   reports when Supabase Auth accepts an invitation request; verify actual inbox
+   delivery with the configured provider's delivery logs. Existing account roles
+   can be granted or revoked there; staff accounts can be suspended, reactivated,
+   or permanently deleted.
    Super Admin accounts are protected from suspension/deletion in this module.
 
    Deploy the function with:
@@ -2605,6 +2607,17 @@ content. Learning materials and assignments use the private `learning` bucket,
 are stored under the course folder, and are only accessible to that course's
 students and authorized academic staff. Video and audio players use native
 controls and retain sound.
+
+Apply `0019_assignment_submissions_storage.sql` to create the private
+`submissions` bucket used by the Student Portal. Students can upload files up to
+50 MB and access their own submission files; academic staff can review them.
+Apply `0020_assignment_deadlines_marking.sql` next to require a deadline before
+an assignment is published, reject student submissions at or after the deadline,
+and enforce one submission per learner. The student portal keeps published
+assignments visible for revision but closes submission once a learner submits or
+the deadline passes. Academic Admins can review files in **Admin ? Assignments**,
+record a score, grade, and feedback, and create/update the corresponding
+unpublished entry in **Admin ? Results**.
 
 ### Staff directory
 
