@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { loadPayHeroCredentials, type PayHeroCredentials } from "../_shared/payhero.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -15,10 +16,7 @@ Deno.serve(async (request: Request) => {
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  const username = Deno.env.get("PAYHERO_API_USERNAME");
-  const password = Deno.env.get("PAYHERO_API_PASSWORD");
-  const channelId = Deno.env.get("PAYHERO_CHANNEL_ID");
-  if (!supabaseUrl || !serviceRoleKey || !username || !password || !channelId) {
+  if (!supabaseUrl || !serviceRoleKey) {
     return json(
       { error: "Online payments are not configured. Contact the Institute before retrying." },
       503,
@@ -31,7 +29,21 @@ Deno.serve(async (request: Request) => {
     auth: { persistSession: false, autoRefreshToken: false },
   });
   const { data: authData, error: authError } = await supabase.auth.getUser(token);
-  if (authError || !authData.user) return json({ error: "Your session is invalid or expired." }, 401);
+  if (authError || !authData.user)
+    return json({ error: "Your session is invalid or expired." }, 401);
+  let credentials: PayHeroCredentials | null;
+  try {
+    credentials = await loadPayHeroCredentials(supabase);
+  } catch (error) {
+    console.error("Could not load online course PayHero settings:", errorMessage(error));
+    return json({ error: "Could not load online payment settings. Please retry." }, 500);
+  }
+  if (!credentials) {
+    return json(
+      { error: "Online payments are not configured. Contact the Institute before retrying." },
+      503,
+    );
+  }
 
   let body: { enrollmentId?: unknown; stage?: unknown };
   try {
@@ -59,7 +71,7 @@ Deno.serve(async (request: Request) => {
     return json({ error: "The selected online course enrollment could not be found." }, 404);
   const { data: student, error: studentError } = await supabase
     .from("students")
-    .select("id,user_id,student_number,first_name,last_name,phone")
+    .select("id,user_id,first_name,last_name,phone")
     .eq("id", enrollment.student_id)
     .eq("user_id", authData.user.id)
     .maybeSingle();
@@ -91,7 +103,10 @@ Deno.serve(async (request: Request) => {
   } else {
     if (tuitionPaid < Number(enrollment.tuition_fee))
       return json({ error: "Pay the full tuition before examination or certificate fees." }, 409);
-    const fee = stage === "certificate_fee" ? Number(enrollment.certificate_fee) : Number(enrollment.exam_fee);
+    const fee =
+      stage === "certificate_fee"
+        ? Number(enrollment.certificate_fee)
+        : Number(enrollment.exam_fee);
     if (fee <= 0) return json({ error: "There is no fee configured for this payment stage." }, 409);
     if (confirmed.some((payment) => payment.stage === stage))
       return json({ error: "This fee has already been paid." }, 409);
@@ -106,22 +121,34 @@ Deno.serve(async (request: Request) => {
       return json({ error: "Could not verify course completion." }, 500);
     }
     const lessonIds = lessons?.map((lesson) => lesson.id) ?? [];
-    if (!lessonIds.length) return json({ error: "Course lessons must be published before final fees are due." }, 409);
+    if (!lessonIds.length)
+      return json({ error: "Course lessons must be published before final fees are due." }, 409);
     const { data: progress, error: progressError } = await supabase
       .from("online_lesson_progress")
       .select("lesson_id")
       .eq("student_id", student.id)
       .in("lesson_id", lessonIds);
     if (progressError || new Set(progress?.map((item) => item.lesson_id)).size !== lessonIds.length)
-      return json({ error: "Complete all published course lessons before paying final fees." }, 409);
+      return json(
+        { error: "Complete all published course lessons before paying final fees." },
+        409,
+      );
     amount = fee;
   }
+  amount = Math.ceil(amount);
 
   const pendingPayment = payments?.some((payment) => payment.status === "pending");
   if (pendingPayment)
-    return json({ error: "A payment is already awaiting confirmation. Wait before starting another." }, 409);
+    return json(
+      { error: "A payment is already awaiting confirmation. Wait before starting another." },
+      409,
+    );
   const phone = normalizeKenyanPhone(student.phone ?? "");
-  if (!phone) return json({ error: "Add a valid Kenyan mobile number to your student profile before paying." }, 400);
+  if (!phone)
+    return json(
+      { error: "Add a valid Kenyan mobile number to your student profile before paying." },
+      400,
+    );
 
   const reference = `PRF-ONLINE-${crypto.randomUUID()}`;
   const { data: payment, error: insertError } = await supabase
@@ -148,17 +175,16 @@ Deno.serve(async (request: Request) => {
     gatewayResponse = await fetch("https://backend.payhero.co.ke/api/v2/payments", {
       method: "POST",
       headers: {
-        Authorization: `Basic ${btoa(`${username}:${password}`)}`,
+        Authorization: `Basic ${btoa(`${credentials.username}:${credentials.password}`)}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        amount: Math.ceil(Number(payment.amount)),
+        amount: Number(payment.amount),
         phone_number: phone,
-        channel_id: channelId,
+        channel_id: credentials.channelId,
         provider: "m-pesa",
         external_reference: payment.reference,
         customer_name: `${student.first_name} ${student.last_name}`.trim(),
-        transaction_description: `${stage.replaceAll("_", " ")} · ${student.student_number}`,
         callback_url: `${supabaseUrl.replace(/\/$/, "")}/functions/v1/payhero-callback`,
       }),
     });
@@ -168,31 +194,61 @@ Deno.serve(async (request: Request) => {
   }
 
   const gatewayBody = await gatewayResponse.json().catch(() => null);
-  if (!gatewayResponse.ok) {
+  if (!gatewayResponse.ok || !isAcceptedResponse(gatewayBody)) {
     await markPaymentFailed(
       supabase,
       payment.id,
-      `PayHero returned HTTP ${gatewayResponse.status}.`,
+      `PayHero returned HTTP ${gatewayResponse.status} without accepting the request.`,
     );
     console.error("PayHero payment request failed:", gatewayResponse.status);
-    return json({ error: "PayHero could not start the payment. Please retry or contact support." }, 502);
+    return json(
+      { error: "PayHero could not start the payment. Please retry or contact support." },
+      502,
+    );
   }
 
-  const checkoutId = findValue(gatewayBody, ["CheckoutRequestID", "checkout_request_id", "checkout_id"]);
+  const checkoutId = findValue(gatewayBody, [
+    "CheckoutRequestID",
+    "checkout_request_id",
+    "checkout_id",
+  ]);
+  const providerReference = findValue(gatewayBody, ["reference"]);
+  if (!providerReference) {
+    await markPaymentFailed(supabase, payment.id, "PayHero response did not include a reference.");
+    console.error("PayHero accepted an online course request without its transaction reference.");
+    return json(
+      { error: "PayHero returned an incomplete payment response. Please contact support." },
+      502,
+    );
+  }
   const { error: updateError } = await supabase
     .from("online_course_payments")
-    .update({ provider_checkout_id: checkoutId, raw: { request_accepted: true } })
+    .update({
+      provider_checkout_id: checkoutId,
+      provider_reference: providerReference,
+      raw: { request_accepted: true },
+    })
     .eq("id", payment.id);
   if (updateError) {
     console.error("Could not save PayHero checkout identifier:", updateError.message);
-    return json({ error: "PayHero accepted the request, but its status could not be saved. Contact support before retrying." }, 500);
+    return json(
+      {
+        error:
+          "PayHero accepted the request, but its status could not be saved. Contact support before retrying.",
+      },
+      500,
+    );
   }
   return json({ success: true, reference: payment.reference, amount: payment.amount }, 200);
 });
 
 function normalizeKenyanPhone(phone: string) {
   const digits = phone.replace(/\D/g, "");
-  const normalized = digits.startsWith("0") ? `254${digits.slice(1)}` : digits.startsWith("7") || digits.startsWith("1") ? `254${digits}` : digits;
+  const normalized = digits.startsWith("0")
+    ? `254${digits.slice(1)}`
+    : digits.startsWith("7") || digits.startsWith("1")
+      ? `254${digits}`
+      : digits;
   return /^254[17]\d{8}$/.test(normalized) ? normalized : null;
 }
 
@@ -205,6 +261,12 @@ function findValue(value: unknown, keys: string[]): string | null {
     if (nested) return nested;
   }
   return null;
+}
+
+function isAcceptedResponse(value: unknown) {
+  return Boolean(
+    value && typeof value === "object" && "success" in value && value.success === true,
+  );
 }
 
 async function markPaymentFailed(

@@ -1246,6 +1246,7 @@ export type Database = {
           paid_at: string | null;
           provider: string;
           provider_checkout_id: string | null;
+          provider_reference: string | null;
           raw: Json;
           reference: string;
           stage: string;
@@ -1262,6 +1263,7 @@ export type Database = {
           paid_at?: string | null;
           provider?: string;
           provider_checkout_id?: string | null;
+          provider_reference?: string | null;
           raw?: Json;
           reference: string;
           stage: string;
@@ -1278,6 +1280,7 @@ export type Database = {
           paid_at?: string | null;
           provider?: string;
           provider_checkout_id?: string | null;
+          provider_reference?: string | null;
           raw?: Json;
           reference?: string;
           stage?: string;

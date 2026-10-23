@@ -12,7 +12,19 @@ verify_jwt = false
 [functions.create-fee-payment]
 verify_jwt = true
 
+[functions.create-online-payment]
+verify_jwt = true
+
+[functions.manage-payhero-settings]
+verify_jwt = true
+
 [functions.generate-fee-statement]
+verify_jwt = true
+
+[functions.generate-fee-receipt]
+verify_jwt = true
+
+[functions.generate-fee-statement-template]
 verify_jwt = true
 
 [auth.email.template.confirmation]

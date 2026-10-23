@@ -460,6 +460,34 @@ export function Partners() {
   );
 }
 
+export function HomepageMedia() {
+  const { data, error } = useMedia("homepage");
+  if (error) return <ErrorNote />;
+  if (!data?.length) return null;
+  return (
+    <section className="container-site py-14">
+      <SectionTitle
+        center
+        title="Life at Profia Institute"
+        subtitle="Highlights and updates from our campus."
+      />
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {data.map((item) => (
+          <figure key={item.id} className="overflow-hidden rounded-xl border bg-card shadow-card">
+            <img
+              src={item.url}
+              alt={item.alt ?? item.caption ?? "Profia Institute"}
+              loading="lazy"
+              className="aspect-[4/3] w-full object-cover"
+            />
+            {item.caption && <figcaption className="p-3 text-sm">{item.caption}</figcaption>}
+          </figure>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export function ApplyBand({
   title = "Ready to Start Your Journey?",
   text = "Join Profia Institute and take the first step towards a successful career.",

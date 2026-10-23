@@ -1317,7 +1317,7 @@ function FeesSection({
   const query = useQuery({
     queryKey: ["student", "fees", studentId],
     queryFn: async () => {
-      const [fees, payments, documents, notifications] = await Promise.all([
+      const [fees, payments, notifications] = await Promise.all([
         supabase
           .from("fees")
           .select("*")
@@ -1330,11 +1330,6 @@ function FeesSection({
           .eq("status", "confirmed")
           .order("paid_at", { ascending: false }),
         supabase
-          .from("fee_documents")
-          .select("id,payment_id,document_type,storage_path,created_at")
-          .eq("student_id", studentId)
-          .order("created_at", { ascending: false }),
-        supabase
           .from("notifications")
           .select("id,title,body,created_at")
           .eq("user_id", userId)
@@ -1344,12 +1339,10 @@ function FeesSection({
       ]);
       if (fees.error) throw fees.error;
       if (payments.error) throw payments.error;
-      if (documents.error) throw documents.error;
       if (notifications.error) throw notifications.error;
       return {
         fees: fees.data,
         payments: payments.data,
-        documents: documents.data,
         notifications: notifications.data,
       };
     },
@@ -1393,7 +1386,7 @@ function FeesSection({
       }),
   });
   const statementMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (windowRef: Window) => {
       const { data, error } = await supabase.functions.invoke("generate-fee-statement");
       if (error) {
         if ("context" in error && error.context instanceof Response) {
@@ -1407,24 +1400,64 @@ function FeesSection({
       }
       if (!data?.success || typeof data.signedUrl !== "string")
         throw new Error(data?.error ?? "Could not prepare your fee statement.");
-      return data.signedUrl;
+      return { signedUrl: data.signedUrl, windowRef };
     },
-    onSuccess: (signedUrl) => {
-      window.open(signedUrl, "_blank", "noopener,noreferrer");
+    onSuccess: ({ signedUrl, windowRef }) => {
+      windowRef.location.href = signedUrl;
       void queryClient.invalidateQueries({ queryKey: ["student", "fees", studentId] });
     },
-    onError: (error) =>
+    onError: (error, windowRef) => {
+      windowRef.close();
       toast.error("Could not download fee statement", {
         description: error instanceof Error ? error.message : "Please retry.",
-      }),
+      });
+    },
   });
-  async function downloadReceipt(path: string) {
-    const { data, error } = await supabase.storage.from("fee-documents").createSignedUrl(path, 300);
-    if (error) {
-      toast.error("Could not prepare receipt download", { description: error.message });
+  const receiptMutation = useMutation({
+    mutationFn: async ({ paymentId, windowRef }: { paymentId: string; windowRef: Window }) => {
+      const { data, error } = await supabase.functions.invoke("generate-fee-receipt", {
+        body: { paymentId },
+      });
+      if (error) {
+        if ("context" in error && error.context instanceof Response) {
+          const response = await error.context
+            .clone()
+            .json()
+            .catch(() => null);
+          if (typeof response?.error === "string") throw new Error(response.error);
+        }
+        throw error;
+      }
+      if (!data?.success || typeof data.signedUrl !== "string")
+        throw new Error(data?.error ?? "Could not prepare your receipt.");
+      return { signedUrl: data.signedUrl, windowRef };
+    },
+    onSuccess: ({ signedUrl, windowRef }) => {
+      windowRef.location.href = signedUrl;
+      void queryClient.invalidateQueries({ queryKey: ["student", "fees", studentId] });
+    },
+    onError: (error, { windowRef }) => {
+      windowRef.close();
+      toast.error("Could not download receipt", {
+        description: error instanceof Error ? error.message : "Please retry.",
+      });
+    },
+  });
+  function downloadReceipt(paymentId: string) {
+    const windowRef = window.open("about:blank", "_blank");
+    if (!windowRef) {
+      toast.error("Allow pop-ups to download your receipt.");
       return;
     }
-    window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+    receiptMutation.mutate({ paymentId, windowRef });
+  }
+  function downloadStatement() {
+    const windowRef = window.open("about:blank", "_blank");
+    if (!windowRef) {
+      toast.error("Allow pop-ups to download your fee statement.");
+      return;
+    }
+    statementMutation.mutate(windowRef);
   }
   if (query.isLoading) return <Loading />;
   if (query.error) return <ErrorCard error={query.error.message} retry={() => query.refetch()} />;
@@ -1433,11 +1466,6 @@ function FeesSection({
   const hasCredit = paid > billed;
   const balanceLabel = hasCredit ? "Credit" : "Balance";
   const balanceAmount = Math.abs(billed - paid);
-  const receiptByPayment = new Map<string, string>();
-  for (const document of query.data?.documents ?? []) {
-    if (document.document_type === "receipt" && document.payment_id)
-      receiptByPayment.set(document.payment_id, document.storage_path);
-  }
   const outstanding = Math.max(0, billed - paid);
   return (
     <div className="space-y-4">
@@ -1500,7 +1528,7 @@ function FeesSection({
             type="button"
             variant="outline"
             disabled={statementMutation.isPending}
-            onClick={() => statementMutation.mutate()}
+            onClick={downloadStatement}
           >
             <Download />
             {statementMutation.isPending ? "Preparing…" : "Download fee statement"}
@@ -1536,21 +1564,27 @@ function FeesSection({
             {query.data.payments.map((payment) => (
               <div key={payment.id} className="flex justify-between gap-3 py-3 text-sm">
                 <span>
-                  {payment.method} · {new Date(payment.paid_at).toLocaleDateString("en-KE")}
-                  {payment.reference ? ` · ${payment.reference}` : ""}
+                  {payment.provider === "payhero" ? "M-Pesa" : payment.method} ·{" "}
+                  {new Date(payment.paid_at).toLocaleDateString("en-KE")}
+                  {payment.provider !== "payhero" && payment.reference
+                    ? ` · ${payment.reference}`
+                    : ""}
                 </span>
                 <span className="flex items-center gap-3 font-semibold">
                   {formatKES(payment.amount)}
-                  {receiptByPayment.has(payment.id) && (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => void downloadReceipt(receiptByPayment.get(payment.id)!)}
-                    >
-                      <Download /> Receipt
-                    </Button>
-                  )}
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    disabled={receiptMutation.isPending}
+                    onClick={() => downloadReceipt(payment.id)}
+                  >
+                    <Download />
+                    {receiptMutation.isPending &&
+                    receiptMutation.variables?.paymentId === payment.id
+                      ? "Preparing…"
+                      : "Receipt"}
+                  </Button>
                 </span>
               </div>
             ))}

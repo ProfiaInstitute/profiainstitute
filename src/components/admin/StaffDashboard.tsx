@@ -1,5 +1,5 @@
 import { useMemo, useState, type FormEvent } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Activity,
   ArrowDownToLine,
@@ -8,6 +8,7 @@ import {
   CalendarDays,
   ChartNoAxesCombined,
   ClipboardList,
+  CreditCard,
   FileText,
   GraduationCap,
   LayoutDashboard,
@@ -36,8 +37,11 @@ import { ManagementPanel } from "@/components/admin/ManagementPanel";
 import { FaqManagementPanel } from "@/components/admin/FaqManagementPanel";
 import { StudentProgressionPanel } from "@/components/admin/StudentProgressionPanel";
 import { OnlineCourseLmsPanel } from "@/components/admin/OnlineCourseLmsPanel";
+import { PayHeroSettingsPanel } from "@/components/admin/PayHeroSettingsPanel";
+import { FeeStatementTemplatePanel } from "@/components/admin/FeeStatementTemplatePanel";
 import { supabase } from "@/integrations/supabase/client";
 import { can, useRoles, useUser, type AppRole } from "@/lib/auth";
+import type { Json } from "@/integrations/supabase/types";
 import {
   contentKind,
   MAX_CONTENT_UPLOAD_SIZE,
@@ -58,6 +62,7 @@ type DashboardSection =
   | "academics"
   | "results"
   | "fees"
+  | "payhero"
   | "materials"
   | "lms"
   | "assignments"
@@ -125,6 +130,7 @@ const navItems: { id: DashboardSection; title: string; icon: LucideIcon; roles: 
   { id: "academics", title: "Academics", icon: BookOpen, roles: ["super_admin", "academic_admin"] },
   { id: "results", title: "Results", icon: FileText, roles: ["super_admin", "academic_admin"] },
   { id: "fees", title: "Fees", icon: Wallet, roles: ["super_admin"] },
+  { id: "payhero", title: "PayHero payments", icon: CreditCard, roles: ["super_admin"] },
   {
     id: "materials",
     title: "Learning Materials",
@@ -245,8 +251,11 @@ export function StaffDashboard() {
     ) : section === "fees" ? (
       <>
         <FeeManagementPanel />
+        <FeeStatementTemplatePanel />
         <DataDirectory section={section} />
       </>
+    ) : section === "payhero" ? (
+      <PayHeroSettingsPanel />
     ) : (
       <DataDirectory section={section} />
     );
@@ -1871,6 +1880,17 @@ function StaffSettings() {
 }
 
 function FeeManagementPanel() {
+  const { user } = useUser();
+  const queryClient = useQueryClient();
+  const [manualPaymentId, setManualPaymentId] = useState<string | null>(null);
+  const [manualPayment, setManualPayment] = useState({
+    student_id: "",
+    amount: "",
+    method: "Cash",
+    reference: "",
+    explanation: "",
+    paid_at: new Date().toISOString().slice(0, 10),
+  });
   const query = useQuery({
     queryKey: ["admin", "fee-management"],
     queryFn: async () => {
@@ -1878,7 +1898,7 @@ function FeeManagementPanel() {
         supabase.rpc("admin_fee_account_summary"),
         supabase
           .from("payments")
-          .select("id,student_id,amount,method,provider,reference,status,paid_at")
+          .select("id,student_id,amount,method,provider,reference,status,paid_at,raw")
           .order("paid_at", { ascending: false })
           .limit(200),
       ]);
@@ -1887,6 +1907,64 @@ function FeeManagementPanel() {
       return { accounts: accounts.data, payments: payments.data };
     },
     refetchInterval: 20_000,
+  });
+  const manualPaymentMutation = useMutation({
+    mutationFn: async () => {
+      const amount = Number(manualPayment.amount);
+      if (!manualPayment.student_id) throw new Error("Select the student for this payment.");
+      if (!Number.isFinite(amount) || amount <= 0) throw new Error("Enter a positive amount.");
+      if (!manualPayment.explanation.trim())
+        throw new Error("Add an explanation for this manual transaction.");
+      const update = {
+        amount,
+        method: manualPayment.method.trim(),
+        reference: manualPayment.reference.trim() || null,
+        paid_at: new Date(`${manualPayment.paid_at}T12:00:00`).toISOString(),
+        raw: { manually_recorded: true, explanation: manualPayment.explanation.trim() } as Json,
+      };
+      if (manualPaymentId) {
+        const { data, error } = await supabase
+          .from("payments")
+          .update(update)
+          .eq("id", manualPaymentId)
+          .is("provider", null)
+          .select("id")
+          .maybeSingle();
+        if (error) throw error;
+        if (!data) throw new Error("Only manually recorded payments can be edited.");
+      } else {
+        const { error } = await supabase.from("payments").insert({
+          ...update,
+          student_id: manualPayment.student_id,
+          provider: null,
+          status: "confirmed",
+          recorded_by: user?.id ?? null,
+        });
+        if (error) throw error;
+      }
+    },
+    onSuccess: async () => {
+      toast.success(manualPaymentId ? "Manual payment updated" : "Manual payment recorded");
+      setManualPaymentId(null);
+      setManualPayment({
+        student_id: "",
+        amount: "",
+        method: "Cash",
+        reference: "",
+        explanation: "",
+        paid_at: new Date().toISOString().slice(0, 10),
+      });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["admin", "fee-management"] }),
+        queryClient.invalidateQueries({ queryKey: ["admin", "directory", "fees"] }),
+        queryClient.invalidateQueries({ queryKey: ["student", "fees"] }),
+        queryClient.invalidateQueries({ queryKey: ["student", "payment-total"] }),
+      ]);
+    },
+    onError: (error) =>
+      toast.error("Could not save manual payment", {
+        description: error instanceof Error ? error.message : "Please retry.",
+      }),
   });
   if (query.error) return <ErrorPanel error={query.error} retry={() => query.refetch()} />;
   if (query.isLoading || !query.data) return <LoadingState />;
@@ -1920,6 +1998,122 @@ function FeeManagementPanel() {
           </div>
         ))}
       </div>
+      <details open={Boolean(manualPaymentId)} className="rounded-lg border bg-muted/20 p-4">
+        <summary className="cursor-pointer text-sm font-semibold text-brand">
+          {manualPaymentId ? "Edit manual payment" : "Record a manual payment"}
+        </summary>
+        <form
+          className="mt-4 grid gap-3 sm:grid-cols-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            manualPaymentMutation.mutate();
+          }}
+        >
+          <label className="space-y-1 text-sm font-medium">
+            Student
+            <select
+              required
+              className={selectClass}
+              value={manualPayment.student_id}
+              disabled={Boolean(manualPaymentId)}
+              onChange={(event) =>
+                setManualPayment({ ...manualPayment, student_id: event.target.value })
+              }
+            >
+              <option value="">Select student</option>
+              {accountRows.map((student) => (
+                <option key={student.student_id} value={student.student_id}>
+                  {student.student_number} · {student.first_name} {student.last_name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="space-y-1 text-sm font-medium">
+            Amount (KES)
+            <Input
+              required
+              type="number"
+              min="0.01"
+              step="0.01"
+              value={manualPayment.amount}
+              onChange={(event) =>
+                setManualPayment({ ...manualPayment, amount: event.target.value })
+              }
+            />
+          </label>
+          <label className="space-y-1 text-sm font-medium">
+            Payment method
+            <Input
+              required
+              value={manualPayment.method}
+              onChange={(event) =>
+                setManualPayment({ ...manualPayment, method: event.target.value })
+              }
+              placeholder="Cash, bank deposit, M-Pesa…"
+            />
+          </label>
+          <label className="space-y-1 text-sm font-medium">
+            Transaction reference (optional)
+            <Input
+              value={manualPayment.reference}
+              onChange={(event) =>
+                setManualPayment({ ...manualPayment, reference: event.target.value })
+              }
+            />
+          </label>
+          <label className="space-y-1 text-sm font-medium">
+            Payment date
+            <Input
+              required
+              type="date"
+              value={manualPayment.paid_at}
+              onChange={(event) =>
+                setManualPayment({ ...manualPayment, paid_at: event.target.value })
+              }
+            />
+          </label>
+          <label className="space-y-1 text-sm font-medium sm:col-span-2">
+            Explanation / transaction notes
+            <Textarea
+              required
+              rows={2}
+              value={manualPayment.explanation}
+              onChange={(event) =>
+                setManualPayment({ ...manualPayment, explanation: event.target.value })
+              }
+              placeholder="Explain what this manual payment covers and who recorded it"
+            />
+          </label>
+          <div className="flex gap-2 sm:col-span-2">
+            <Button type="submit" disabled={manualPaymentMutation.isPending}>
+              {manualPaymentMutation.isPending
+                ? "Saving…"
+                : manualPaymentId
+                  ? "Save payment changes"
+                  : "Record payment"}
+            </Button>
+            {manualPaymentId && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setManualPaymentId(null);
+                  setManualPayment({
+                    student_id: "",
+                    amount: "",
+                    method: "Cash",
+                    reference: "",
+                    explanation: "",
+                    paid_at: new Date().toISOString().slice(0, 10),
+                  });
+                }}
+              >
+                Cancel edit
+              </Button>
+            )}
+          </div>
+        </form>
+      </details>
       <div>
         <h3 className="mb-2 text-sm font-semibold text-brand">Student balances</h3>
         {accounts.length ? (
@@ -1969,6 +2163,10 @@ function FeeManagementPanel() {
               <tbody>
                 {payments.map((payment) => {
                   const student = studentById.get(payment.student_id);
+                  const raw =
+                    payment.raw && typeof payment.raw === "object" && !Array.isArray(payment.raw)
+                      ? (payment.raw as Record<string, unknown>)
+                      : {};
                   return (
                     <tr key={payment.id} className="border-b last:border-0">
                       <td className="px-3 py-2.5">
@@ -1976,13 +2174,53 @@ function FeeManagementPanel() {
                           ? `${student.first_name} ${student.last_name} (${student.student_number})`
                           : "Unknown student"}
                       </td>
-                      <td className="px-3 py-2.5">{payment.reference ?? "—"}</td>
+                      <td className="px-3 py-2.5">
+                        <span>{payment.reference ?? "—"}</span>
+                        {typeof raw["explanation"] === "string" && (
+                          <span className="block text-xs text-muted-foreground">
+                            {raw["explanation"]}
+                          </span>
+                        )}
+                      </td>
                       <td className="px-3 py-2.5">{payment.method}</td>
                       <td className="px-3 py-2.5 capitalize">{payment.status}</td>
                       <td className="px-3 py-2.5">
                         {new Date(payment.paid_at).toLocaleDateString("en-KE")}
                       </td>
-                      <td className="px-3 py-2.5 text-right">{formatKES(payment.amount)}</td>
+                      <td className="px-3 py-2.5 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          {formatKES(payment.amount)}
+                          {!payment.provider && payment.status === "confirmed" && (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                const rawValue =
+                                  payment.raw &&
+                                  typeof payment.raw === "object" &&
+                                  !Array.isArray(payment.raw)
+                                    ? (payment.raw as Record<string, unknown>)
+                                    : {};
+                                setManualPaymentId(payment.id);
+                                setManualPayment({
+                                  student_id: payment.student_id,
+                                  amount: String(payment.amount),
+                                  method: payment.method,
+                                  reference: payment.reference ?? "",
+                                  explanation:
+                                    typeof rawValue["explanation"] === "string"
+                                      ? rawValue["explanation"]
+                                      : "",
+                                  paid_at: new Date(payment.paid_at).toISOString().slice(0, 10),
+                                });
+                              }}
+                            >
+                              Edit
+                            </Button>
+                          )}
+                        </div>
+                      </td>
                     </tr>
                   );
                 })}
@@ -2002,6 +2240,33 @@ function FeeManagementPanel() {
 function DataDirectory({ section }: { section: DashboardSection }) {
   const queryClient = useQueryClient();
   const [savingRecord, setSavingRecord] = useState(false);
+  const [editingFee, setEditingFee] = useState<{
+    id: string;
+    description: string;
+    amount: string;
+  } | null>(null);
+  const updateFeeMutation = useMutation({
+    mutationFn: async (fee: { id: string; description: string; amount: number }) => {
+      const { error } = await supabase
+        .from("fees")
+        .update({ description: fee.description, amount: fee.amount })
+        .eq("id", fee.id);
+      if (error) throw error;
+    },
+    onSuccess: async () => {
+      toast.success("Fee charge updated");
+      setEditingFee(null);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["admin", "directory", "fees"] }),
+        queryClient.invalidateQueries({ queryKey: ["admin", "fee-management"] }),
+        queryClient.invalidateQueries({ queryKey: ["admin", "overview"] }),
+        queryClient.invalidateQueries({ queryKey: ["student", "fees"] }),
+        queryClient.invalidateQueries({ queryKey: ["student", "fee-total"] }),
+      ]);
+    },
+    onError: (error: Error) =>
+      toast.error("Could not update fee charge", { description: error.message }),
+  });
   const configuration: Partial<
     Record<DashboardSection, { table: string; label: string; order: string }>
   > = {
@@ -2049,7 +2314,7 @@ function DataDirectory({ section }: { section: DashboardSection }) {
         case "fees": {
           const result = await supabase
             .from("fees")
-            .select("*")
+            .select("*,student:students(student_number,first_name,middle_name,last_name)")
             .order("created_at", { ascending: false });
           data = result.data;
           error = result.error;
@@ -2151,6 +2416,9 @@ function DataDirectory({ section }: { section: DashboardSection }) {
         error = result.error;
         break;
       }
+      case "fees": {
+        return;
+      }
       case "materials": {
         const result = await supabase
           .from("learning_materials")
@@ -2211,8 +2479,23 @@ function DataDirectory({ section }: { section: DashboardSection }) {
       toast.success("Record updated");
       await queryClient.invalidateQueries({ queryKey: ["admin", "directory", section] });
       await queryClient.invalidateQueries({ queryKey: ["admin", "overview"] });
+      if (section === "fees") {
+        await queryClient.invalidateQueries({ queryKey: ["admin", "fee-management"] });
+        await queryClient.invalidateQueries({ queryKey: ["student", "fees"] });
+        await queryClient.invalidateQueries({ queryKey: ["student", "fee-total"] });
+      }
+      if (section === "media") await queryClient.invalidateQueries({ queryKey: ["media"] });
     }
   }
+  const getRowEntries = (row: Record<string, unknown>) => {
+    const entries = Object.entries(row).filter(
+      ([key]) =>
+        !["raw", "details", "upload_token"].includes(key) &&
+        !(section === "fees" && (key === "student" || key === "id" || key.endsWith("_id"))),
+    );
+    if (section === "fees") entries.unshift(["student", row["student"]]);
+    return entries.slice(0, 8);
+  };
   return (
     <section className="space-y-4 rounded-xl border bg-card p-5 shadow-card">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -2222,7 +2505,24 @@ function DataDirectory({ section }: { section: DashboardSection }) {
             Latest {Math.min(query.data?.length ?? 0, 200)} records
           </p>
         </div>
-        <Button variant="outline" onClick={() => exportCsv(`${section}.csv`, query.data ?? [])}>
+        <Button
+          variant="outline"
+          onClick={() =>
+            exportCsv(
+              `${section}.csv`,
+              section === "fees"
+                ? (query.data ?? []).map((row) => ({
+                    ...Object.fromEntries(
+                      Object.entries(row).filter(
+                        ([key]) => key !== "student" && key !== "id" && !key.endsWith("_id"),
+                      ),
+                    ),
+                    student: feeStudentLabel(row["student"]),
+                  }))
+                : (query.data ?? []),
+            )
+          }
+        >
           <ArrowDownToLine /> Export CSV
         </Button>
       </div>
@@ -2234,6 +2534,11 @@ function DataDirectory({ section }: { section: DashboardSection }) {
           onSaved={() => {
             void queryClient.invalidateQueries({ queryKey: ["admin", "directory", section] });
             void queryClient.invalidateQueries({ queryKey: ["admin", "overview"] });
+            if (section === "fees") {
+              void queryClient.invalidateQueries({ queryKey: ["admin", "fee-management"] });
+              void queryClient.invalidateQueries({ queryKey: ["student", "fees"] });
+              void queryClient.invalidateQueries({ queryKey: ["student", "fee-total"] });
+            }
           }}
           setSaving={setSavingRecord}
           saving={savingRecord}
@@ -2252,17 +2557,14 @@ function DataDirectory({ section }: { section: DashboardSection }) {
           <table className="w-full min-w-[640px] border-collapse text-left text-sm">
             <thead>
               <tr>
-                {Object.keys(query.data[0] ?? {})
-                  .filter((key) => !["raw", "details", "upload_token"].includes(key))
-                  .slice(0, 8)
-                  .map((key) => (
-                    <th
-                      key={key}
-                      className="border-b px-3 py-2 text-xs font-semibold uppercase text-muted-foreground"
-                    >
-                      {key.replaceAll("_", " ")}
-                    </th>
-                  ))}
+                {getRowEntries(query.data[0] ?? {}).map(([key]) => (
+                  <th
+                    key={key}
+                    className="border-b px-3 py-2 text-xs font-semibold uppercase text-muted-foreground"
+                  >
+                    {key === "student" ? "Student" : key.replaceAll("_", " ")}
+                  </th>
+                ))}
                 {[
                   "schools",
                   "results",
@@ -2272,6 +2574,7 @@ function DataDirectory({ section }: { section: DashboardSection }) {
                   "announcements",
                   "media",
                   "messages",
+                  "fees",
                 ].includes(section) && (
                   <th className="border-b px-3 py-2 text-xs font-semibold uppercase text-muted-foreground">
                     Action
@@ -2282,14 +2585,38 @@ function DataDirectory({ section }: { section: DashboardSection }) {
             <tbody>
               {query.data.map((row, i) => (
                 <tr key={String(row["id"] ?? i)} className="border-b last:border-0">
-                  {Object.entries(row)
-                    .filter(([key]) => !["raw", "details", "upload_token"].includes(key))
-                    .slice(0, 8)
-                    .map(([key, value]) => (
-                      <td key={key} className="max-w-64 truncate px-3 py-2.5">
-                        {formatValue(value)}
-                      </td>
-                    ))}
+                  {getRowEntries(row).map(([key, value]) => (
+                    <td key={key} className="max-w-64 truncate px-3 py-2.5">
+                      {section === "fees" &&
+                      editingFee?.id === String(row["id"]) &&
+                      key === "description" ? (
+                        <Input
+                          aria-label="Fee charge description"
+                          value={editingFee.description}
+                          onChange={(event) =>
+                            setEditingFee({ ...editingFee, description: event.target.value })
+                          }
+                        />
+                      ) : section === "fees" &&
+                        editingFee?.id === String(row["id"]) &&
+                        key === "amount" ? (
+                        <Input
+                          aria-label="Fee charge amount"
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={editingFee.amount}
+                          onChange={(event) =>
+                            setEditingFee({ ...editingFee, amount: event.target.value })
+                          }
+                        />
+                      ) : section === "fees" && key === "student" ? (
+                        feeStudentLabel(value)
+                      ) : (
+                        formatValue(value)
+                      )}
+                    </td>
+                  ))}
                   {[
                     "schools",
                     "results",
@@ -2299,6 +2626,7 @@ function DataDirectory({ section }: { section: DashboardSection }) {
                     "announcements",
                     "media",
                     "messages",
+                    "fees",
                   ].includes(section) && (
                     <td className="px-3 py-2.5">
                       <div className="flex flex-wrap items-center gap-2">
@@ -2320,21 +2648,67 @@ function DataDirectory({ section }: { section: DashboardSection }) {
                         <Button
                           size="sm"
                           variant="outline"
-                          disabled={savingRecord}
-                          onClick={() => void updateRecord(row)}
+                          disabled={savingRecord || updateFeeMutation.isPending}
+                          onClick={() => {
+                            if (section !== "fees") {
+                              void updateRecord(row);
+                              return;
+                            }
+                            if (editingFee?.id !== String(row["id"])) {
+                              setEditingFee({
+                                id: String(row["id"]),
+                                description: String(row["description"] ?? ""),
+                                amount: String(row["amount"] ?? ""),
+                              });
+                              return;
+                            }
+                            const amount = Number(editingFee.amount);
+                            if (
+                              !editingFee.description.trim() ||
+                              !Number.isFinite(amount) ||
+                              amount < 0
+                            ) {
+                              toast.error(
+                                "Enter a description and a valid non-negative fee amount.",
+                              );
+                              return;
+                            }
+                            updateFeeMutation.mutate({
+                              id: editingFee.id,
+                              description: editingFee.description.trim(),
+                              amount,
+                            });
+                          }}
                         >
-                          {section === "messages"
-                            ? row["status"] === "new"
-                              ? "Mark responded"
-                              : "Reopen"
-                            : section === "articles"
-                              ? row["status"] === "published"
-                                ? "Unpublish"
-                                : "Publish"
-                              : row["published"]
-                                ? "Deactivate"
-                                : "Activate"}
+                          {section === "fees"
+                            ? editingFee?.id === String(row["id"])
+                              ? updateFeeMutation.isPending
+                                ? "Saving…"
+                                : "Save charge"
+                              : "Edit charge"
+                            : section === "messages"
+                              ? row["status"] === "new"
+                                ? "Mark responded"
+                                : "Reopen"
+                              : section === "articles"
+                                ? row["status"] === "published"
+                                  ? "Unpublish"
+                                  : "Publish"
+                                : row["published"]
+                                  ? "Deactivate"
+                                  : "Activate"}
                         </Button>
+                        {section === "fees" && editingFee?.id === String(row["id"]) && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            disabled={updateFeeMutation.isPending}
+                            onClick={() => setEditingFee(null)}
+                          >
+                            Cancel
+                          </Button>
+                        )}
                       </div>
                     </td>
                   )}
@@ -2776,6 +3150,7 @@ function ContentCreateForm({
     url: "",
     caption: "",
     alt: "",
+    category: "homepage",
     file: null as File | null,
   });
   const labels = {
@@ -2846,6 +3221,7 @@ function ContentCreateForm({
     } else {
       const result = await supabase.from("media").insert({
         url: values.url.trim(),
+        category: values.category,
         caption: values.caption.trim() || null,
         alt: values.alt.trim() || null,
         uploaded_by: user?.id ?? null,
@@ -2865,7 +3241,16 @@ function ContentCreateForm({
       toast.error("Could not save content", { description: error.message });
     } else {
       toast.success("Content saved as a draft");
-      setValues({ title: "", content: "", excerpt: "", url: "", caption: "", alt: "", file: null });
+      setValues({
+        title: "",
+        content: "",
+        excerpt: "",
+        url: "",
+        caption: "",
+        alt: "",
+        category: "homepage",
+        file: null,
+      });
       onSaved();
     }
   }
@@ -2878,6 +3263,14 @@ function ContentCreateForm({
       <form onSubmit={submit} className="mt-4 grid gap-3">
         {section === "media" ? (
           <>
+            <select
+              className={selectClass}
+              value={values.category}
+              onChange={(event) => setValues({ ...values, category: event.target.value })}
+            >
+              <option value="homepage">Homepage gallery</option>
+              <option value="partners">Partners</option>
+            </select>
             <Input
               type="url"
               required
@@ -3311,6 +3704,21 @@ function formatValue(value: unknown) {
   if (value === null || value === undefined) return "—";
   if (typeof value === "object") return JSON.stringify(value);
   return String(value);
+}
+function feeStudentLabel(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return "Unknown student";
+  const student = value as {
+    student_number?: unknown;
+    first_name?: unknown;
+    middle_name?: unknown;
+    last_name?: unknown;
+  };
+  const name = [student.first_name, student.middle_name, student.last_name]
+    .filter((part): part is string => typeof part === "string" && part.trim().length > 0)
+    .join(" ");
+  const admissionNumber =
+    typeof student.student_number === "string" ? student.student_number : "No admission number";
+  return `${admissionNumber} · ${name || "Name unavailable"}`;
 }
 function exportCsv(fileName: string, rows: readonly object[]) {
   if (!rows.length) {

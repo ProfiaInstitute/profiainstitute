@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { loadPayHeroCredentials, type PayHeroCredentials } from "../_shared/payhero.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -12,10 +13,7 @@ Deno.serve(async (request: Request) => {
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  const username = Deno.env.get("PAYHERO_API_USERNAME");
-  const password = Deno.env.get("PAYHERO_API_PASSWORD");
-  const channelId = Deno.env.get("PAYHERO_CHANNEL_ID");
-  if (!supabaseUrl || !serviceRoleKey || !username || !password || !channelId) {
+  if (!supabaseUrl || !serviceRoleKey) {
     console.error("PayHero fee payment is not configured.");
     return json(
       { error: "Online fee payments are not configured. Contact the accounts office." },
@@ -32,6 +30,21 @@ Deno.serve(async (request: Request) => {
   if (authError || !authData.user)
     return json({ error: "Your session is invalid or expired." }, 401);
 
+  let credentials: PayHeroCredentials | null;
+  try {
+    credentials = await loadPayHeroCredentials(supabase);
+  } catch (error) {
+    console.error("Could not load PayHero fee payment settings:", errorMessage(error));
+    return json({ error: "Could not load online fee payment settings. Please retry." }, 500);
+  }
+  if (!credentials) {
+    console.error("PayHero fee payment is not configured.");
+    return json(
+      { error: "Online fee payments are not configured. Contact the accounts office." },
+      503,
+    );
+  }
+
   let body: { amount?: unknown };
   try {
     body = await request.json();
@@ -44,7 +57,7 @@ Deno.serve(async (request: Request) => {
 
   const { data: student, error: studentError } = await supabase
     .from("students")
-    .select("id,student_number,first_name,last_name,phone")
+    .select("id,first_name,last_name,phone")
     .eq("user_id", authData.user.id)
     .maybeSingle();
   if (studentError || !student)
@@ -116,17 +129,16 @@ Deno.serve(async (request: Request) => {
     gatewayResponse = await fetch("https://backend.payhero.co.ke/api/v2/payments", {
       method: "POST",
       headers: {
-        Authorization: `Basic ${btoa(`${username}:${password}`)}`,
+        Authorization: `Basic ${btoa(`${credentials.username}:${credentials.password}`)}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
         amount: body.amount,
         phone_number: phone,
-        channel_id: channelId,
+        channel_id: credentials.channelId,
         provider: "m-pesa",
         external_reference: payment.reference,
         customer_name: `${student.first_name} ${student.last_name}`.trim(),
-        transaction_description: `School fees · ${student.student_number}`,
         callback_url: `${supabaseUrl.replace(/\/$/, "")}/functions/v1/payhero-callback`,
       }),
     });
@@ -136,11 +148,11 @@ Deno.serve(async (request: Request) => {
   }
 
   const gatewayBody = await gatewayResponse.json().catch(() => null);
-  if (!gatewayResponse.ok) {
+  if (!gatewayResponse.ok || !isAcceptedResponse(gatewayBody)) {
     await markPaymentFailed(
       supabase,
       payment.id,
-      `PayHero returned HTTP ${gatewayResponse.status}.`,
+      `PayHero returned HTTP ${gatewayResponse.status} without accepting the request.`,
     );
     console.error("PayHero fee payment request failed:", gatewayResponse.status);
     return json(
@@ -154,6 +166,15 @@ Deno.serve(async (request: Request) => {
     "checkout_request_id",
     "checkout_id",
   ]);
+  const providerReference = findValue(gatewayBody, ["reference"]);
+  if (!providerReference) {
+    await markPaymentFailed(supabase, payment.id, "PayHero response did not include a reference.");
+    console.error("PayHero accepted a fee request without returning its transaction reference.");
+    return json(
+      { error: "PayHero returned an incomplete payment response. Please contact support." },
+      502,
+    );
+  }
   const { error: updateError } = await supabase
     .from("payments")
     .update({
@@ -161,6 +182,7 @@ Deno.serve(async (request: Request) => {
         payment_type: "student_fees",
         request_accepted: true,
         provider_checkout_id: checkoutId,
+        provider_reference: providerReference,
       },
     })
     .eq("id", payment.id)
@@ -197,6 +219,12 @@ function findValue(value: unknown, keys: string[]): string | null {
     if (nested) return nested;
   }
   return null;
+}
+
+function isAcceptedResponse(value: unknown) {
+  return Boolean(
+    value && typeof value === "object" && "success" in value && value.success === true,
+  );
 }
 
 async function markPaymentFailed(

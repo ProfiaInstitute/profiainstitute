@@ -1096,6 +1096,7 @@ create table if not exists public.online_course_payments (
   amount numeric(12, 2) not null check (amount > 0),
   reference text not null unique,
   provider_checkout_id text unique,
+  provider_reference text unique,
   status text not null default 'pending' check (status in ('pending','confirmed','failed')),
   provider text not null default 'payhero',
   raw jsonb not null default '{}'::jsonb,
@@ -1854,3 +1855,25 @@ as $$
 $$;
 revoke all on function public.admin_fee_account_summary() from public, anon;
 grant execute on function public.admin_fee_account_summary() to authenticated;
+
+-- ===== 0017_payhero_superadmin_settings.sql =====
+create table public.payhero_settings (
+  id boolean primary key default true check (id),
+  api_username text not null,
+  api_password text not null,
+  channel_id text not null,
+  updated_by uuid references auth.users(id) on delete set null,
+  updated_at timestamptz not null default now()
+);
+
+alter table public.payhero_settings enable row level security;
+revoke all on public.payhero_settings from anon, authenticated;
+grant all on public.payhero_settings to service_role;
+
+-- ===== 0018_payhero_provider_references.sql =====
+alter table public.online_course_payments
+  add column if not exists provider_reference text;
+
+create unique index if not exists online_course_payments_provider_reference_key
+  on public.online_course_payments(provider_reference)
+  where provider_reference is not null;

@@ -13,22 +13,44 @@ verified against PayHero before they are assigned to the requesting student's
 account; the Admin Fees module then reflects updated transactions and balances.
 Student-entered receipt numbers are not accepted as proof of payment.
 
-Apply `drizzle/migrations/0014_course_billing_mpesa.sql` and then
-`drizzle/migrations/0016_payhero_fee_payments_documents.sql` before using fee
-payments. Deploy the `create-fee-payment`, `payhero-callback`, and
-`generate-fee-statement` Supabase Edge Functions. Configure the Edge Function
-secrets `PAYHERO_API_USERNAME`, `PAYHERO_API_PASSWORD`, and
-`PAYHERO_CHANNEL_ID`; the channel ID must be the PayHero channel connected to
-the Equity Bank Paybill. `payhero-callback` must accept unauthenticated provider
-callbacks (`verify_jwt = false`); it verifies payment status server-to-server
-with PayHero before recording a payment.
+Apply `drizzle/migrations/0014_course_billing_mpesa.sql`,
+`drizzle/migrations/0016_payhero_fee_payments_documents.sql`, and
+`drizzle/migrations/0017_payhero_superadmin_settings.sql`, and
+`drizzle/migrations/0018_payhero_provider_references.sql` before using PayHero
+payments. Deploy the `create-fee-payment`, `create-online-payment`,
+`manage-payhero-settings`, `payhero-callback`, `generate-fee-statement`, and
+`generate-fee-receipt`, and `generate-fee-statement-template` Supabase Edge
+Functions. A Super Admin can set the PayHero API username, password, and channel
+ID from **Admin → PayHero payments**. Credentials are stored in a server-only
+table and are never returned to the browser. Existing
+`PAYHERO_API_USERNAME`, `PAYHERO_API_PASSWORD`, and `PAYHERO_CHANNEL_ID` Edge
+Function secrets remain available as a fallback until settings are saved in
+Admin; the channel ID must be connected to the Equity Bank Paybill.
+`payhero-callback` must accept unauthenticated provider callbacks
+(`verify_jwt = false`); it verifies payment status server-to-server with
+PayHero using the provider reference returned when the STK request is created
+before recording a payment.
 
-Confirmed payments generate a receipt PDF containing student details, amount,
-date, and transaction reference. Receipts use the system favicon, are stored in
-the private `fee-documents` bucket, and are linked in the student portal with an
-in-app payment notification. Students can also generate a current fee statement
-PDF from the portal. `FEE_RECEIPT_LOGO_URL` is optional; by default the
-functions load `https://www.profiainstitute.com/favicon.png`.
+Confirmed payments generate a receipt PDF with student details, the amount paid,
+the balance after that payment (`NULL` when fully paid), the exact M-Pesa receipt
+number for PayHero payments, and a `PAID` stamp. Receipts use the configured
+school logo/badge, are stored in the private `fee-documents` bucket, and are
+linked in the student portal with an in-app payment notification. Receipt
+downloads regenerate the PDF,
+so older confirmed payments can also get an updated receipt. If PayHero still has
+the transaction reference, historical M-Pesa numbers are verified and backfilled
+when possible; the internal payment reference is never presented as an M-Pesa
+transaction number. Students can also generate a current fee statement PDF from
+the portal. `FEE_RECEIPT_LOGO_URL` is optional; by default the functions load
+`https://www.profiainstitute.com/favicon.png`.
+
+Super Admins can save course-specific statement templates and account/payment
+instructions from **Admin → Fees** and download a branded PDF with student and
+balance placeholders. Student statement PDFs use the saved school logo, contact
+details, and the relevant course's payment instructions. Admins can also record
+and edit manual confirmed payments; their explanations are retained with the
+transaction and changes immediately affect balances. Homepage gallery media
+published from **Admin → Media** appears on the public homepage.
 
 The optional Daraja C2B callback remains available for direct Safaricom
 Paybill payments when separately configured with `MPESA_BUSINESS_SHORTCODE`

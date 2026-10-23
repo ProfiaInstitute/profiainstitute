@@ -108,11 +108,7 @@ export function useCourses(schoolId?: string) {
     queryKey: ["courses", schoolId ?? "all"],
     staleTime: 5 * 60_000,
     queryFn: async () => {
-      let q = supabase
-        .from("courses")
-        .select("*")
-        .eq("published", true)
-        .order("sort_order");
+      let q = supabase.from("courses").select("*").eq("published", true).order("sort_order");
       if (schoolId) q = q.eq("school_id", schoolId);
       const { data, error } = await q;
       if (error) throw error;
@@ -130,7 +126,9 @@ export function useActiveIntake() {
         .from("intakes")
         .select("id,name,start_date,application_deadline,notes")
         .eq("is_open", true)
-        .or(`application_deadline.is.null,application_deadline.gte.${new Date().toISOString().slice(0, 10)}`)
+        .or(
+          `application_deadline.is.null,application_deadline.gte.${new Date().toISOString().slice(0, 10)}`,
+        )
         .order("start_date", { ascending: true, nullsFirst: false })
         .limit(1)
         .maybeSingle();
@@ -143,7 +141,7 @@ export function useActiveIntake() {
 export function useMedia(category: string) {
   return useQuery({
     queryKey: ["media", category],
-    staleTime: 5 * 60_000,
+    staleTime: 30_000,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("media")

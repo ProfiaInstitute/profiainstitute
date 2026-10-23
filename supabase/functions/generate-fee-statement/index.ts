@@ -28,7 +28,7 @@ Deno.serve(async (request: Request) => {
 
   const { data: student, error: studentError } = await supabase
     .from("students")
-    .select("id,user_id,student_number,first_name,middle_name,last_name,email")
+    .select("id,user_id,course_id,student_number,first_name,middle_name,last_name,email")
     .eq("user_id", authData.user.id)
     .maybeSingle();
   if (studentError || !student)
@@ -38,7 +38,7 @@ Deno.serve(async (request: Request) => {
     const path = await createFeeStatement(supabase, student);
     const { data: signedFile, error: signedUrlError } = await supabase.storage
       .from("fee-documents")
-      .createSignedUrl(path, 300);
+      .createSignedUrl(path, 300, { download: "fee-statement.pdf" });
     if (signedUrlError) {
       console.error("Could not create fee statement download link:", signedUrlError.message);
       return json(

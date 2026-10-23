@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { createFeeReceipt } from "../_shared/fee-documents.ts";
+import { loadPayHeroCredentials, type PayHeroCredentials } from "../_shared/payhero.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -13,9 +14,7 @@ Deno.serve(async (request: Request) => {
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  const username = Deno.env.get("PAYHERO_API_USERNAME");
-  const password = Deno.env.get("PAYHERO_API_PASSWORD");
-  if (!supabaseUrl || !serviceRoleKey || !username || !password) {
+  if (!supabaseUrl || !serviceRoleKey) {
     console.error("PayHero callback verification is not configured.");
     return json({ error: "Payment verification is not configured." }, 503);
   }
@@ -27,13 +26,24 @@ Deno.serve(async (request: Request) => {
     return json({ error: "Invalid callback JSON." }, 400);
   }
   const reference =
-    findValue(callback, ["external_reference", "externalReference", "reference"]) ??
+    findValue(callback, ["ExternalReference", "external_reference", "externalReference"]) ??
     findValue(callback, ["CheckoutRequestID", "checkout_request_id"]);
   if (!reference) return json({ error: "Payment reference is missing." }, 400);
 
   const supabase = createClient(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
+  let credentials: PayHeroCredentials | null;
+  try {
+    credentials = await loadPayHeroCredentials(supabase);
+  } catch (error) {
+    console.error("Could not load PayHero callback settings:", errorMessage(error));
+    return json({ error: "Could not load payment verification settings." }, 500);
+  }
+  if (!credentials) {
+    console.error("PayHero callback verification is not configured.");
+    return json({ error: "Payment verification is not configured." }, 503);
+  }
   let isOnlineCoursePayment = reference.startsWith("PRF-ONLINE-");
   let isFeePayment = reference.startsWith("PRF-FEE-");
   let payment = isOnlineCoursePayment
@@ -61,13 +71,27 @@ Deno.serve(async (request: Request) => {
     return json({ received: true, verified: false }, 200);
   if (!payment.data) return json({ received: true, verified: false }, 200);
 
+  const providerReference =
+    "provider_reference" in payment.data
+      ? payment.data.provider_reference
+      : findValue(payment.data.raw, ["provider_reference"]);
+  if (!providerReference) {
+    console.error("PayHero payment has no saved provider reference:", payment.data.reference);
+    return json({ error: "The payment reference is not ready for verification." }, 409);
+  }
+  const callbackAmount = findValue(callback, ["Amount", "amount"]);
+  if (callbackAmount !== null && Number(callbackAmount) !== Number(payment.data.amount)) {
+    console.error("PayHero callback amount did not match the pending payment.");
+    return json({ error: "The callback payment amount did not match the amount due." }, 409);
+  }
+
   let verificationResponse: Response;
   try {
     verificationResponse = await fetch(
-      `https://backend.payhero.co.ke/api/v2/transaction-status?reference=${encodeURIComponent(payment.data.reference)}`,
+      `https://backend.payhero.co.ke/api/v2/transaction-status?reference=${encodeURIComponent(providerReference)}`,
       {
         headers: {
-          Authorization: `Basic ${btoa(`${username}:${password}`)}`,
+          Authorization: `Basic ${btoa(`${credentials.username}:${credentials.password}`)}`,
           "Content-Type": "application/json",
         },
       },
@@ -81,34 +105,48 @@ Deno.serve(async (request: Request) => {
     return json({ error: "PayHero has not confirmed this payment yet." }, 502);
   }
   const verified = await verificationResponse.json().catch(() => null);
-  const verifiedExternalReference = findValue(verified, [
-    "external_reference",
-    "externalReference",
-  ]);
-  const verifiedAmount = findValue(verified, ["amount", "Amount", "transaction_amount"]);
-  if (verifiedExternalReference && verifiedExternalReference !== payment.data.reference) {
+  const verifiedReference = findValue(verified, ["reference"]);
+  if (verifiedReference !== providerReference) {
     console.error("PayHero status response reference did not match the pending payment.");
     return json({ error: "The payment reference did not match." }, 409);
-  }
-  if (verifiedAmount === null || Number(verifiedAmount) !== Number(payment.data.amount)) {
-    console.error("PayHero status response amount did not match the pending payment.");
-    return json({ error: "The verified payment amount did not match the amount due." }, 409);
   }
 
   const status = normalizeStatus(findValue(verified, ["status", "Status", "payment_status"]));
   const resultCode = findValue(verified, ["ResultCode", "result_code", "resultCode"]);
+  const verifiedAmount = findValue(verified, ["amount", "Amount"]);
+  if (verifiedAmount !== null && Number(verifiedAmount) !== Number(payment.data.amount)) {
+    console.error("PayHero status amount did not match the pending payment.");
+    return json({ error: "The verified payment amount did not match the amount due." }, 409);
+  }
+  const mpesaReceiptNumber = findValue(verified, [
+    "MpesaReceiptNumber",
+    "mpesa_receipt_number",
+    "third_party_reference",
+    "provider_reference",
+  ]);
   if (isSuccessful(status, resultCode)) {
+    if (!hasSuccessfulResponse(verified)) {
+      console.error("PayHero did not report a successful transaction for the callback.");
+      return json({ error: "PayHero has not confirmed this payment yet." }, 502);
+    }
+
     if (isOnlineCoursePayment) {
       const { error: ledgerError } = await supabase.from("payments").upsert(
         {
           student_id: payment.data.student_id,
           amount: payment.data.amount,
-          method: "PayHero M-Pesa STK",
+          method: "M-Pesa",
           provider: "payhero",
           reference: payment.data.reference,
           status: "confirmed",
           paid_at: new Date().toISOString(),
-          raw: { verified: true, verified_status: status, payment_type: "online_course" },
+          raw: {
+            verified: true,
+            verified_status: status,
+            payment_type: "online_course",
+            provider_reference: providerReference,
+            ...(mpesaReceiptNumber ? { mpesa_receipt_number: mpesaReceiptNumber } : {}),
+          },
         },
         { onConflict: "provider,reference", ignoreDuplicates: true },
       );
@@ -124,7 +162,11 @@ Deno.serve(async (request: Request) => {
         .update({
           status: "confirmed",
           paid_at: new Date().toISOString(),
-          raw: { verified_status: status, verified: true },
+          raw: {
+            verified_status: status,
+            verified: true,
+            ...(mpesaReceiptNumber ? { mpesa_receipt_number: mpesaReceiptNumber } : {}),
+          },
         })
         .eq("id", payment.data.id)
         .eq("status", "pending");
@@ -138,7 +180,15 @@ Deno.serve(async (request: Request) => {
         .update({
           status: "confirmed",
           paid_at: new Date().toISOString(),
-          raw: { verified: true, verified_status: status, payment_type: "student_fees" },
+          method: "M-Pesa",
+          raw: {
+            verified: true,
+            verified_status: status,
+            payment_type: "student_fees",
+            provider_reference: providerReference,
+            provider_checkout_id: findValue(payment.data.raw, ["provider_checkout_id"]),
+            ...(mpesaReceiptNumber ? { mpesa_receipt_number: mpesaReceiptNumber } : {}),
+          },
         })
         .eq("id", payment.data.id)
         .eq("status", "pending");
@@ -153,6 +203,46 @@ Deno.serve(async (request: Request) => {
       : payment.data.id;
     if (!ledgerPaymentId)
       return json({ error: "Confirmed payment could not be located in the ledger." }, 500);
+    const { data: ledgerPayment, error: ledgerReadError } = await supabase
+      .from("payments")
+      .select("raw")
+      .eq("id", ledgerPaymentId)
+      .eq("status", "confirmed")
+      .maybeSingle();
+    if (ledgerReadError || !ledgerPayment) {
+      console.error(
+        "Could not load the verified payment ledger entry:",
+        ledgerReadError?.message ?? "Payment was not found.",
+      );
+      return json({ error: "The payment was verified, but could not be recorded." }, 500);
+    }
+    const ledgerRaw =
+      ledgerPayment.raw &&
+      typeof ledgerPayment.raw === "object" &&
+      !Array.isArray(ledgerPayment.raw)
+        ? ledgerPayment.raw
+        : {};
+    const { error: receiptDetailsError } = await supabase
+      .from("payments")
+      .update({
+        method: "M-Pesa",
+        raw: {
+          ...ledgerRaw,
+          verified: true,
+          verified_status: status,
+          provider_reference: providerReference,
+          ...(mpesaReceiptNumber ? { mpesa_receipt_number: mpesaReceiptNumber } : {}),
+        },
+      })
+      .eq("id", ledgerPaymentId)
+      .eq("status", "confirmed");
+    if (receiptDetailsError) {
+      console.error("Could not save verified M-Pesa receipt details:", receiptDetailsError.message);
+      return json(
+        { error: "The payment was verified, but its receipt details could not be saved." },
+        500,
+      );
+    }
     try {
       await createFeeReceipt(supabase, ledgerPaymentId);
     } catch (error) {
@@ -182,7 +272,7 @@ Deno.serve(async (request: Request) => {
 async function findOnlinePayment(supabase: ReturnType<typeof createClient>, reference: string) {
   const query = supabase
     .from("online_course_payments")
-    .select("id,student_id,reference,amount,status,provider_checkout_id")
+    .select("id,student_id,reference,amount,status,provider_checkout_id,provider_reference")
     .in("status", ["pending", "confirmed"]);
   const { data, error } = reference.startsWith("PRF-ONLINE-")
     ? await query.eq("reference", reference).maybeSingle()
@@ -234,6 +324,10 @@ function findValue(value: unknown, keys: string[]): string | null {
   return null;
 }
 
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "Unknown PayHero verification error.";
+}
+
 function normalizeStatus(status: string | null) {
   return (
     status
@@ -250,15 +344,17 @@ function isSuccessful(status: string, resultCode: string | null) {
   );
 }
 
+function hasSuccessfulResponse(value: unknown) {
+  return Boolean(
+    value && typeof value === "object" && "success" in value && value.success === true,
+  );
+}
+
 function isFailed(status: string, resultCode: string | null) {
   return (
     ["failed", "cancelled", "canceled", "rejected", "declined", "expired"].includes(status) ||
     (resultCode !== null && resultCode !== "0")
   );
-}
-
-function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : "Unknown PayHero verification error.";
 }
 
 function json(body: Record<string, unknown>, status: number) {

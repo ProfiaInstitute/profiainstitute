@@ -4,7 +4,13 @@ import { ArrowRight, Check, Megaphone, Newspaper, Phone, Wallet, MapPin } from "
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { SCHOOL_ROUTES, seo, useActiveIntake, useSchools, useSetting } from "@/lib/site";
-import { CardGridSkeleton, EmptyState, Partners, SectionTitle } from "@/components/site/common";
+import {
+  CardGridSkeleton,
+  EmptyState,
+  HomepageMedia,
+  Partners,
+  SectionTitle,
+} from "@/components/site/common";
 
 export const Route = createFileRoute("/")({
   head: () =>
@@ -17,15 +23,31 @@ export const Route = createFileRoute("/")({
 });
 
 function Home() {
+  type CbcSettings = {
+    enabled: boolean;
+    badge?: string;
+    title?: string;
+    items: string[];
+    cta?: string;
+    phone?: string;
+    price?: string;
+    schedule?: string;
+    location?: string;
+  };
+  type WebSettings = {
+    enabled: boolean;
+    badge?: string;
+    title?: string;
+    cta?: string;
+    image?: string;
+  };
   const activeIntake = useActiveIntake();
   const hero = useSetting("content.hero", {
     title: "Become a Certified Public Accountant at Profia Institute",
     cta: "Apply now",
     image: "/images/profia_school.webp",
   });
-  const intakeBadge = activeIntake.data
-    ? `${activeIntake.data.name} now open`
-    : null;
+  const intakeBadge = activeIntake.data ? `${activeIntake.data.name} now open` : null;
   const intakeDetails = [
     activeIntake.data?.start_date
       ? `Starts ${new Date(`${activeIntake.data.start_date}T00:00:00`).toLocaleDateString("en-KE", { dateStyle: "medium" })}`
@@ -36,8 +58,8 @@ function Home() {
   ]
     .filter(Boolean)
     .join(" · ");
-  const cbc = useSetting<any>("content.cbc", { enabled: true, items: [] });
-  const web = useSetting<any>("content.webdev", { enabled: true });
+  const cbc = useSetting<CbcSettings>("content.cbc", { enabled: true, items: [] });
+  const web = useSetting<WebSettings>("content.webdev", { enabled: true });
   const stats = useSetting<{ items: { value: string; label: string }[] }>("stats", { items: [] });
 
   return (
@@ -170,6 +192,7 @@ function Home() {
 
       <AcademicsGrid />
       <LatestNews />
+      <HomepageMedia />
       <Partners />
     </>
   );
