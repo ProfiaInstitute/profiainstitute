@@ -1,9 +1,10 @@
-import { PDFDocument, rgb, StandardFonts } from "https://esm.sh/pdf-lib@1.17.1";
+import { PDFDocument, degrees, rgb, StandardFonts } from "https://esm.sh/pdf-lib@1.17.1";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { loadPayHeroCredentials, type PayHeroCredentials } from "./payhero.ts";
+import { officialFaviconBase64 } from "./receipt-brand.ts";
 
 const bucket = "fee-documents";
-const officialFaviconUrl = "https://profiainstitute.vercel.app/favicon.png";
+const officialWebsiteUrl = "https://www.profiainstitute.com";
 
 type Student = {
   id: string;
@@ -19,7 +20,6 @@ type Student = {
 type FeeDocumentSettings = {
   institutionName: string;
   logoUrl: string;
-  websiteUrl: string;
   phones: string[];
   email: string;
   address: string;
@@ -104,6 +104,7 @@ export async function createFeeReceipt(supabase: AdminClient, paymentId: string)
     raw: paymentRaw,
     receipt_reference: mpesaReference,
   };
+  const generatedAt = new Date();
   const pdf = await buildFeePdf({
     type: "receipt",
     student,
@@ -111,6 +112,7 @@ export async function createFeeReceipt(supabase: AdminClient, paymentId: string)
     payment: receiptPayment,
     fees: (fees ?? []) as Fee[],
     payments: (payments ?? []) as Payment[],
+    generatedAt,
   });
   const path = `${student.id}/receipts/${payment.id}.pdf`;
   const { error: uploadError } = await supabase.storage.from(bucket).upload(path, pdf, {
@@ -263,6 +265,7 @@ async function buildFeePdf({
   documentSettings,
   courseTitle,
   schoolName,
+  generatedAt = new Date(),
 }: {
   type: "receipt" | "statement" | "template";
   student: Student;
@@ -272,17 +275,24 @@ async function buildFeePdf({
   documentSettings: FeeDocumentSettings;
   courseTitle?: string;
   schoolName?: string;
+  generatedAt?: Date;
 }) {
-  const generatedAt = new Date();
   const document = await PDFDocument.create();
   const font = await document.embedFont(StandardFonts.Helvetica);
   const bold = await document.embedFont(StandardFonts.HelveticaBold);
-  const logo = await loadPdfLogo(documentSettings.logoUrl, document);
+  const logo =
+    type === "receipt"
+      ? await document.embedPng(
+          Uint8Array.from(atob(officialFaviconBase64), (character) => character.charCodeAt(0)),
+        )
+      : await loadPdfLogo(documentSettings.logoUrl, document);
   const pageSize: [number, number] = [595.28, 841.89];
-  const maroon = rgb(0.43, 0.07, 0.12);
-  const orange = rgb(0.93, 0.35, 0.14);
-  const muted = rgb(0.39, 0.35, 0.35);
-  const black = rgb(0.16, 0.13, 0.13);
+  const brand = rgb(0.408, 0.035, 0.082);
+  const brandDeep = rgb(0.278, 0.024, 0.051);
+  const accent = rgb(0.92, 0.31, 0.13);
+  const cream = rgb(0.99, 0.975, 0.945);
+  const muted = rgb(0.42, 0.36, 0.36);
+  const black = rgb(0.16, 0.13, 0.14);
   let page = document.addPage(pageSize);
   let y = 0;
 
@@ -291,86 +301,87 @@ async function buildFeePdf({
     drawHeader();
   };
   const drawHeader = () => {
-    page.drawRectangle({ x: 0, y: 754, width: pageSize[0], height: 88, color: maroon });
-    page.drawRectangle({ x: 0, y: 750, width: pageSize[0], height: 4, color: orange });
+    page.drawRectangle({ x: 0, y: 756, width: pageSize[0], height: 86, color: brand });
+    page.drawRectangle({ x: 0, y: 838, width: pageSize[0], height: 4, color: brandDeep });
+    page.drawRectangle({ x: 0, y: 756, width: pageSize[0], height: 4, color: accent });
     if (logo) {
-      const logoSize = 54;
+      const logoSize = 42;
       const logoScale = Math.min(logoSize / logo.width, logoSize / logo.height);
       const logoWidth = logo.width * logoScale;
       const logoHeight = logo.height * logoScale;
-      page.drawRectangle({
-        x: 39,
-        y: 770,
-        width: 62,
-        height: 62,
-        color: rgb(1, 1, 1),
-        borderColor: orange,
-        borderWidth: 1.5,
-      });
+      page.drawRectangle({ x: 38, y: 773, width: 50, height: 50, color: cream });
       page.drawImage(logo, {
-        x: 43 + (logoSize - logoWidth) / 2,
-        y: 774 + (logoSize - logoHeight) / 2,
+        x: 42 + (logoSize - logoWidth) / 2,
+        y: 777 + (logoSize - logoHeight) / 2,
         width: logoWidth,
         height: logoHeight,
       });
     }
-    page.drawText(safeText(documentSettings.institutionName.toUpperCase()), {
-      x: 115,
-      y: 808,
-      size: 17,
+    page.drawText(safeText(documentSettings.institutionName), {
+      x: 101,
+      y: 807,
+      size: 15,
       font: bold,
       color: rgb(1, 1, 1),
     });
-    page.drawText(safeText(documentSettings.websiteUrl), {
-      x: 115,
-      y: 789,
-      size: 9,
-      font,
-      color: rgb(1, 0.86, 0.78),
-    });
+    page.drawText(
+      type === "receipt" ? "OFFICIAL FEE PAYMENT RECEIPT" : "OFFICIAL STUDENT DOCUMENT",
+      {
+        x: 101,
+        y: 787,
+        size: 8,
+        font,
+        color: cream,
+      },
+    );
+    if (type === "receipt") drawPaidStamp();
     page.drawText(
       type === "receipt"
-        ? "OFFICIAL FEE PAYMENT RECEIPT"
+        ? "PAYMENT RECEIPT"
         : type === "template"
           ? "FEE STATEMENT TEMPLATE"
           : "STUDENT FEE STATEMENT",
       {
-        x: 44,
-        y: 719,
+        x: 42,
+        y: 727,
         size: 16,
         font: bold,
-        color: maroon,
+        color: brand,
       },
     );
-    if (type === "receipt" && payment) drawPaidStamp();
-    page.drawText(
-      `Receipt no. ${safeText(payment?.receipt_reference ?? payment?.reference ?? payment?.id ?? "")}`,
-      { x: 44, y: 699, size: 8, font, color: muted },
-    );
-    y = 671;
+    y = 695;
   };
   const drawPaidStamp = () => {
     page.drawEllipse({
-      x: 505,
-      y: 798,
-      xScale: 38,
-      yScale: 23,
-      borderColor: orange,
+      x: 520,
+      y: 800,
+      xScale: 34,
+      yScale: 27,
+      borderColor: accent,
       borderWidth: 1.5,
     });
-    page.drawText("PAID", {
-      x: 485,
-      y: 799,
-      size: 14,
-      font: bold,
-      color: rgb(1, 1, 1),
+    page.drawEllipse({
+      x: 520,
+      y: 800,
+      xScale: 29,
+      yScale: 22,
+      borderColor: cream,
+      borderWidth: 0.7,
     });
-    page.drawText("VERIFIED", {
-      x: 486,
-      y: 787,
-      size: 6,
+    page.drawText("PAID", {
+      x: 505,
+      y: 799,
+      size: 13,
       font: bold,
-      color: rgb(1, 0.86, 0.78),
+      color: cream,
+      rotate: degrees(-7),
+    });
+    page.drawText("PROFIA  |  VERIFIED", {
+      x: 495,
+      y: 784,
+      size: 4.5,
+      font,
+      color: cream,
     });
   };
   const ensureSpace = (height = 22) => {
@@ -395,8 +406,7 @@ async function buildFeePdf({
   const section = (title: string) => {
     ensureSpace(30);
     y -= 7;
-    page.drawText(safeText(title), { x: 44, y, size: 11, font: bold, color: maroon });
-    page.drawRectangle({ x: 44, y: y - 5, width: 30, height: 1.5, color: orange });
+    page.drawText(safeText(title), { x: 44, y, size: 11, font: bold, color: brand });
     y -= 20;
   };
   const tableRow = (left: string, right: string, isHeader = false) => {
@@ -406,7 +416,7 @@ async function buildFeePdf({
       y,
       size: isHeader ? 8 : 9,
       font: isHeader ? bold : font,
-      color: isHeader ? maroon : black,
+      color: isHeader ? muted : black,
     });
     const text = safeText(right);
     const width = (isHeader ? bold : font).widthOfTextAtSize(text, isHeader ? 8 : 9);
@@ -415,7 +425,7 @@ async function buildFeePdf({
       y,
       size: isHeader ? 8 : 9,
       font: isHeader ? bold : font,
-      color: isHeader ? maroon : black,
+      color: isHeader ? muted : black,
     });
     y -= 19;
   };
@@ -448,10 +458,8 @@ async function buildFeePdf({
     line("Total paid", "[Total paid]");
     line("Outstanding balance", "[Balance]");
   } else if (type === "receipt" && payment) {
-    line(
-      "Payment date",
-      new Date(payment.paid_at).toLocaleString("en-KE", { timeZone: "Africa/Nairobi" }),
-    );
+    line("Payment date", formatSchoolDateTime(new Date(payment.paid_at)));
+    line("Receipt generated", formatSchoolDateTime(generatedAt));
     const transactionReference =
       payment.receipt_reference ??
       (payment.provider === "payhero" ? "Not available" : (payment.reference ?? payment.id));
@@ -483,15 +491,12 @@ async function buildFeePdf({
     line("Total paid", `KES ${formatAmount(paid)}`);
     line(
       "Balance after payment",
-      remainingBalance === 0 ? "KES 0.00" : `KES ${formatAmount(remainingBalance)}`,
+      remainingBalance === 0 ? "PAID IN FULL" : `KES ${formatAmount(remainingBalance)}`,
     );
     line("Payment status", "PAID");
     line("Amount paid", `KES ${formatAmount(payment.amount)}`);
   } else {
-    line(
-      "Statement generated",
-      generatedAt.toLocaleString("en-KE", { timeZone: "Africa/Nairobi" }),
-    );
+    line("Statement generated", new Date().toLocaleString("en-KE"));
     if (courseTitle) line("Course", courseTitle);
     section("Charges");
     tableRow("Charge description", "Amount (KES)", true);
@@ -519,72 +524,73 @@ async function buildFeePdf({
     if (paid > billed) line("Credit", `KES ${formatAmount(paid - billed)}`);
   }
 
-  section("Official payment methods");
-  for (const detail of documentSettings.paymentMethods.split(/\r?\n/).filter(Boolean))
-    line("Payment method", detail);
-  if (documentSettings.accountDetails.trim()) {
-    section("School payment accounts");
-    for (const detail of documentSettings.accountDetails.split(/\r?\n/).filter(Boolean))
-      line("Account details", detail);
+  if (type !== "receipt") {
+    section("Official payment methods");
+    for (const detail of documentSettings.paymentMethods.split(/\r?\n/).filter(Boolean))
+      line("Payment method", detail);
+    if (documentSettings.accountDetails.trim()) {
+      section("School payment accounts");
+      for (const detail of documentSettings.accountDetails.split(/\r?\n/).filter(Boolean))
+        line("Account details", detail);
+    }
+    section("School contacts");
+    if (documentSettings.phones.length) line("Phone", documentSettings.phones.join(" / "));
+    if (documentSettings.email) line("Email", documentSettings.email);
+    if (documentSettings.address) line("Address", documentSettings.address);
   }
-  section("School contacts");
-  if (documentSettings.phones.length) line("Phone", documentSettings.phones.join(" / "));
-  if (documentSettings.email) line("Email", documentSettings.email);
-  if (documentSettings.address) line("Address", documentSettings.address);
 
-  const generatedLabel = generatedAt.toLocaleString("en-KE", {
-    dateStyle: "medium",
-    timeStyle: "short",
-    timeZone: "Africa/Nairobi",
-  });
-  for (const [index, page] of document.getPages().entries()) {
-    page.drawRectangle({ x: 42, y: 48, width: 511, height: 1, color: orange });
-    page.drawText(safeText(documentSettings.websiteUrl), {
-      x: 44,
-      y: 32,
-      size: 8,
-      font: bold,
-      color: maroon,
+  const issued = `Generated ${formatSchoolDateTime(generatedAt)} EAT  |  ${officialWebsiteUrl}`;
+  document.getPages().forEach((pdfPage, index) => {
+    pdfPage.drawLine({
+      start: { x: 42, y: 48 },
+      end: { x: pageSize[0] - 42, y: 48 },
+      thickness: 0.7,
+      color: brand,
     });
-    page.drawText(`Generated for this print/download: ${generatedLabel} EAT`, {
-      x: 44,
-      y: 19,
+    pdfPage.drawText(safeText(issued), {
+      x: 42,
+      y: 32,
       size: 7,
       font,
       color: muted,
     });
-    page.drawText(`Page ${index + 1} of ${document.getPageCount()}`, {
-      x: 500,
-      y: 25,
-      size: 8,
+    pdfPage.drawText(`${index + 1} / ${document.getPageCount()}`, {
+      x: 520,
+      y: 32,
+      size: 7,
       font,
       color: muted,
     });
-  }
-
+  });
   return await document.save();
+}
+
+function formatSchoolDateTime(value: Date) {
+  return new Intl.DateTimeFormat("en-KE", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "Africa/Nairobi",
+  }).format(value);
 }
 
 async function loadPdfLogo(
   logoUrl: string,
   document: PDFDocument,
 ): Promise<Awaited<ReturnType<PDFDocument["embedPng"]>> | null> {
-  for (const url of new Set([logoUrl, officialFaviconUrl])) {
-    try {
-      const response = await fetch(url, { signal: AbortSignal.timeout(10_000) });
-      if (!response.ok) {
-        console.error(`Could not load institute logo for fee document (HTTP ${response.status}).`);
-        continue;
-      }
-      const bytes = new Uint8Array(await response.arrayBuffer());
-      if (isPng(bytes)) return await document.embedPng(bytes);
-      if (isJpeg(bytes)) return await document.embedJpg(bytes);
-      console.error("Institute logo for fee document is not a PNG or JPEG image.");
-    } catch (error) {
-      console.error("Could not load institute logo for fee document:", error);
+  try {
+    const response = await fetch(logoUrl, { signal: AbortSignal.timeout(10_000) });
+    if (!response.ok) {
+      console.error(`Could not load institute logo for fee document (HTTP ${response.status}).`);
+      return null;
     }
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    if (isPng(bytes)) return await document.embedPng(bytes);
+    if (isJpeg(bytes)) return await document.embedJpg(bytes);
+    console.error("Institute logo for fee document is not a PNG or JPEG image.");
+  } catch (error) {
+    console.error("Could not load institute logo for fee document:", error);
   }
-  throw new Error("The official school favicon could not be loaded to create the receipt.");
+  return null;
 }
 
 async function loadFeeDocumentSettings(
@@ -604,8 +610,11 @@ async function loadFeeDocumentSettings(
   const paymentMethods = override?.paymentMethods ?? stringValue(byCourse.payment_methods);
   return {
     institutionName: stringValue(general.institution_name) || "Profia Institute",
-    logoUrl: Deno.env.get("FEE_RECEIPT_LOGO_URL") ?? officialFaviconUrl,
-    websiteUrl: "https://www.profiainstitute.com",
+    logoUrl: resolveLogoUrl(
+      Deno.env.get("FEE_RECEIPT_LOGO_URL") ??
+        stringValue(general.logo_url) ??
+        "https://www.profiainstitute.com/favicon.png",
+    ),
     phones: Array.isArray(general.phones)
       ? general.phones.filter((phone): phone is string => typeof phone === "string")
       : [],
@@ -641,6 +650,12 @@ function wrapText(
   }
   if (current) lines.push(current);
   return lines;
+}
+
+function resolveLogoUrl(value: string) {
+  if (/^https?:\/\//i.test(value)) return value;
+  if (value.startsWith("/")) return `https://www.profiainstitute.com${value}`;
+  return "https://www.profiainstitute.com/favicon.png";
 }
 
 function safeText(value: string) {

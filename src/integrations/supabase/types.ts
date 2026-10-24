@@ -35,6 +35,7 @@ export type Database = {
       announcements: {
         Row: {
           attachment_type: string | null;
+          attachment_file_name: string | null;
           attachment_url: string | null;
           body: string;
           category: string;
@@ -52,6 +53,7 @@ export type Database = {
         };
         Insert: {
           attachment_type?: string | null;
+          attachment_file_name?: string | null;
           attachment_url?: string | null;
           body?: string;
           category?: string;
@@ -69,6 +71,7 @@ export type Database = {
         };
         Update: {
           attachment_type?: string | null;
+          attachment_file_name?: string | null;
           attachment_url?: string | null;
           body?: string;
           category?: string;
@@ -342,6 +345,7 @@ export type Database = {
       articles: {
         Row: {
           attachment_type: string | null;
+          attachment_file_name: string | null;
           attachment_url: string | null;
           author: string | null;
           category_id: string | null;
@@ -363,6 +367,7 @@ export type Database = {
         };
         Insert: {
           attachment_type?: string | null;
+          attachment_file_name?: string | null;
           attachment_url?: string | null;
           author?: string | null;
           category_id?: string | null;
@@ -384,6 +389,7 @@ export type Database = {
         };
         Update: {
           attachment_type?: string | null;
+          attachment_file_name?: string | null;
           attachment_url?: string | null;
           author?: string | null;
           category_id?: string | null;
@@ -711,6 +717,7 @@ export type Database = {
       enrollments: {
         Row: {
           academic_year: string | null;
+          application_id: string | null;
           course_id: string;
           created_at: string;
           id: string;
@@ -722,6 +729,7 @@ export type Database = {
         };
         Insert: {
           academic_year?: string | null;
+          application_id?: string | null;
           course_id: string;
           created_at?: string;
           id?: string;
@@ -733,6 +741,7 @@ export type Database = {
         };
         Update: {
           academic_year?: string | null;
+          application_id?: string | null;
           course_id?: string;
           created_at?: string;
           id?: string;
@@ -743,6 +752,13 @@ export type Database = {
           updated_at?: string;
         };
         Relationships: [
+          {
+            foreignKeyName: "enrollments_application_id_fkey";
+            columns: ["application_id"];
+            isOneToOne: true;
+            referencedRelation: "applications";
+            referencedColumns: ["id"];
+          },
           {
             foreignKeyName: "enrollments_course_id_fkey";
             columns: ["course_id"];

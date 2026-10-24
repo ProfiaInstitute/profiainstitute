@@ -166,8 +166,21 @@ export function SiteFooter() {
         </div>
       </div>
       <div className="border-t border-brand-foreground/10">
-        <div className="container-site py-5 text-center text-xs text-brand-foreground/60">
-          © {new Date().getFullYear()} {g.footer_text || "Profia Institute. All Rights Reserved"}
+        <div className="container-site flex flex-col items-center justify-between gap-2 py-5 text-center text-xs text-brand-foreground/60 sm:flex-row sm:text-left">
+          <span>
+            © {new Date().getFullYear()} {g.footer_text || "Profia Institute. All Rights Reserved"}
+          </span>
+          <span>
+            Digital system built by{" "}
+            <a
+              href="https://github.com/ochiengvicky21"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-medium text-brand-foreground/80 underline-offset-4 hover:text-primary hover:underline"
+            >
+              Victor Otieno Ochieng
+            </a>
+          </span>
         </div>
       </div>
     </footer>

@@ -276,6 +276,7 @@ create table public.students(
 create index on public.students(lower(email));
 create table public.enrollments(
   id uuid primary key default gen_random_uuid(), student_id uuid not null references public.students(id) on delete cascade,
+  application_id uuid unique references public.applications(id) on delete set null,
   course_id uuid not null references public.courses(id) on delete cascade, intake_id uuid references public.intakes(id) on delete set null,
   academic_year text, status text not null default 'active', progress int not null default 0,
   created_at timestamptz not null default now(), updated_at timestamptz not null default now());
@@ -303,17 +304,76 @@ create trigger s_num before insert on public.students for each row execute funct
 
 create or replace function public.enroll_application(_application_id uuid) returns uuid
 language plpgsql security definer set search_path=public as $$
-declare a public.applications; sid uuid;
+declare a public.applications; sid uuid; email_matches int; enrollment_id uuid;
 begin
   if not public.has_any_role(auth.uid(), array['super_admin','admissions_admin','academic_admin']::public.app_role[]) then raise exception 'Forbidden'; end if;
-  select * into a from public.applications where id=_application_id;
+  select * into a from public.applications where id=_application_id for update;
   if not found then raise exception 'Not found'; end if;
-  select id into sid from public.students where application_id = a.id;
-  if sid is not null then return sid; end if;
-  insert into public.students(student_number, application_id, first_name, middle_name, last_name, email, phone, alt_phone, national_id, date_of_birth, gender, county, town, address, course_id, intake_id, study_mode, current_semester)
-  values (public.next_student_number(), a.id, a.first_name, a.middle_name, a.last_name, a.email, a.phone, a.alt_phone, a.national_id, a.date_of_birth, a.gender, a.county, a.town, a.address, a.course_id, a.intake_id, a.study_mode, 'Semester 1')
-  returning id into sid;
-  if a.course_id is not null then insert into public.enrollments(student_id, course_id, intake_id) values (sid, a.course_id, a.intake_id); end if;
+  perform pg_advisory_xact_lock(hashtext(lower(a.email)));
+
+  select id into sid from public.students where application_id = a.id for update;
+  if sid is null then
+    select count(*) into email_matches
+      from public.students where lower(email) = lower(a.email);
+    if email_matches > 1 then
+      raise exception 'Multiple student records match this application email. Resolve the duplicate records before enrollment.';
+    elsif email_matches = 1 then
+      select id into sid from public.students
+       where lower(email) = lower(a.email) for update;
+    end if;
+  end if;
+
+  if sid is null then
+    insert into public.students(student_number, application_id, first_name, middle_name, last_name, email, phone, alt_phone, national_id, date_of_birth, gender, county, town, address, course_id, intake_id, study_mode, current_semester)
+    values (public.next_student_number(), a.id, a.first_name, a.middle_name, a.last_name, a.email, a.phone, a.alt_phone, a.national_id, a.date_of_birth, a.gender, a.county, a.town, a.address, a.course_id, a.intake_id, a.study_mode, 'Semester 1')
+    returning id into sid;
+  else
+    update public.students set
+      application_id = coalesce(application_id, a.id),
+      first_name = a.first_name,
+      middle_name = coalesce(a.middle_name, middle_name),
+      last_name = a.last_name,
+      phone = a.phone,
+      alt_phone = coalesce(a.alt_phone, alt_phone),
+      national_id = coalesce(a.national_id, national_id),
+      date_of_birth = coalesce(a.date_of_birth, date_of_birth),
+      gender = coalesce(a.gender, gender),
+      county = coalesce(a.county, county),
+      town = coalesce(a.town, town),
+      address = coalesce(a.address, address),
+      course_id = coalesce(a.course_id, course_id),
+      intake_id = coalesce(a.intake_id, intake_id),
+      study_mode = a.study_mode,
+      current_semester = coalesce(current_semester, 'Semester 1')
+    where id = sid;
+  end if;
+
+  if a.course_id is not null then
+    select id into enrollment_id
+      from public.enrollments
+     where application_id = a.id
+     order by created_at desc, id desc
+     limit 1 for update;
+    if enrollment_id is null then
+      select id into enrollment_id
+        from public.enrollments
+       where student_id = sid
+         and course_id = a.course_id
+         and intake_id is not distinct from a.intake_id
+         and status = 'active'
+         and application_id is null
+       order by created_at desc, id desc
+       limit 1 for update;
+    end if;
+    if enrollment_id is null then
+      insert into public.enrollments(student_id, application_id, course_id, intake_id)
+      values (sid, a.id, a.course_id, a.intake_id);
+    else
+      update public.enrollments set application_id = a.id
+       where id = enrollment_id and application_id is null;
+    end if;
+  end if;
+
   update public.applications set status='enrolled' where id=a.id and status <> 'enrolled';
   return sid;
 end $$;
@@ -410,9 +470,9 @@ create table public.notifications(
 grant select on public.announcements to anon, authenticated; grant insert, update, delete on public.announcements to authenticated; grant all on public.announcements to service_role;
 grant select, insert, update, delete on public.notifications to authenticated; grant all on public.notifications to service_role;
 alter table public.announcements enable row level security; alter table public.notifications enable row level security;
-create policy "ann public" on public.announcements for select to anon, authenticated using ((published and (show_public or show_on_homepage)) or public.is_staff(auth.uid()));
+create policy "ann public" on public.announcements for select to anon, authenticated using (published or public.is_staff(auth.uid()));
 create policy "ann students" on public.announcements for select to authenticated using (published and show_to_students and public.my_student_id() is not null);
-create policy "ann write" on public.announcements for all to authenticated using (public.has_any_role(auth.uid(), array['super_admin','content_admin']::public.app_role[])) with check (public.has_any_role(auth.uid(), array['super_admin','content_admin']::public.app_role[]));
+create policy "ann write" on public.announcements for all to authenticated using (public.has_any_role(auth.uid(), array['super_admin']::public.app_role[])) with check (public.has_any_role(auth.uid(), array['super_admin']::public.app_role[]));
 create policy "notif own" on public.notifications for select to authenticated using (user_id = auth.uid());
 create policy "notif own read flag" on public.notifications for update to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
 create policy "notif staff send" on public.notifications for insert to authenticated with check (public.is_staff(auth.uid()));
@@ -439,7 +499,7 @@ create table public.articles(
 create index on public.articles(status, published_at desc);
 grant select on public.articles, public.article_categories to anon, authenticated; grant insert, update, delete on public.articles, public.article_categories to authenticated; grant all on public.articles, public.article_categories to service_role;
 alter table public.articles enable row level security; alter table public.article_categories enable row level security;
-create policy "art public" on public.articles for select to anon, authenticated using ((status in ('published','scheduled') and published_at <= now()) or public.has_any_role(auth.uid(), array['super_admin','content_admin']::public.app_role[]));
+create policy "art public" on public.articles for select to anon, authenticated using ((status = 'published' or (status = 'scheduled' and published_at <= now())) or public.has_any_role(auth.uid(), array['super_admin','content_admin']::public.app_role[]));
 create policy "art write" on public.articles for all to authenticated using (public.has_any_role(auth.uid(), array['super_admin','content_admin']::public.app_role[])) with check (public.has_any_role(auth.uid(), array['super_admin','content_admin']::public.app_role[]));
 create policy "cat public" on public.article_categories for select to anon, authenticated using (true);
 create policy "cat write" on public.article_categories for all to authenticated using (public.has_any_role(auth.uid(), array['super_admin','content_admin']::public.app_role[])) with check (public.has_any_role(auth.uid(), array['super_admin','content_admin']::public.app_role[]));
@@ -845,11 +905,13 @@ set name = excluded.name,
 -- ===== 0005_content_media_uploads.sql =====
 alter table public.articles
   add column attachment_url text,
-  add column attachment_type text;
+  add column attachment_type text,
+  add column attachment_file_name text;
 
 alter table public.announcements
   add column attachment_url text,
-  add column attachment_type text;
+  add column attachment_type text,
+  add column attachment_file_name text;
 
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values
@@ -2060,3 +2122,29 @@ revoke all on function public.mark_assignment_submission(uuid, numeric, text, te
   from public, anon;
 grant execute on function public.mark_assignment_submission(uuid, numeric, text, text)
   to authenticated;
+
+-- ===== 0022_editorial_workflow.sql =====
+alter table public.articles
+  add column if not exists attachment_file_name text;
+
+alter table public.announcements
+  add column if not exists attachment_file_name text;
+
+drop policy if exists "ann public" on public.announcements;
+create policy "ann public" on public.announcements
+  for select to anon, authenticated
+  using (published or public.is_staff(auth.uid()));
+
+drop policy if exists "ann write" on public.announcements;
+create policy "ann write" on public.announcements
+  for all to authenticated
+  using (public.has_any_role(auth.uid(), array['super_admin']::public.app_role[]))
+  with check (public.has_any_role(auth.uid(), array['super_admin']::public.app_role[]));
+
+drop policy if exists "art public" on public.articles;
+create policy "art public" on public.articles
+  for select to anon, authenticated
+  using (
+    (status = 'published' or (status = 'scheduled' and published_at <= now()))
+    or public.has_any_role(auth.uid(), array['super_admin','content_admin']::public.app_role[])
+  );

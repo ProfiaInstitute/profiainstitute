@@ -433,7 +433,7 @@ create table public.articles(
 create index on public.articles(status, published_at desc);
 grant select on public.articles, public.article_categories to anon, authenticated; grant insert, update, delete on public.articles, public.article_categories to authenticated; grant all on public.articles, public.article_categories to service_role;
 alter table public.articles enable row level security; alter table public.article_categories enable row level security;
-create policy "art public" on public.articles for select to anon, authenticated using ((status in ('published','scheduled') and published_at <= now()) or public.has_any_role(auth.uid(), array['super_admin','content_admin']::public.app_role[]));
+create policy "art public" on public.articles for select to anon, authenticated using ((status = 'published' or (status = 'scheduled' and published_at <= now())) or public.has_any_role(auth.uid(), array['super_admin','content_admin']::public.app_role[]));
 create policy "art write" on public.articles for all to authenticated using (public.has_any_role(auth.uid(), array['super_admin','content_admin']::public.app_role[])) with check (public.has_any_role(auth.uid(), array['super_admin','content_admin']::public.app_role[]));
 create policy "cat public" on public.article_categories for select to anon, authenticated using (true);
 create policy "cat write" on public.article_categories for all to authenticated using (public.has_any_role(auth.uid(), array['super_admin','content_admin']::public.app_role[])) with check (public.has_any_role(auth.uid(), array['super_admin','content_admin']::public.app_role[]));

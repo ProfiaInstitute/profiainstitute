@@ -8,6 +8,7 @@ import {
   GraduationCap,
   MapPin,
   MessageCircle,
+  Newspaper,
   Phone,
   Send,
 } from "lucide-react";
@@ -24,6 +25,8 @@ import {
   SectionTitle,
 } from "@/components/site/common";
 import { supabase } from "@/integrations/supabase/client";
+import { getYouTubeEmbedUrl, renderContentMarkup } from "@/lib/content-format";
+import { downloadContentAttachment } from "@/lib/content-download";
 import type { Tables } from "@/integrations/supabase/types";
 import {
   SCHOOL_ROUTES,
@@ -584,7 +587,6 @@ export function AnnouncementsPage() {
           "id,title,body,category,created_at,starts_at,ends_at,attachment_url,attachment_type",
         )
         .eq("published", true)
-        .eq("show_public", true)
         .order("created_at", { ascending: false });
       if (error) throw error;
       const now = Date.now();
@@ -620,13 +622,15 @@ export function AnnouncementsPage() {
                   </time>
                 </div>
                 <h2 className="mt-2 text-xl font-bold text-brand">{item.title}</h2>
-                <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
-                  {item.body}
-                </p>
+                <div
+                  className="prose-profia mt-3 text-sm leading-relaxed text-muted-foreground"
+                  dangerouslySetInnerHTML={{ __html: renderContentMarkup(item.body) }}
+                />
                 {item.attachment_url && (
                   <PublicAttachment
                     url={item.attachment_url}
                     type={item.attachment_type}
+                    filename={null}
                     label={item.title}
                   />
                 )}
@@ -651,8 +655,9 @@ export function ArticlesPage() {
       const { data, error } = await supabase
         .from("articles")
         .select("id,slug,title,excerpt,featured_image,attachment_type,published_at,author")
-        .in("status", ["published", "scheduled"])
-        .lte("published_at", new Date().toISOString())
+        .or(
+          `status.eq.published,and(status.eq.scheduled,published_at.lte.${new Date().toISOString()})`,
+        )
         .order("published_at", { ascending: false });
       if (error) throw error;
       return data;
@@ -691,6 +696,12 @@ export function ArticlesPage() {
                     {!article.featured_image && article.attachment_type === "video" && (
                       <span className="flex h-full items-center justify-center text-sm text-muted-foreground">
                         Video article
+                      </span>
+                    )}
+                    {!article.featured_image && article.attachment_type !== "video" && (
+                      <span className="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground">
+                        <Newspaper aria-hidden="true" className="h-5 w-5" />
+                        Profia Institute news
                       </span>
                     )}
                   </div>
@@ -740,8 +751,9 @@ export function ArticleDetailPage() {
           "slug,title,excerpt,content,featured_image,attachment_url,attachment_type,author,published_at",
         )
         .eq("slug", slug)
-        .in("status", ["published", "scheduled"])
-        .lte("published_at", new Date().toISOString())
+        .or(
+          `status.eq.published,and(status.eq.scheduled,published_at.lte.${new Date().toISOString()})`,
+        )
         .maybeSingle();
       if (error) throw error;
       return data;
@@ -789,13 +801,15 @@ export function ArticleDetailPage() {
         {query.data.author && (
           <p className="mb-6 text-sm text-muted-foreground">By {query.data.author}</p>
         )}
-        <div className="whitespace-pre-wrap text-base leading-8 text-foreground">
-          {query.data.content}
-        </div>
+        <div
+          className="prose-profia text-base leading-8 text-foreground"
+          dangerouslySetInnerHTML={{ __html: renderContentMarkup(query.data.content) }}
+        />
         {query.data.attachment_url && query.data.attachment_type !== "image" && (
           <PublicAttachment
             url={query.data.attachment_url}
             type={query.data.attachment_type}
+            filename={null}
             label={query.data.title}
           />
         )}
@@ -810,12 +824,26 @@ export function ArticleDetailPage() {
 function PublicAttachment({
   url,
   type,
+  filename,
   label,
 }: {
   url: string;
   type: string | null;
+  filename: string | null;
   label: string;
 }) {
+  const youtubeEmbedUrl = type === "video" ? getYouTubeEmbedUrl(url) : null;
+  if (youtubeEmbedUrl)
+    return (
+      <iframe
+        src={youtubeEmbedUrl}
+        title={label}
+        className="mt-5 aspect-video w-full rounded-lg bg-black"
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+        referrerPolicy="strict-origin-when-cross-origin"
+        allowFullScreen
+      />
+    );
   if (type === "video")
     return (
       <video
@@ -843,16 +871,41 @@ function PublicAttachment({
         loading="lazy"
       />
     );
+  return <AttachmentDownload url={url} filename={filename} label={label} />;
+}
+
+function AttachmentDownload({
+  url,
+  filename,
+  label,
+}: {
+  url: string;
+  filename: string | null;
+  label: string;
+}) {
+  const [downloading, setDownloading] = useState(false);
   return (
-    <a
-      className="mt-5 inline-flex font-medium text-primary hover:underline"
-      href={url}
-      target="_blank"
-      rel="noreferrer"
-      download
-    >
-      Download attachment
-    </a>
+    <div className="mt-5">
+      <button
+        type="button"
+        className="inline-flex font-medium text-primary hover:underline disabled:opacity-60"
+        disabled={downloading}
+        onClick={async () => {
+          setDownloading(true);
+          try {
+            await downloadContentAttachment(url, filename || label);
+          } catch (error) {
+            toast.error("Could not download attachment", {
+              description: error instanceof Error ? error.message : undefined,
+            });
+          } finally {
+            setDownloading(false);
+          }
+        }}
+      >
+        {downloading ? "Preparing download…" : "Download attachment"}
+      </button>
+    </div>
   );
 }
 
