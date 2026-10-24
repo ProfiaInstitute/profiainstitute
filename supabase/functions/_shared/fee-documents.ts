@@ -1,8 +1,9 @@
-import { PDFDocument, degrees, rgb, StandardFonts } from "https://esm.sh/pdf-lib@1.17.1";
+import { PDFDocument, rgb, StandardFonts } from "https://esm.sh/pdf-lib@1.17.1";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { loadPayHeroCredentials, type PayHeroCredentials } from "./payhero.ts";
 
 const bucket = "fee-documents";
+const officialFaviconUrl = "https://profiainstitute.vercel.app/favicon.png";
 
 type Student = {
   id: string;
@@ -18,6 +19,7 @@ type Student = {
 type FeeDocumentSettings = {
   institutionName: string;
   logoUrl: string;
+  websiteUrl: string;
   phones: string[];
   email: string;
   address: string;
@@ -50,7 +52,7 @@ export async function createFeeReceipt(supabase: AdminClient, paymentId: string)
     throw new Error(paymentError?.message ?? "Confirmed payment was not found.");
   }
 
-  let paymentMethod = payment.provider === "payhero" ? "M-Pesa" : payment.method;
+  const paymentMethod = payment.provider === "payhero" ? "M-Pesa" : payment.method;
   let paymentRaw = payment.raw;
   let mpesaReference =
     payment.provider === "payhero" ? getMpesaReference(paymentRaw) : payment.reference;
@@ -142,7 +144,10 @@ export async function createFeeReceipt(supabase: AdminClient, paymentId: string)
       { onConflict: "user_id,category,reference_id", ignoreDuplicates: true },
     );
     if (notificationError)
-      throw new Error(`Could not notify student: ${notificationError.message}`);
+      console.error(
+        "Could not notify student that their receipt is ready:",
+        notificationError.message,
+      );
   }
   return path;
 }
@@ -268,25 +273,16 @@ async function buildFeePdf({
   courseTitle?: string;
   schoolName?: string;
 }) {
-  const logoResponse = await fetch(documentSettings.logoUrl, {
-    signal: AbortSignal.timeout(10_000),
-  });
-  if (!logoResponse.ok)
-    throw new Error(`Could not load institute logo (HTTP ${logoResponse.status}).`);
-  const logoBytes = new Uint8Array(await logoResponse.arrayBuffer());
+  const generatedAt = new Date();
   const document = await PDFDocument.create();
   const font = await document.embedFont(StandardFonts.Helvetica);
   const bold = await document.embedFont(StandardFonts.HelveticaBold);
-  const logo = isPng(logoBytes)
-    ? await document.embedPng(logoBytes)
-    : isJpeg(logoBytes)
-      ? await document.embedJpg(logoBytes)
-      : null;
-  if (!logo) throw new Error("The institute badge must be a PNG or JPEG image.");
+  const logo = await loadPdfLogo(documentSettings.logoUrl, document);
   const pageSize: [number, number] = [595.28, 841.89];
-  const navy = rgb(0.08, 0.2, 0.38);
-  const muted = rgb(0.35, 0.39, 0.45);
-  const black = rgb(0.11, 0.13, 0.16);
+  const maroon = rgb(0.43, 0.07, 0.12);
+  const orange = rgb(0.93, 0.35, 0.14);
+  const muted = rgb(0.39, 0.35, 0.35);
+  const black = rgb(0.16, 0.13, 0.13);
   let page = document.addPage(pageSize);
   let y = 0;
 
@@ -295,64 +291,86 @@ async function buildFeePdf({
     drawHeader();
   };
   const drawHeader = () => {
-    const logoSize = 42;
-    const logoScale = Math.min(logoSize / logo.width, logoSize / logo.height);
-    const logoWidth = logo.width * logoScale;
-    const logoHeight = logo.height * logoScale;
-    page.drawImage(logo, {
-      x: 42,
-      y: 780 + (logoSize - logoHeight) / 2,
-      width: logoWidth,
-      height: logoHeight,
-    });
-    page.drawText(safeText(documentSettings.institutionName), {
-      x: 94,
-      y: 804,
-      size: 12,
+    page.drawRectangle({ x: 0, y: 754, width: pageSize[0], height: 88, color: maroon });
+    page.drawRectangle({ x: 0, y: 750, width: pageSize[0], height: 4, color: orange });
+    if (logo) {
+      const logoSize = 54;
+      const logoScale = Math.min(logoSize / logo.width, logoSize / logo.height);
+      const logoWidth = logo.width * logoScale;
+      const logoHeight = logo.height * logoScale;
+      page.drawRectangle({
+        x: 39,
+        y: 770,
+        width: 62,
+        height: 62,
+        color: rgb(1, 1, 1),
+        borderColor: orange,
+        borderWidth: 1.5,
+      });
+      page.drawImage(logo, {
+        x: 43 + (logoSize - logoWidth) / 2,
+        y: 774 + (logoSize - logoHeight) / 2,
+        width: logoWidth,
+        height: logoHeight,
+      });
+    }
+    page.drawText(safeText(documentSettings.institutionName.toUpperCase()), {
+      x: 115,
+      y: 808,
+      size: 17,
       font: bold,
-      color: navy,
+      color: rgb(1, 1, 1),
     });
-    page.drawText(safeText(documentSettings.address), {
-      x: 94,
-      y: 786,
-      size: 8,
+    page.drawText(safeText(documentSettings.websiteUrl), {
+      x: 115,
+      y: 789,
+      size: 9,
       font,
-      color: muted,
+      color: rgb(1, 0.86, 0.78),
     });
     page.drawText(
       type === "receipt"
-        ? "FEE PAYMENT RECEIPT"
+        ? "OFFICIAL FEE PAYMENT RECEIPT"
         : type === "template"
           ? "FEE STATEMENT TEMPLATE"
           : "STUDENT FEE STATEMENT",
       {
-        x: 42,
-        y: 721,
-        size: 17,
+        x: 44,
+        y: 719,
+        size: 16,
         font: bold,
-        color: navy,
+        color: maroon,
       },
     );
-    if (type === "receipt") drawPaidStamp();
-    y = 691;
+    if (type === "receipt" && payment) drawPaidStamp();
+    page.drawText(
+      `Receipt no. ${safeText(payment?.receipt_reference ?? payment?.reference ?? payment?.id ?? "")}`,
+      { x: 44, y: 699, size: 8, font, color: muted },
+    );
+    y = 671;
   };
   const drawPaidStamp = () => {
-    const red = rgb(0.72, 0.12, 0.16);
     page.drawEllipse({
-      x: 493,
-      y: 797,
-      xScale: 42,
+      x: 505,
+      y: 798,
+      xScale: 38,
       yScale: 23,
-      borderColor: red,
-      borderWidth: 2,
+      borderColor: orange,
+      borderWidth: 1.5,
     });
     page.drawText("PAID", {
-      x: 470,
-      y: 792,
-      size: 15,
+      x: 485,
+      y: 799,
+      size: 14,
       font: bold,
-      color: red,
-      rotate: degrees(-10),
+      color: rgb(1, 1, 1),
+    });
+    page.drawText("VERIFIED", {
+      x: 486,
+      y: 787,
+      size: 6,
+      font: bold,
+      color: rgb(1, 0.86, 0.78),
     });
   };
   const ensureSpace = (height = 22) => {
@@ -377,7 +395,8 @@ async function buildFeePdf({
   const section = (title: string) => {
     ensureSpace(30);
     y -= 7;
-    page.drawText(safeText(title), { x: 44, y, size: 11, font: bold, color: navy });
+    page.drawText(safeText(title), { x: 44, y, size: 11, font: bold, color: maroon });
+    page.drawRectangle({ x: 44, y: y - 5, width: 30, height: 1.5, color: orange });
     y -= 20;
   };
   const tableRow = (left: string, right: string, isHeader = false) => {
@@ -387,7 +406,7 @@ async function buildFeePdf({
       y,
       size: isHeader ? 8 : 9,
       font: isHeader ? bold : font,
-      color: isHeader ? muted : black,
+      color: isHeader ? maroon : black,
     });
     const text = safeText(right);
     const width = (isHeader ? bold : font).widthOfTextAtSize(text, isHeader ? 8 : 9);
@@ -396,7 +415,7 @@ async function buildFeePdf({
       y,
       size: isHeader ? 8 : 9,
       font: isHeader ? bold : font,
-      color: isHeader ? muted : black,
+      color: isHeader ? maroon : black,
     });
     y -= 19;
   };
@@ -429,7 +448,10 @@ async function buildFeePdf({
     line("Total paid", "[Total paid]");
     line("Outstanding balance", "[Balance]");
   } else if (type === "receipt" && payment) {
-    line("Payment date", new Date(payment.paid_at).toLocaleString("en-KE"));
+    line(
+      "Payment date",
+      new Date(payment.paid_at).toLocaleString("en-KE", { timeZone: "Africa/Nairobi" }),
+    );
     const transactionReference =
       payment.receipt_reference ??
       (payment.provider === "payhero" ? "Not available" : (payment.reference ?? payment.id));
@@ -461,12 +483,15 @@ async function buildFeePdf({
     line("Total paid", `KES ${formatAmount(paid)}`);
     line(
       "Balance after payment",
-      remainingBalance === 0 ? "NULL" : `KES ${formatAmount(remainingBalance)}`,
+      remainingBalance === 0 ? "KES 0.00" : `KES ${formatAmount(remainingBalance)}`,
     );
     line("Payment status", "PAID");
     line("Amount paid", `KES ${formatAmount(payment.amount)}`);
   } else {
-    line("Statement generated", new Date().toLocaleString("en-KE"));
+    line(
+      "Statement generated",
+      generatedAt.toLocaleString("en-KE", { timeZone: "Africa/Nairobi" }),
+    );
     if (courseTitle) line("Course", courseTitle);
     section("Charges");
     tableRow("Charge description", "Amount (KES)", true);
@@ -507,7 +532,59 @@ async function buildFeePdf({
   if (documentSettings.email) line("Email", documentSettings.email);
   if (documentSettings.address) line("Address", documentSettings.address);
 
+  const generatedLabel = generatedAt.toLocaleString("en-KE", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "Africa/Nairobi",
+  });
+  for (const [index, page] of document.getPages().entries()) {
+    page.drawRectangle({ x: 42, y: 48, width: 511, height: 1, color: orange });
+    page.drawText(safeText(documentSettings.websiteUrl), {
+      x: 44,
+      y: 32,
+      size: 8,
+      font: bold,
+      color: maroon,
+    });
+    page.drawText(`Generated for this print/download: ${generatedLabel} EAT`, {
+      x: 44,
+      y: 19,
+      size: 7,
+      font,
+      color: muted,
+    });
+    page.drawText(`Page ${index + 1} of ${document.getPageCount()}`, {
+      x: 500,
+      y: 25,
+      size: 8,
+      font,
+      color: muted,
+    });
+  }
+
   return await document.save();
+}
+
+async function loadPdfLogo(
+  logoUrl: string,
+  document: PDFDocument,
+): Promise<Awaited<ReturnType<PDFDocument["embedPng"]>> | null> {
+  for (const url of new Set([logoUrl, officialFaviconUrl])) {
+    try {
+      const response = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+      if (!response.ok) {
+        console.error(`Could not load institute logo for fee document (HTTP ${response.status}).`);
+        continue;
+      }
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      if (isPng(bytes)) return await document.embedPng(bytes);
+      if (isJpeg(bytes)) return await document.embedJpg(bytes);
+      console.error("Institute logo for fee document is not a PNG or JPEG image.");
+    } catch (error) {
+      console.error("Could not load institute logo for fee document:", error);
+    }
+  }
+  throw new Error("The official school favicon could not be loaded to create the receipt.");
 }
 
 async function loadFeeDocumentSettings(
@@ -527,11 +604,8 @@ async function loadFeeDocumentSettings(
   const paymentMethods = override?.paymentMethods ?? stringValue(byCourse.payment_methods);
   return {
     institutionName: stringValue(general.institution_name) || "Profia Institute",
-    logoUrl: resolveLogoUrl(
-      Deno.env.get("FEE_RECEIPT_LOGO_URL") ??
-        stringValue(general.logo_url) ??
-        "https://www.profiainstitute.com/favicon.png",
-    ),
+    logoUrl: Deno.env.get("FEE_RECEIPT_LOGO_URL") ?? officialFaviconUrl,
+    websiteUrl: "https://www.profiainstitute.com",
     phones: Array.isArray(general.phones)
       ? general.phones.filter((phone): phone is string => typeof phone === "string")
       : [],
@@ -567,12 +641,6 @@ function wrapText(
   }
   if (current) lines.push(current);
   return lines;
-}
-
-function resolveLogoUrl(value: string) {
-  if (/^https?:\/\//i.test(value)) return value;
-  if (value.startsWith("/")) return `https://www.profiainstitute.com${value}`;
-  return "https://www.profiainstitute.com/favicon.png";
 }
 
 function safeText(value: string) {

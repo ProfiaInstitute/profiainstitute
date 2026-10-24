@@ -27,8 +27,11 @@ Deno.serve(async (request: Request) => {
     return json({ error: "Invalid request body." }, 400);
   }
   const paymentId = body && typeof body === "object" && "paymentId" in body ? body.paymentId : null;
+  const mode = body && typeof body === "object" && "mode" in body ? body.mode : "download";
   if (typeof paymentId !== "string" || !paymentId.trim())
     return json({ error: "A payment ID is required." }, 400);
+  if (mode !== "view" && mode !== "download")
+    return json({ error: "Choose whether to view or download the receipt." }, 400);
 
   const supabase = createClient(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },
@@ -60,14 +63,24 @@ Deno.serve(async (request: Request) => {
 
   try {
     const path = await createFeeReceipt(supabase, payment.id);
-    const { data: signedFile, error: signedUrlError } = await supabase.storage
+    const { data: receipt, error: receiptError } = await supabase.storage
       .from("fee-documents")
-      .createSignedUrl(path, 300, { download: "fee-receipt.pdf" });
-    if (signedUrlError) {
-      console.error("Could not create fee receipt download link:", signedUrlError.message);
-      return json({ error: "Receipt created, but its download link could not be prepared." }, 500);
+      .download(path);
+    if (receiptError || !receipt) {
+      console.error("Could not load generated fee receipt:", receiptError?.message);
+      return json({ error: "Receipt created, but its file could not be loaded." }, 500);
     }
-    return json({ success: true, signedUrl: signedFile.signedUrl }, 200);
+    return new Response(receipt, {
+      status: 200,
+      headers: {
+        ...corsHeaders,
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `${mode === "view" ? "inline" : "attachment"}; filename="Profia-fee-receipt.pdf"`,
+        "Cache-Control": "private, no-store, max-age=0",
+        "X-Content-Type-Options": "nosniff",
+        "Referrer-Policy": "no-referrer",
+      },
+    });
   } catch (error) {
     console.error("Could not generate fee receipt:", errorMessage(error));
     return json({ error: "Could not generate your receipt. Please retry." }, 500);

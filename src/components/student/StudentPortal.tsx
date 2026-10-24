@@ -4,12 +4,14 @@ import {
   BookOpen,
   ClipboardList,
   Download,
+  Eye,
   FileText,
   GraduationCap,
   LogOut,
   RefreshCw,
   UserRound,
   Wallet,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -1412,6 +1414,18 @@ function FeesSection({
 }) {
   const queryClient = useQueryClient();
   const [amount, setAmount] = useState("");
+  const [receiptPreviewUrl, setReceiptPreviewUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!receiptPreviewUrl) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setReceiptPreviewUrl(null);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      window.removeEventListener("keydown", closeOnEscape);
+      URL.revokeObjectURL(receiptPreviewUrl);
+    };
+  }, [receiptPreviewUrl]);
   const query = useQuery({
     queryKey: ["student", "fees", studentId],
     queryFn: async () => {
@@ -1512,9 +1526,9 @@ function FeesSection({
     },
   });
   const receiptMutation = useMutation({
-    mutationFn: async ({ paymentId, windowRef }: { paymentId: string; windowRef: Window }) => {
+    mutationFn: async ({ paymentId, mode }: { paymentId: string; mode: "view" | "download" }) => {
       const { data, error } = await supabase.functions.invoke("generate-fee-receipt", {
-        body: { paymentId },
+        body: { paymentId, mode },
       });
       if (error) {
         if ("context" in error && error.context instanceof Response) {
@@ -1526,28 +1540,33 @@ function FeesSection({
         }
         throw error;
       }
-      if (!data?.success || typeof data.signedUrl !== "string")
-        throw new Error(data?.error ?? "Could not prepare your receipt.");
-      return { signedUrl: data.signedUrl, windowRef };
+      if (!(data instanceof Blob) || data.type !== "application/pdf")
+        throw new Error("The receipt service returned an invalid PDF.");
+      return { receipt: data, mode };
     },
-    onSuccess: ({ signedUrl, windowRef }) => {
-      windowRef.location.href = signedUrl;
+    onSuccess: ({ receipt, mode }) => {
+      const objectUrl = URL.createObjectURL(receipt);
+      if (mode === "view") {
+        setReceiptPreviewUrl(objectUrl);
+      } else {
+        const link = document.createElement("a");
+        link.href = objectUrl;
+        link.download = "Profia-fee-receipt.pdf";
+        document.body.append(link);
+        link.click();
+        link.remove();
+        window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+      }
       void queryClient.invalidateQueries({ queryKey: ["student", "fees", studentId] });
     },
-    onError: (error, { windowRef }) => {
-      windowRef.close();
+    onError: (error) => {
       toast.error("Could not download receipt", {
         description: error instanceof Error ? error.message : "Please retry.",
       });
     },
   });
-  function downloadReceipt(paymentId: string) {
-    const windowRef = window.open("about:blank", "_blank");
-    if (!windowRef) {
-      toast.error("Allow pop-ups to download your receipt.");
-      return;
-    }
-    receiptMutation.mutate({ paymentId, windowRef });
+  function openReceipt(paymentId: string, mode: "view" | "download") {
+    receiptMutation.mutate({ paymentId, mode });
   }
   function downloadStatement() {
     const windowRef = window.open("about:blank", "_blank");
@@ -1668,20 +1687,30 @@ function FeesSection({
                     ? ` · ${payment.reference}`
                     : ""}
                 </span>
-                <span className="flex items-center gap-3 font-semibold">
+                <span className="flex flex-wrap items-center gap-1 font-semibold">
                   {formatKES(payment.amount)}
                   <Button
                     type="button"
                     size="sm"
                     variant="ghost"
                     disabled={receiptMutation.isPending}
-                    onClick={() => downloadReceipt(payment.id)}
+                    onClick={() => openReceipt(payment.id, "view")}
                   >
-                    <Download />
+                    <Eye />
                     {receiptMutation.isPending &&
                     receiptMutation.variables?.paymentId === payment.id
                       ? "Preparing…"
-                      : "Receipt"}
+                      : "View"}
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    disabled={receiptMutation.isPending}
+                    onClick={() => openReceipt(payment.id, "download")}
+                  >
+                    <Download />
+                    Download
                   </Button>
                 </span>
               </div>
@@ -1693,6 +1722,42 @@ function FeesSection({
           </p>
         )}
       </section>
+      {receiptPreviewUrl && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setReceiptPreviewUrl(null);
+          }}
+        >
+          <section
+            aria-labelledby="fee-receipt-title"
+            aria-modal="true"
+            className="flex h-[90vh] w-full max-w-5xl flex-col gap-4 rounded-lg border bg-background p-6 shadow-lg"
+            role="dialog"
+          >
+            <header className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold leading-none" id="fee-receipt-title">
+                Fee receipt
+              </h2>
+              <Button
+                aria-label="Close receipt preview"
+                onClick={() => setReceiptPreviewUrl(null)}
+                size="icon"
+                type="button"
+                variant="ghost"
+              >
+                <X />
+              </Button>
+            </header>
+            <iframe
+              className="min-h-0 w-full flex-1 rounded-md border"
+              src={receiptPreviewUrl}
+              title="Fee receipt PDF preview"
+              referrerPolicy="no-referrer"
+            />
+          </section>
+        </div>
+      )}
       {query.data?.notifications.length ? (
         <section className="rounded-xl border bg-card p-5 shadow-card">
           <h2 className="font-semibold text-brand">Payment notifications</h2>
