@@ -1,5 +1,11 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { loadPayHeroCredentials, type PayHeroCredentials } from "../_shared/payhero.ts";
+import {
+  describePayHeroRejection,
+  loadPayHeroCredentials,
+  normalizeKenyanPhoneForPayHero,
+  type PayHeroSupabaseClient,
+  type PayHeroCredentials,
+} from "../_shared/payhero.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -143,7 +149,7 @@ Deno.serve(async (request: Request) => {
       { error: "A payment is already awaiting confirmation. Wait before starting another." },
       409,
     );
-  const phone = normalizeKenyanPhone(student.phone ?? "");
+  const phone = normalizeKenyanPhoneForPayHero(student.phone ?? "");
   if (!phone)
     return json(
       { error: "Add a valid Kenyan mobile number to your student profile before paying." },
@@ -195,16 +201,10 @@ Deno.serve(async (request: Request) => {
 
   const gatewayBody = await gatewayResponse.json().catch(() => null);
   if (!gatewayResponse.ok || !isAcceptedResponse(gatewayBody)) {
-    await markPaymentFailed(
-      supabase,
-      payment.id,
-      `PayHero returned HTTP ${gatewayResponse.status} without accepting the request.`,
-    );
-    console.error("PayHero payment request failed:", gatewayResponse.status);
-    return json(
-      { error: "PayHero could not start the payment. Please retry or contact support." },
-      502,
-    );
+    const rejection = describePayHeroRejection(gatewayResponse.status, gatewayBody);
+    await markPaymentFailed(supabase, payment.id, rejection);
+    console.error("PayHero online course payment request failed:", rejection);
+    return json({ error: rejection }, 502);
   }
 
   const checkoutId = findValue(gatewayBody, [
@@ -242,16 +242,6 @@ Deno.serve(async (request: Request) => {
   return json({ success: true, reference: payment.reference, amount: payment.amount }, 200);
 });
 
-function normalizeKenyanPhone(phone: string) {
-  const digits = phone.replace(/\D/g, "");
-  const normalized = digits.startsWith("0")
-    ? `254${digits.slice(1)}`
-    : digits.startsWith("7") || digits.startsWith("1")
-      ? `254${digits}`
-      : digits;
-  return /^254[17]\d{8}$/.test(normalized) ? normalized : null;
-}
-
 function findValue(value: unknown, keys: string[]): string | null {
   if (!value || typeof value !== "object") return null;
   for (const [key, item] of Object.entries(value)) {
@@ -269,11 +259,7 @@ function isAcceptedResponse(value: unknown) {
   );
 }
 
-async function markPaymentFailed(
-  supabase: ReturnType<typeof createClient>,
-  id: string,
-  reason: string,
-) {
+async function markPaymentFailed(supabase: PayHeroSupabaseClient, id: string, reason: string) {
   const { error } = await supabase
     .from("online_course_payments")
     .update({ status: "failed", raw: { error: reason } })
