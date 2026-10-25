@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { Link, useParams } from "@tanstack/react-router";
+import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import {
   ArrowRight,
@@ -29,6 +29,7 @@ import { getYouTubeEmbedUrl, renderContentMarkup } from "@/lib/content-format";
 import { downloadContentAttachment } from "@/lib/content-download";
 import type { Tables } from "@/integrations/supabase/types";
 import {
+  FACILITY_LOCATION,
   SCHOOL_ROUTES,
   formatKES,
   useActiveIntake,
@@ -740,38 +741,21 @@ export function ArticlesPage() {
   );
 }
 
-export function ArticleDetailPage() {
-  const { slug } = useParams({ from: "/articles/$slug" });
-  const query = useQuery({
-    queryKey: ["article", slug],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("articles")
-        .select(
-          "slug,title,excerpt,content,featured_image,attachment_url,attachment_type,author,published_at",
-        )
-        .eq("slug", slug)
-        .or(
-          `status.eq.published,and(status.eq.scheduled,published_at.lte.${new Date().toISOString()})`,
-        )
-        .maybeSingle();
-      if (error) throw error;
-      return data;
-    },
-  });
-  if (query.isLoading)
-    return (
-      <main className="container-site py-16">
-        <CardGridSkeleton n={1} />
-      </main>
-    );
-  if (query.error)
-    return (
-      <main className="container-site py-16">
-        <ErrorNote />
-      </main>
-    );
-  if (!query.data)
+export type PublicArticle = Pick<
+  Tables<"articles">,
+  | "slug"
+  | "title"
+  | "excerpt"
+  | "content"
+  | "featured_image"
+  | "attachment_url"
+  | "attachment_type"
+  | "author"
+  | "published_at"
+>;
+
+export function ArticleDetailPage({ article }: { article: PublicArticle | null }) {
+  if (!article)
     return (
       <main className="container-site py-16">
         <EmptyState
@@ -788,29 +772,29 @@ export function ArticleDetailPage() {
   return (
     <article>
       <PageHero
-        title={query.data.title}
-        subtitle={query.data.excerpt}
-        image={query.data.featured_image}
+        title={article.title}
+        subtitle={article.excerpt}
+        image={article.featured_image}
         eyebrow={
-          query.data.published_at
-            ? new Date(query.data.published_at).toLocaleDateString("en-KE", { dateStyle: "long" })
+          article.published_at
+            ? new Date(article.published_at).toLocaleDateString("en-KE", { dateStyle: "long" })
             : "Profia news"
         }
       />
       <div className="container-site max-w-4xl py-12">
-        {query.data.author && (
-          <p className="mb-6 text-sm text-muted-foreground">By {query.data.author}</p>
+        {article.author && (
+          <p className="mb-6 text-sm text-muted-foreground">By {article.author}</p>
         )}
         <div
           className="prose-profia text-base leading-8 text-foreground"
-          dangerouslySetInnerHTML={{ __html: renderContentMarkup(query.data.content) }}
+          dangerouslySetInnerHTML={{ __html: renderContentMarkup(article.content) }}
         />
-        {query.data.attachment_url && query.data.attachment_type !== "image" && (
+        {article.attachment_url && article.attachment_type !== "image" && (
           <PublicAttachment
-            url={query.data.attachment_url}
-            type={query.data.attachment_type}
+            url={article.attachment_url}
+            type={article.attachment_type}
             filename={null}
-            label={query.data.title}
+            label={article.title}
           />
         )}
         <Button asChild variant="outline" className="mt-10">
@@ -951,79 +935,106 @@ export function ContactPage() {
         subtitle="Reach the Institute with questions about courses, admissions or student services."
         eyebrow="We are here to help"
       />
-      <section className="container-site grid gap-8 py-12 lg:grid-cols-[0.85fr_1.15fr]">
-        <div className="space-y-4">
-          <InfoCard title="Visit us" text={general.address} icon={<MapPin />} />
-          <InfoCard title="Call" text={general.phones.join(" · ")} icon={<Phone />} />
-          <InfoCard title="Email" text={general.email} icon={<Send />} />
-          {general.location && (
-            <InfoCard title="Location" text={general.location} icon={<MapPin />} />
-          )}
-          <Button asChild variant="whatsapp" className="w-full">
-            <a
-              href={whatsappLink(general.whatsapp, "Hello Profia Institute, I have an enquiry.")}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              <MessageCircle /> Chat on WhatsApp
-            </a>
-          </Button>
-        </div>
-        <form
-          onSubmit={submit}
-          className="space-y-4 rounded-2xl border bg-card p-5 shadow-card sm:p-7"
-        >
-          {submitted && (
-            <p role="status" className="rounded-lg bg-cream p-3 text-sm text-brand">
-              Thank you. Your message has been received; the Institute will follow up using your
-              contact details.
-            </p>
-          )}
-          <h2 className="text-xl font-bold text-brand">Send us a message</h2>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Name *">
-              <Input
-                required
-                maxLength={100}
-                value={values.name}
-                onChange={(e) => setValues({ ...values, name: e.target.value })}
-              />
-            </Field>
-            <Field label="Email">
-              <Input
-                type="email"
-                maxLength={255}
-                value={values.email}
-                onChange={(e) => setValues({ ...values, email: e.target.value })}
-              />
-            </Field>
-            <Field label="Phone">
-              <Input
-                type="tel"
-                maxLength={20}
-                value={values.phone}
-                onChange={(e) => setValues({ ...values, phone: e.target.value })}
-              />
-            </Field>
-            <Field label="Subject">
-              <Input
-                maxLength={200}
-                value={values.subject}
-                onChange={(e) => setValues({ ...values, subject: e.target.value })}
-              />
-            </Field>
-          </div>
-          <Field label="Message *">
-            <Textarea
-              required
-              maxLength={2000}
-              rows={6}
-              value={values.message}
-              onChange={(e) => setValues({ ...values, message: e.target.value })}
+      <section className="container-site space-y-8 py-12">
+        <div className="grid gap-8 lg:grid-cols-[0.85fr_1.15fr]">
+          <div className="space-y-4">
+            <InfoCard
+              title="Visit us"
+              text={general.location || `${FACILITY_LOCATION.name}, Homa Bay, Kenya`}
+              icon={<MapPin />}
             />
-          </Field>
-          <Button disabled={busy}>{busy ? "Sending…" : "Send message"}</Button>
-        </form>
+            <InfoCard title="Postal address" text={general.address} icon={<Send />} />
+            <InfoCard title="Call" text={general.phones.join(" · ")} icon={<Phone />} />
+            <InfoCard title="Email" text={general.email} icon={<Send />} />
+            <Button asChild variant="whatsapp" className="w-full">
+              <a
+                href={whatsappLink(general.whatsapp, "Hello Profia Institute, I have an enquiry.")}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <MessageCircle /> Chat on WhatsApp
+              </a>
+            </Button>
+          </div>
+          <form
+            onSubmit={submit}
+            className="space-y-4 rounded-2xl border bg-card p-5 shadow-card sm:p-7"
+          >
+            {submitted && (
+              <p role="status" className="rounded-lg bg-cream p-3 text-sm text-brand">
+                Thank you. Your message has been received; the Institute will follow up using your
+                contact details.
+              </p>
+            )}
+            <h2 className="text-xl font-bold text-brand">Send us a message</h2>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Name *">
+                <Input
+                  required
+                  maxLength={100}
+                  value={values.name}
+                  onChange={(e) => setValues({ ...values, name: e.target.value })}
+                />
+              </Field>
+              <Field label="Email">
+                <Input
+                  type="email"
+                  maxLength={255}
+                  value={values.email}
+                  onChange={(e) => setValues({ ...values, email: e.target.value })}
+                />
+              </Field>
+              <Field label="Phone">
+                <Input
+                  type="tel"
+                  maxLength={20}
+                  value={values.phone}
+                  onChange={(e) => setValues({ ...values, phone: e.target.value })}
+                />
+              </Field>
+              <Field label="Subject">
+                <Input
+                  maxLength={200}
+                  value={values.subject}
+                  onChange={(e) => setValues({ ...values, subject: e.target.value })}
+                />
+              </Field>
+            </div>
+            <Field label="Message *">
+              <Textarea
+                required
+                maxLength={2000}
+                rows={6}
+                value={values.message}
+                onChange={(e) => setValues({ ...values, message: e.target.value })}
+              />
+            </Field>
+            <Button disabled={busy}>{busy ? "Sending…" : "Send message"}</Button>
+          </form>
+        </div>
+        <section className="overflow-hidden rounded-2xl border bg-card shadow-card">
+          <div className="flex flex-wrap items-center justify-between gap-3 p-5">
+            <div>
+              <h2 className="text-xl font-bold text-brand">Find Profia Institute</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {FACILITY_LOCATION.name}, Homa Bay, Kenya
+              </p>
+            </div>
+            <Button asChild variant="outline">
+              <a href={FACILITY_LOCATION.googleMapsUrl} target="_blank" rel="noopener noreferrer">
+                <MapPin /> Get directions
+              </a>
+            </Button>
+          </div>
+          <iframe
+            title="Map showing Profia Institute of Professionals in Homa Bay"
+            src={`https://www.google.com/maps?q=${FACILITY_LOCATION.latitude},${FACILITY_LOCATION.longitude}&z=17&output=embed`}
+            className="h-[360px] w-full border-0 sm:h-[440px]"
+            loading="lazy"
+            referrerPolicy="no-referrer-when-downgrade"
+            allowFullScreen
+          />
+        </section>
       </section>
       <FaqSection />
     </>

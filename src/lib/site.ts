@@ -28,6 +28,7 @@ export const DEFAULT_GENERAL: GeneralSettings = {
   phones: ["0710221122", "0793977991"],
   email: "profiainstitute@gmail.com",
   address: "P.O Box 323-40300, Homa Bay",
+  location: "Profia Institute of Professionals, Homa Bay, Kenya",
   whatsapp: "254710221122",
   facebook: "https://www.facebook.com/profiainstitute/",
   footer_text: "Profia Institute. All Rights Reserved",
@@ -173,15 +174,27 @@ export const STUDY_MODES: Record<string, string> = {
   online: "Online",
 };
 
-const SITE_URL = "https://www.profiainstitute.com";
-const SITE_CREATOR_NAME = "Victor Otieno Ochieng";
+export const SITE_URL = "https://www.profiainstitute.com";
+export const FACILITY_LOCATION = {
+  name: "Profia Institute of Professionals",
+  latitude: -0.5350592,
+  longitude: 34.4575996,
+  googleMapsUrl:
+    "https://www.google.com/maps/place/Profia+Institute+of+Professionals,+Homa+Bay/@-0.5350592,34.4575996,17z/data=!4m2!3m1!1s0x19d4d58bffe5db35:0x403b4b18e49e44b9",
+} as const;
 
 export function seo(title: string, description: string, path: string, image?: string) {
-  const canonicalUrl = `${SITE_URL}${path}`;
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  const canonicalUrl = `${SITE_URL}${normalizedPath}`;
   const socialImage = image?.startsWith("http")
     ? image
     : `${SITE_URL}${image ? (image.startsWith("/") ? image : `/${image}`) : "/images/logo.png"}`;
-  const isPrivateRoute = path === "/admin" || path.startsWith("/student");
+  const isPrivateRoute =
+    normalizedPath === "/admin" ||
+    normalizedPath.startsWith("/student") ||
+    normalizedPath === "/application-status";
+  const metaDescription =
+    description.length > 160 ? `${description.slice(0, 157).trimEnd()}...` : description;
   const meta: {
     title?: string;
     name?: string;
@@ -189,19 +202,23 @@ export function seo(title: string, description: string, path: string, image?: st
     content?: string;
   }[] = [
     { title },
-    { name: "description", content: description },
-    { name: "author", content: SITE_CREATOR_NAME },
-    { name: "creator", content: SITE_CREATOR_NAME },
+    { name: "description", content: metaDescription },
+    { name: "author", content: "Profia Institute" },
     { name: "robots", content: isPrivateRoute ? "noindex,nofollow" : "index,follow" },
+    {
+      name: "googlebot",
+      content: isPrivateRoute ? "noindex,nofollow" : "index,follow,max-image-preview:large",
+    },
     { property: "og:title", content: title },
-    { property: "og:description", content: description },
+    { property: "og:description", content: metaDescription },
     { property: "og:type", content: "website" },
     { property: "og:url", content: canonicalUrl },
     { property: "og:site_name", content: "Profia Institute" },
     { property: "og:locale", content: "en_KE" },
     { property: "og:image", content: socialImage },
+    { property: "og:image:alt", content: "Profia Institute, Homa Bay" },
     { name: "twitter:title", content: title },
-    { name: "twitter:description", content: description },
+    { name: "twitter:description", content: metaDescription },
     { name: "twitter:image", content: socialImage },
     { name: "twitter:card", content: "summary_large_image" },
   ];

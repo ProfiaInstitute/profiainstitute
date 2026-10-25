@@ -7,7 +7,11 @@ export const Route = createFileRoute("/admission")({
     ...(typeof search["course"] === "string" ? { course: search["course"] } : {}),
   }),
   head: () =>
-    seo("Admission — Profia Institute", "Admission at Profia Institute, Homa Bay.", "/admission"),
+    seo(
+      "Apply to Profia Institute — Admissions in Homa Bay",
+      "Apply to study at Profia Institute in Homa Bay. Submit an online application for professional and technical training.",
+      "/admission",
+    ),
   component: AdmissionPage,
 });
 

@@ -18,6 +18,7 @@ import { SiteFooter } from "@/components/site/SiteFooter";
 import { WhatsAppFloat } from "@/components/site/common";
 import { Toaster } from "@/components/ui/sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { FACILITY_LOCATION } from "@/lib/site";
 
 const structuredData = {
   "@context": "https://schema.org",
@@ -26,8 +27,36 @@ const structuredData = {
       "@type": "EducationalOrganization",
       "@id": "https://www.profiainstitute.com/#organization",
       name: "Profia Institute",
+      alternateName: "Profia Institute of Professionals",
       url: "https://www.profiainstitute.com/",
       logo: "https://www.profiainstitute.com/images/logo.png",
+      email: "profiainstitute@gmail.com",
+      telephone: ["+254710221122", "+254793977991"],
+      sameAs: ["https://www.facebook.com/profiainstitute/"],
+      address: {
+        "@type": "PostalAddress",
+        postOfficeBoxNumber: "323",
+        addressLocality: "Homa Bay",
+        postalCode: "40300",
+        addressCountry: "KE",
+      },
+      location: { "@id": "https://www.profiainstitute.com/#location" },
+    },
+    {
+      "@type": "Place",
+      "@id": "https://www.profiainstitute.com/#location",
+      name: FACILITY_LOCATION.name,
+      address: {
+        "@type": "PostalAddress",
+        addressLocality: "Homa Bay",
+        addressCountry: "KE",
+      },
+      geo: {
+        "@type": "GeoCoordinates",
+        latitude: FACILITY_LOCATION.latitude,
+        longitude: FACILITY_LOCATION.longitude,
+      },
+      hasMap: FACILITY_LOCATION.googleMapsUrl,
     },
     {
       "@type": "WebSite",
@@ -35,23 +64,6 @@ const structuredData = {
       name: "Profia Institute",
       url: "https://www.profiainstitute.com/",
       publisher: { "@id": "https://www.profiainstitute.com/#organization" },
-      creator: {
-        "@type": "Person",
-        name: "Victor Otieno Ochieng",
-        url: "https://github.com/ochiengvicky21",
-      },
-    },
-    {
-      "@type": "SoftwareApplication",
-      name: "Profia Institute Student and Admin Portal",
-      applicationCategory: "EducationalApplication",
-      operatingSystem: "Web",
-      url: "https://www.profiainstitute.com/",
-      creator: {
-        "@type": "Person",
-        name: "Victor Otieno Ochieng",
-        url: "https://github.com/ochiengvicky21",
-      },
     },
   ],
 };
@@ -121,10 +133,10 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { name: "theme-color", content: "#680915" },
-      { name: "author", content: "Victor Otieno Ochieng" },
-      { name: "creator", content: "Victor Otieno Ochieng" },
+      { name: "author", content: "Profia Institute" },
       { property: "og:site_name", content: "Profia Institute" },
       { property: "og:image", content: "https://www.profiainstitute.com/images/logo.png" },
+      { property: "og:image:alt", content: "Profia Institute, Homa Bay" },
       { name: "twitter:image", content: "https://www.profiainstitute.com/images/logo.png" },
     ],
     links: [

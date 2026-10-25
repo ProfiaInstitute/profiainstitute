@@ -6,7 +6,7 @@ export const Route = createFileRoute("/online-courses")({
   head: () =>
     seo(
       "Online Courses — Profia Institute",
-      "Online Courses at Profia Institute, Homa Bay.",
+      "Explore online learning and professional courses from Profia Institute, based in Homa Bay, Kenya.",
       "/online-courses",
     ),
   component: OnlineCoursesPage,

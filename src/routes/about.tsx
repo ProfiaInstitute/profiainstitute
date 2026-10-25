@@ -4,6 +4,10 @@ import { AboutPage } from "@/components/site/PublicPages";
 
 export const Route = createFileRoute("/about")({
   head: () =>
-    seo("About Us — Profia Institute", "About Us at Profia Institute, Homa Bay.", "/about"),
+    seo(
+      "About Profia Institute — Professional Training in Homa Bay",
+      "Learn about Profia Institute, our professional training, values and learning opportunities in Homa Bay, Kenya.",
+      "/about",
+    ),
   component: AboutPage,
 });
