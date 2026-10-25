@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import type { Json } from "@/integrations/supabase/types";
 
 export type GeneralSettings = {
   institution_name: string;
@@ -27,6 +28,7 @@ export const DEFAULT_GENERAL: GeneralSettings = {
   phones: ["0710221122", "0793977991"],
   email: "profiainstitute@gmail.com",
   address: "P.O Box 323-40300, Homa Bay",
+  location: "Profia Institute of Professionals, Homa Bay, Kenya",
   whatsapp: "254710221122",
   facebook: "https://www.facebook.com/profiainstitute/",
   footer_text: "Profia Institute. All Rights Reserved",
@@ -39,16 +41,18 @@ export function useSettings() {
     queryFn: async () => {
       const { data, error } = await supabase.from("site_settings").select("key,value");
       if (error) throw error;
-      const map: Record<string, any> = {};
+      const map: Record<string, Json> = {};
       for (const r of data ?? []) map[r.key] = r.value;
       return map;
     },
   });
 }
 
-export function useSetting<T = any>(key: string, fallback: T): T {
+export function useSetting<T extends object>(key: string, fallback: T): T {
   const { data } = useSettings();
-  return { ...(fallback as any), ...(data?.[key] ?? {}) } as T;
+  const value = data?.[key];
+  if (!value || typeof value !== "object" || Array.isArray(value)) return fallback;
+  return Object.assign({}, fallback, value);
 }
 
 export function useGeneral(): GeneralSettings {
@@ -170,17 +174,53 @@ export const STUDY_MODES: Record<string, string> = {
   online: "Online",
 };
 
+export const SITE_URL = "https://www.profiainstitute.com";
+export const FACILITY_LOCATION = {
+  name: "Profia Institute of Professionals",
+  latitude: -0.5350592,
+  longitude: 34.4575996,
+  googleMapsUrl:
+    "https://www.google.com/maps/place/Profia+Institute+of+Professionals,+Homa+Bay/@-0.5350592,34.4575996,17z/data=!4m2!3m1!1s0x19d4d58bffe5db35:0x403b4b18e49e44b9",
+} as const;
+
 export function seo(title: string, description: string, path: string, image?: string) {
-  const meta: any[] = [
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  const canonicalUrl = `${SITE_URL}${normalizedPath}`;
+  const socialImage = image?.startsWith("http")
+    ? image
+    : `${SITE_URL}${image ? (image.startsWith("/") ? image : `/${image}`) : "/images/logo.png"}`;
+  const isPrivateRoute =
+    normalizedPath === "/admin" ||
+    normalizedPath.startsWith("/student") ||
+    normalizedPath === "/application-status";
+  const metaDescription =
+    description.length > 160 ? `${description.slice(0, 157).trimEnd()}...` : description;
+  const meta: {
+    title?: string;
+    name?: string;
+    property?: string;
+    content?: string;
+  }[] = [
     { title },
-    { name: "description", content: description },
+    { name: "description", content: metaDescription },
+    { name: "author", content: "Profia Institute" },
+    { name: "robots", content: isPrivateRoute ? "noindex,nofollow" : "index,follow" },
+    {
+      name: "googlebot",
+      content: isPrivateRoute ? "noindex,nofollow" : "index,follow,max-image-preview:large",
+    },
     { property: "og:title", content: title },
-    { property: "og:description", content: description },
+    { property: "og:description", content: metaDescription },
     { property: "og:type", content: "website" },
+    { property: "og:url", content: canonicalUrl },
+    { property: "og:site_name", content: "Profia Institute" },
+    { property: "og:locale", content: "en_KE" },
+    { property: "og:image", content: socialImage },
+    { property: "og:image:alt", content: "Profia Institute, Homa Bay" },
+    { name: "twitter:title", content: title },
+    { name: "twitter:description", content: metaDescription },
+    { name: "twitter:image", content: socialImage },
     { name: "twitter:card", content: "summary_large_image" },
   ];
-  if (image && image.startsWith("http")) {
-    meta.push({ property: "og:image", content: image }, { name: "twitter:image", content: image });
-  }
-  return { meta, links: [{ rel: "canonical", href: `https://www.profiainstitute.com${path}` }] };
+  return { meta, links: [{ rel: "canonical", href: canonicalUrl }] };
 }

@@ -104,7 +104,12 @@
   --sidebar-ring: oklch(0.66 0.2 38);
 
   --gradient-brand: linear-gradient(135deg, oklch(0.36 0.13 22), oklch(0.27 0.1 20));
-  --gradient-hero-overlay: linear-gradient(90deg, oklch(0.2 0.08 20 / 0.88) 0%, oklch(0.27 0.1 20 / 0.6) 55%, oklch(0.27 0.1 20 / 0.15) 100%);
+  --gradient-hero-overlay: linear-gradient(
+    90deg,
+    oklch(0.2 0.08 20 / 0.88) 0%,
+    oklch(0.27 0.1 20 / 0.6) 55%,
+    oklch(0.27 0.1 20 / 0.15) 100%
+  );
   --shadow-card: 0 1px 2px oklch(0.3 0.05 20 / 0.06), 0 8px 24px -12px oklch(0.3 0.08 20 / 0.18);
   --shadow-lift: 0 18px 40px -18px oklch(0.36 0.13 22 / 0.35);
 }
@@ -122,7 +127,10 @@
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
   }
-  h1, h2, h3, h4 {
+  h1,
+  h2,
+  h3,
+  h4 {
     letter-spacing: -0.015em;
   }
 }
@@ -157,19 +165,148 @@
 }
 
 @keyframes fade-up {
-  from { opacity: 0; transform: translateY(12px); }
-  to { opacity: 1; transform: none; }
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 @utility animate-fade-up {
   animation: fade-up 0.6s ease-out both;
 }
+
+@keyframes page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes receipt-print {
+  0%,
+  100% {
+    transform: translateY(0) rotate(0);
+  }
+  25% {
+    transform: translateY(-2px) rotate(-8deg);
+  }
+  50% {
+    transform: translateY(1px) rotate(6deg);
+  }
+  75% {
+    transform: translateY(-1px) rotate(-4deg);
+  }
+}
+@keyframes receipt-ready {
+  0% {
+    transform: scale(0.72);
+    opacity: 0;
+  }
+  70% {
+    transform: scale(1.12);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+@keyframes loading-shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+.page-transition {
+  animation: page-enter 180ms ease-out both;
+}
+.dashboard-section-transition {
+  animation: fade-up 160ms ease-out both;
+}
+.motion-ready [data-scroll-reveal]:not(.is-visible) {
+  opacity: 0;
+  transform: translateY(18px);
+}
+[data-scroll-reveal] {
+  transition:
+    opacity 280ms ease,
+    transform 280ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+[data-scroll-reveal].is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+.receipt-printing {
+  animation: receipt-print 680ms ease-in-out infinite;
+}
+.receipt-ready {
+  animation: receipt-ready 420ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.loading-shimmer {
+  background: linear-gradient(
+    100deg,
+    var(--color-muted) 25%,
+    var(--color-accent) 40%,
+    var(--color-muted) 55%
+  );
+  background-size: 200% 100%;
+  animation: loading-shimmer 1.4s ease-in-out infinite;
+}
 @media (prefers-reduced-motion: reduce) {
-  * { animation: none !important; transition: none !important; }
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
 }
 
 /* Article rich text */
-.prose-profia p { margin: 0 0 1rem; line-height: 1.75; }
-.prose-profia h2 { font-size: 1.5rem; font-weight: 700; margin: 2rem 0 0.75rem; color: var(--color-brand); }
-.prose-profia h3 { font-size: 1.2rem; font-weight: 700; margin: 1.5rem 0 0.5rem; }
-.prose-profia ul { list-style: disc; padding-left: 1.25rem; margin-bottom: 1rem; }
-.prose-profia a { color: var(--color-primary); text-decoration: underline; }
+.prose-profia p {
+  margin: 0 0 1rem;
+  line-height: 1.75;
+}
+.prose-profia h1 {
+  font-size: 2rem;
+  font-weight: 700;
+  margin: 2rem 0 0.75rem;
+  color: var(--color-brand);
+}
+.prose-profia h2 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin: 2rem 0 0.75rem;
+  color: var(--color-brand);
+}
+.prose-profia h3 {
+  font-size: 1.2rem;
+  font-weight: 700;
+  margin: 1.5rem 0 0.5rem;
+}
+.prose-profia h4,
+.prose-profia h5,
+.prose-profia h6 {
+  font-weight: 700;
+  margin: 1.25rem 0 0.5rem;
+}
+.prose-profia ul,
+.prose-profia ol {
+  padding-left: 1.25rem;
+  margin-bottom: 1rem;
+}
+.prose-profia ul {
+  list-style: disc;
+}
+.prose-profia ol {
+  list-style: decimal;
+}
+.prose-profia strong {
+  font-weight: 700;
+}
+.prose-profia a {
+  color: var(--color-primary);
+  text-decoration: underline;
+}

@@ -35,6 +35,7 @@ export type Database = {
       announcements: {
         Row: {
           attachment_type: string | null;
+          attachment_file_name: string | null;
           attachment_url: string | null;
           body: string;
           category: string;
@@ -52,6 +53,7 @@ export type Database = {
         };
         Insert: {
           attachment_type?: string | null;
+          attachment_file_name?: string | null;
           attachment_url?: string | null;
           body?: string;
           category?: string;
@@ -69,6 +71,7 @@ export type Database = {
         };
         Update: {
           attachment_type?: string | null;
+          attachment_file_name?: string | null;
           attachment_url?: string | null;
           body?: string;
           category?: string;
@@ -342,6 +345,7 @@ export type Database = {
       articles: {
         Row: {
           attachment_type: string | null;
+          attachment_file_name: string | null;
           attachment_url: string | null;
           author: string | null;
           category_id: string | null;
@@ -363,6 +367,7 @@ export type Database = {
         };
         Insert: {
           attachment_type?: string | null;
+          attachment_file_name?: string | null;
           attachment_url?: string | null;
           author?: string | null;
           category_id?: string | null;
@@ -384,6 +389,7 @@ export type Database = {
         };
         Update: {
           attachment_type?: string | null;
+          attachment_file_name?: string | null;
           attachment_url?: string | null;
           author?: string | null;
           category_id?: string | null;
@@ -711,6 +717,7 @@ export type Database = {
       enrollments: {
         Row: {
           academic_year: string | null;
+          application_id: string | null;
           course_id: string;
           created_at: string;
           id: string;
@@ -722,6 +729,7 @@ export type Database = {
         };
         Insert: {
           academic_year?: string | null;
+          application_id?: string | null;
           course_id: string;
           created_at?: string;
           id?: string;
@@ -733,6 +741,7 @@ export type Database = {
         };
         Update: {
           academic_year?: string | null;
+          application_id?: string | null;
           course_id?: string;
           created_at?: string;
           id?: string;
@@ -743,6 +752,13 @@ export type Database = {
           updated_at?: string;
         };
         Relationships: [
+          {
+            foreignKeyName: "enrollments_application_id_fkey";
+            columns: ["application_id"];
+            isOneToOne: true;
+            referencedRelation: "applications";
+            referencedColumns: ["id"];
+          },
           {
             foreignKeyName: "enrollments_course_id_fkey";
             columns: ["course_id"];
@@ -1788,6 +1804,18 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
+      create_cat_assessment: {
+        Args: {
+          _closes_at: string;
+          _course_id: string;
+          _duration_minutes: number;
+          _instructions: string | null;
+          _opens_at: string;
+          _questions: Json;
+          _title: string;
+        };
+        Returns: string;
+      };
       admin_fee_account_summary: {
         Args: never;
         Returns: {
@@ -1817,10 +1845,22 @@ export type Database = {
       claim_student_record: { Args: never; Returns: string };
       can_access_online_lesson: { Args: { _lesson_id: string }; Returns: boolean };
       can_access_online_lesson_file: { Args: { _file_path: string }; Returns: boolean };
+      list_cat_assessments: { Args: never; Returns: Json };
+      list_my_cats: { Args: never; Returns: Json };
       record_faq_search: {
         Args: { _bucket: number; _faq_id: string };
         Returns: undefined;
       };
+      save_cat_answer: {
+        Args: {
+          _attempt_id: string;
+          _question_id: string;
+          _selected_option: string;
+        };
+        Returns: undefined;
+      };
+      start_cat_attempt: { Args: { _assessment_id: string }; Returns: Json };
+      submit_cat_attempt: { Args: { _attempt_id: string }; Returns: Json };
       list_faq_search_insights: {
         Args: { _days?: number };
         Returns: {

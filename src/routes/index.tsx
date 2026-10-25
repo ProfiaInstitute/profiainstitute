@@ -229,13 +229,17 @@ function AnnouncementStrip() {
     queryFn: async () => {
       const { data } = await supabase
         .from("announcements")
-        .select("id,title,category")
+        .select("id,title,category,starts_at,ends_at")
         .eq("published", true)
-        .eq("show_on_homepage", true)
-        .order("created_at", { ascending: false })
-        .limit(3);
+        .order("created_at", { ascending: false });
       const now = Date.now();
-      return data ?? [];
+      return (data ?? [])
+        .filter(
+          (item) =>
+            (!item.starts_at || new Date(item.starts_at).getTime() <= now) &&
+            (!item.ends_at || new Date(item.ends_at).getTime() >= now),
+        )
+        .slice(0, 3);
     },
   });
   if (!data?.length) return null;
@@ -301,8 +305,9 @@ function LatestNews() {
       const { data, error } = await supabase
         .from("articles")
         .select("id,slug,title,excerpt,featured_image,published_at")
-        .in("status", ["published", "scheduled"])
-        .lte("published_at", new Date().toISOString())
+        .or(
+          `status.eq.published,and(status.eq.scheduled,published_at.lte.${new Date().toISOString()})`,
+        )
         .order("published_at", { ascending: false })
         .limit(3);
       if (error) throw error;
@@ -366,6 +371,12 @@ export function ArticleCard({
             loading="lazy"
             className="h-full w-full object-cover"
           />
+        )}
+        {!a.featured_image && (
+          <span className="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground">
+            <Newspaper aria-hidden="true" className="h-5 w-5" />
+            Profia Institute news
+          </span>
         )}
       </div>
       <div className="p-5">

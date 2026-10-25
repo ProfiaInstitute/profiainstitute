@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { Link, useParams } from "@tanstack/react-router";
+import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import {
   ArrowRight,
@@ -8,6 +8,7 @@ import {
   GraduationCap,
   MapPin,
   MessageCircle,
+  Newspaper,
   Phone,
   Send,
 } from "lucide-react";
@@ -24,8 +25,11 @@ import {
   SectionTitle,
 } from "@/components/site/common";
 import { supabase } from "@/integrations/supabase/client";
+import { getYouTubeEmbedUrl, renderContentMarkup } from "@/lib/content-format";
+import { downloadContentAttachment } from "@/lib/content-download";
 import type { Tables } from "@/integrations/supabase/types";
 import {
+  FACILITY_LOCATION,
   SCHOOL_ROUTES,
   formatKES,
   useActiveIntake,
@@ -584,7 +588,6 @@ export function AnnouncementsPage() {
           "id,title,body,category,created_at,starts_at,ends_at,attachment_url,attachment_type",
         )
         .eq("published", true)
-        .eq("show_public", true)
         .order("created_at", { ascending: false });
       if (error) throw error;
       const now = Date.now();
@@ -620,13 +623,15 @@ export function AnnouncementsPage() {
                   </time>
                 </div>
                 <h2 className="mt-2 text-xl font-bold text-brand">{item.title}</h2>
-                <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
-                  {item.body}
-                </p>
+                <div
+                  className="prose-profia mt-3 text-sm leading-relaxed text-muted-foreground"
+                  dangerouslySetInnerHTML={{ __html: renderContentMarkup(item.body) }}
+                />
                 {item.attachment_url && (
                   <PublicAttachment
                     url={item.attachment_url}
                     type={item.attachment_type}
+                    filename={null}
                     label={item.title}
                   />
                 )}
@@ -651,8 +656,9 @@ export function ArticlesPage() {
       const { data, error } = await supabase
         .from("articles")
         .select("id,slug,title,excerpt,featured_image,attachment_type,published_at,author")
-        .in("status", ["published", "scheduled"])
-        .lte("published_at", new Date().toISOString())
+        .or(
+          `status.eq.published,and(status.eq.scheduled,published_at.lte.${new Date().toISOString()})`,
+        )
         .order("published_at", { ascending: false });
       if (error) throw error;
       return data;
@@ -693,6 +699,12 @@ export function ArticlesPage() {
                         Video article
                       </span>
                     )}
+                    {!article.featured_image && article.attachment_type !== "video" && (
+                      <span className="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground">
+                        <Newspaper aria-hidden="true" className="h-5 w-5" />
+                        Profia Institute news
+                      </span>
+                    )}
                   </div>
                   <div className="p-5">
                     {article.published_at && (
@@ -729,37 +741,21 @@ export function ArticlesPage() {
   );
 }
 
-export function ArticleDetailPage() {
-  const { slug } = useParams({ from: "/articles/$slug" });
-  const query = useQuery({
-    queryKey: ["article", slug],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("articles")
-        .select(
-          "slug,title,excerpt,content,featured_image,attachment_url,attachment_type,author,published_at",
-        )
-        .eq("slug", slug)
-        .in("status", ["published", "scheduled"])
-        .lte("published_at", new Date().toISOString())
-        .maybeSingle();
-      if (error) throw error;
-      return data;
-    },
-  });
-  if (query.isLoading)
-    return (
-      <main className="container-site py-16">
-        <CardGridSkeleton n={1} />
-      </main>
-    );
-  if (query.error)
-    return (
-      <main className="container-site py-16">
-        <ErrorNote />
-      </main>
-    );
-  if (!query.data)
+export type PublicArticle = Pick<
+  Tables<"articles">,
+  | "slug"
+  | "title"
+  | "excerpt"
+  | "content"
+  | "featured_image"
+  | "attachment_url"
+  | "attachment_type"
+  | "author"
+  | "published_at"
+>;
+
+export function ArticleDetailPage({ article }: { article: PublicArticle | null }) {
+  if (!article)
     return (
       <main className="container-site py-16">
         <EmptyState
@@ -776,27 +772,29 @@ export function ArticleDetailPage() {
   return (
     <article>
       <PageHero
-        title={query.data.title}
-        subtitle={query.data.excerpt}
-        image={query.data.featured_image}
+        title={article.title}
+        subtitle={article.excerpt}
+        image={article.featured_image}
         eyebrow={
-          query.data.published_at
-            ? new Date(query.data.published_at).toLocaleDateString("en-KE", { dateStyle: "long" })
+          article.published_at
+            ? new Date(article.published_at).toLocaleDateString("en-KE", { dateStyle: "long" })
             : "Profia news"
         }
       />
       <div className="container-site max-w-4xl py-12">
-        {query.data.author && (
-          <p className="mb-6 text-sm text-muted-foreground">By {query.data.author}</p>
+        {article.author && (
+          <p className="mb-6 text-sm text-muted-foreground">By {article.author}</p>
         )}
-        <div className="whitespace-pre-wrap text-base leading-8 text-foreground">
-          {query.data.content}
-        </div>
-        {query.data.attachment_url && query.data.attachment_type !== "image" && (
+        <div
+          className="prose-profia text-base leading-8 text-foreground"
+          dangerouslySetInnerHTML={{ __html: renderContentMarkup(article.content) }}
+        />
+        {article.attachment_url && article.attachment_type !== "image" && (
           <PublicAttachment
-            url={query.data.attachment_url}
-            type={query.data.attachment_type}
-            label={query.data.title}
+            url={article.attachment_url}
+            type={article.attachment_type}
+            filename={null}
+            label={article.title}
           />
         )}
         <Button asChild variant="outline" className="mt-10">
@@ -810,12 +808,26 @@ export function ArticleDetailPage() {
 function PublicAttachment({
   url,
   type,
+  filename,
   label,
 }: {
   url: string;
   type: string | null;
+  filename: string | null;
   label: string;
 }) {
+  const youtubeEmbedUrl = type === "video" ? getYouTubeEmbedUrl(url) : null;
+  if (youtubeEmbedUrl)
+    return (
+      <iframe
+        src={youtubeEmbedUrl}
+        title={label}
+        className="mt-5 aspect-video w-full rounded-lg bg-black"
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+        referrerPolicy="strict-origin-when-cross-origin"
+        allowFullScreen
+      />
+    );
   if (type === "video")
     return (
       <video
@@ -843,16 +855,41 @@ function PublicAttachment({
         loading="lazy"
       />
     );
+  return <AttachmentDownload url={url} filename={filename} label={label} />;
+}
+
+function AttachmentDownload({
+  url,
+  filename,
+  label,
+}: {
+  url: string;
+  filename: string | null;
+  label: string;
+}) {
+  const [downloading, setDownloading] = useState(false);
   return (
-    <a
-      className="mt-5 inline-flex font-medium text-primary hover:underline"
-      href={url}
-      target="_blank"
-      rel="noreferrer"
-      download
-    >
-      Download attachment
-    </a>
+    <div className="mt-5">
+      <button
+        type="button"
+        className="inline-flex font-medium text-primary hover:underline disabled:opacity-60"
+        disabled={downloading}
+        onClick={async () => {
+          setDownloading(true);
+          try {
+            await downloadContentAttachment(url, filename || label);
+          } catch (error) {
+            toast.error("Could not download attachment", {
+              description: error instanceof Error ? error.message : undefined,
+            });
+          } finally {
+            setDownloading(false);
+          }
+        }}
+      >
+        {downloading ? "Preparing download…" : "Download attachment"}
+      </button>
+    </div>
   );
 }
 
@@ -898,79 +935,106 @@ export function ContactPage() {
         subtitle="Reach the Institute with questions about courses, admissions or student services."
         eyebrow="We are here to help"
       />
-      <section className="container-site grid gap-8 py-12 lg:grid-cols-[0.85fr_1.15fr]">
-        <div className="space-y-4">
-          <InfoCard title="Visit us" text={general.address} icon={<MapPin />} />
-          <InfoCard title="Call" text={general.phones.join(" · ")} icon={<Phone />} />
-          <InfoCard title="Email" text={general.email} icon={<Send />} />
-          {general.location && (
-            <InfoCard title="Location" text={general.location} icon={<MapPin />} />
-          )}
-          <Button asChild variant="whatsapp" className="w-full">
-            <a
-              href={whatsappLink(general.whatsapp, "Hello Profia Institute, I have an enquiry.")}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              <MessageCircle /> Chat on WhatsApp
-            </a>
-          </Button>
-        </div>
-        <form
-          onSubmit={submit}
-          className="space-y-4 rounded-2xl border bg-card p-5 shadow-card sm:p-7"
-        >
-          {submitted && (
-            <p role="status" className="rounded-lg bg-cream p-3 text-sm text-brand">
-              Thank you. Your message has been received; the Institute will follow up using your
-              contact details.
-            </p>
-          )}
-          <h2 className="text-xl font-bold text-brand">Send us a message</h2>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Name *">
-              <Input
-                required
-                maxLength={100}
-                value={values.name}
-                onChange={(e) => setValues({ ...values, name: e.target.value })}
-              />
-            </Field>
-            <Field label="Email">
-              <Input
-                type="email"
-                maxLength={255}
-                value={values.email}
-                onChange={(e) => setValues({ ...values, email: e.target.value })}
-              />
-            </Field>
-            <Field label="Phone">
-              <Input
-                type="tel"
-                maxLength={20}
-                value={values.phone}
-                onChange={(e) => setValues({ ...values, phone: e.target.value })}
-              />
-            </Field>
-            <Field label="Subject">
-              <Input
-                maxLength={200}
-                value={values.subject}
-                onChange={(e) => setValues({ ...values, subject: e.target.value })}
-              />
-            </Field>
-          </div>
-          <Field label="Message *">
-            <Textarea
-              required
-              maxLength={2000}
-              rows={6}
-              value={values.message}
-              onChange={(e) => setValues({ ...values, message: e.target.value })}
+      <section className="container-site space-y-8 py-12">
+        <div className="grid gap-8 lg:grid-cols-[0.85fr_1.15fr]">
+          <div className="space-y-4">
+            <InfoCard
+              title="Visit us"
+              text={general.location || `${FACILITY_LOCATION.name}, Homa Bay, Kenya`}
+              icon={<MapPin />}
             />
-          </Field>
-          <Button disabled={busy}>{busy ? "Sending…" : "Send message"}</Button>
-        </form>
+            <InfoCard title="Postal address" text={general.address} icon={<Send />} />
+            <InfoCard title="Call" text={general.phones.join(" · ")} icon={<Phone />} />
+            <InfoCard title="Email" text={general.email} icon={<Send />} />
+            <Button asChild variant="whatsapp" className="w-full">
+              <a
+                href={whatsappLink(general.whatsapp, "Hello Profia Institute, I have an enquiry.")}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <MessageCircle /> Chat on WhatsApp
+              </a>
+            </Button>
+          </div>
+          <form
+            onSubmit={submit}
+            className="space-y-4 rounded-2xl border bg-card p-5 shadow-card sm:p-7"
+          >
+            {submitted && (
+              <p role="status" className="rounded-lg bg-cream p-3 text-sm text-brand">
+                Thank you. Your message has been received; the Institute will follow up using your
+                contact details.
+              </p>
+            )}
+            <h2 className="text-xl font-bold text-brand">Send us a message</h2>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Name *">
+                <Input
+                  required
+                  maxLength={100}
+                  value={values.name}
+                  onChange={(e) => setValues({ ...values, name: e.target.value })}
+                />
+              </Field>
+              <Field label="Email">
+                <Input
+                  type="email"
+                  maxLength={255}
+                  value={values.email}
+                  onChange={(e) => setValues({ ...values, email: e.target.value })}
+                />
+              </Field>
+              <Field label="Phone">
+                <Input
+                  type="tel"
+                  maxLength={20}
+                  value={values.phone}
+                  onChange={(e) => setValues({ ...values, phone: e.target.value })}
+                />
+              </Field>
+              <Field label="Subject">
+                <Input
+                  maxLength={200}
+                  value={values.subject}
+                  onChange={(e) => setValues({ ...values, subject: e.target.value })}
+                />
+              </Field>
+            </div>
+            <Field label="Message *">
+              <Textarea
+                required
+                maxLength={2000}
+                rows={6}
+                value={values.message}
+                onChange={(e) => setValues({ ...values, message: e.target.value })}
+              />
+            </Field>
+            <Button disabled={busy}>{busy ? "Sending…" : "Send message"}</Button>
+          </form>
+        </div>
+        <section className="overflow-hidden rounded-2xl border bg-card shadow-card">
+          <div className="flex flex-wrap items-center justify-between gap-3 p-5">
+            <div>
+              <h2 className="text-xl font-bold text-brand">Find Profia Institute</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {FACILITY_LOCATION.name}, Homa Bay, Kenya
+              </p>
+            </div>
+            <Button asChild variant="outline">
+              <a href={FACILITY_LOCATION.googleMapsUrl} target="_blank" rel="noopener noreferrer">
+                <MapPin /> Get directions
+              </a>
+            </Button>
+          </div>
+          <iframe
+            title="Map showing Profia Institute of Professionals in Homa Bay"
+            src={`https://www.google.com/maps?q=${FACILITY_LOCATION.latitude},${FACILITY_LOCATION.longitude}&z=17&output=embed`}
+            className="h-[360px] w-full border-0 sm:h-[440px]"
+            loading="lazy"
+            referrerPolicy="no-referrer-when-downgrade"
+            allowFullScreen
+          />
+        </section>
       </section>
       <FaqSection />
     </>

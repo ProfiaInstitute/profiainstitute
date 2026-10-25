@@ -63,14 +63,17 @@ Deno.serve(async (request: Request) => {
 
   try {
     const path = await createFeeReceipt(supabase, payment.id);
-    const { data: receipt, error: receiptError } = await supabase.storage
+    const { data: receiptFile, error: receiptError } = await supabase.storage
       .from("fee-documents")
       .download(path);
-    if (receiptError || !receipt) {
-      console.error("Could not load generated fee receipt:", receiptError?.message);
-      return json({ error: "Receipt created, but its file could not be loaded." }, 500);
+    if (receiptError || !receiptFile) {
+      console.error(
+        "Could not read generated fee receipt:",
+        receiptError?.message ?? "Receipt file was not found.",
+      );
+      return json({ error: "Receipt was generated but could not be opened." }, 500);
     }
-    return new Response(receipt, {
+    return new Response(await receiptFile.arrayBuffer(), {
       status: 200,
       headers: {
         ...corsHeaders,

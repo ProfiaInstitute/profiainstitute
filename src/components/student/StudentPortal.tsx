@@ -1,13 +1,16 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   BookOpen,
+  CheckCircle2,
+  ClipboardCheck,
   ClipboardList,
   Download,
   Eye,
   FileText,
   GraduationCap,
   LogOut,
+  Printer,
   RefreshCw,
   UserRound,
   Wallet,
@@ -21,11 +24,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 import { useUser } from "@/lib/auth";
 import { isAssignmentOpenForSubmission } from "@/lib/assignments";
+import { StudentCatsSection } from "@/components/student/StudentCatsSection";
 import { formatKES } from "@/lib/site";
+import { useScrollReveal } from "@/lib/motion";
 import type { Database, Tables } from "@/integrations/supabase/types";
 
 type PortalSection =
-  "overview" | "online" | "learning" | "assignments" | "results" | "fees" | "profile";
+  "overview" | "online" | "learning" | "assignments" | "cats" | "results" | "fees" | "profile";
 type Student = Tables<"students">;
 
 export function StudentPortal({ selectedCourseId }: { selectedCourseId: string | null }) {
@@ -206,6 +211,7 @@ function StudentWorkspace({
 }) {
   const queryClient = useQueryClient();
   const [phoneDraft, setPhoneDraft] = useState(enrollmentPhone);
+  const contentRef = useRef<HTMLDivElement>(null);
   useEffect(() => setPhoneDraft(enrollmentPhone), [enrollmentPhone]);
   const studentQuery = useQuery({
     queryKey: ["student", "record", userId, selectedCourseId, enrollmentPhone],
@@ -236,6 +242,7 @@ function StudentWorkspace({
       return data;
     },
   });
+  useScrollReveal(contentRef, `${section}:${studentQuery.data?.id ?? ""}`, false);
 
   function submitEnrollmentPhone(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -322,6 +329,7 @@ function StudentWorkspace({
     online: "My online courses",
     learning: "Learning materials",
     assignments: "Assignments",
+    cats: "CATs",
     results: "My results",
     fees: "Fees & payments",
     profile: "My profile",
@@ -331,9 +339,17 @@ function StudentWorkspace({
     { id: "online", title: "My online courses", icon: BookOpen },
     { id: "learning", title: "Learning materials", icon: BookOpen },
     { id: "assignments", title: "Assignments", icon: ClipboardList },
+    { id: "cats", title: "CATs", icon: ClipboardCheck },
     { id: "results", title: "Results", icon: FileText },
     { id: "fees", title: "Fees", icon: Wallet },
     { id: "profile", title: "My profile", icon: UserRound },
+  ];
+  const linkGroups: { title: string; ids: PortalSection[] }[] = [
+    {
+      title: "Learning",
+      ids: ["overview", "online", "learning", "assignments", "cats", "results"],
+    },
+    { title: "Account", ids: ["fees", "profile"] },
   ];
 
   return (
@@ -362,28 +378,46 @@ function StudentWorkspace({
             </p>
             <p className="mt-1 text-xs text-muted-foreground">{student.student_number}</p>
           </div>
-          <nav className="flex gap-1 overflow-x-auto lg:mt-5 lg:flex-col">
-            {links.map(({ id, title, icon: Icon }) => (
-              <button
-                key={id}
-                type="button"
-                onClick={() => onSection(id)}
-                className={`flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium ${section === id ? "bg-brand text-brand-foreground" : "text-muted-foreground hover:bg-muted"}`}
-              >
-                <Icon className="h-4 w-4" />
-                {title}
-              </button>
+          <nav
+            className="flex gap-1 overflow-x-auto lg:mt-5 lg:flex-col lg:gap-4"
+            aria-label="Student portal"
+          >
+            {linkGroups.map((group) => (
+              <div key={group.title} className="flex shrink-0 gap-1 lg:flex-col">
+                <p className="hidden px-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground lg:block">
+                  {group.title}
+                </p>
+                {links
+                  .filter((link) => group.ids.includes(link.id))
+                  .map(({ id, title, icon: Icon }) => (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => onSection(id)}
+                      aria-current={section === id ? "page" : undefined}
+                      className={`flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${section === id ? "bg-brand text-brand-foreground shadow-sm" : "text-muted-foreground hover:bg-muted"}`}
+                    >
+                      <Icon className="h-4 w-4" />
+                      {title}
+                    </button>
+                  ))}
+              </div>
             ))}
           </nav>
         </aside>
         <main className="min-w-0 flex-1 p-4 sm:p-6 lg:p-8">
-          <div className="mx-auto max-w-5xl">
+          <div
+            key={section}
+            ref={contentRef}
+            className="dashboard-section-transition mx-auto max-w-5xl"
+          >
             <p className="eyebrow">Student services</p>
             <h1 className="mb-6 mt-1 text-2xl font-bold text-brand">{pageTitle[section]}</h1>
             {section === "overview" && <StudentOverview student={student} onNavigate={onSection} />}
             {section === "online" && <OnlineCoursesSection student={student} />}
             {section === "learning" && <LearningSection courseId={student.course_id} />}
             {section === "assignments" && <AssignmentsSection student={student} />}
+            {section === "cats" && <StudentCatsSection courseId={student.course_id} />}
             {section === "results" && <ResultsSection studentId={student.id} />}
             {section === "fees" && (
               <FeesSection
@@ -554,7 +588,10 @@ function StudentOverview({
   const navMap: PortalSection[] = ["online", "results", "assignments", "fees"];
   return (
     <div className="space-y-6">
-      <section className="rounded-2xl bg-gradient-brand p-6 text-brand-foreground shadow-card sm:p-8">
+      <section
+        data-scroll-reveal
+        className="rounded-2xl bg-gradient-brand p-6 text-brand-foreground shadow-card sm:p-8"
+      >
         <p className="text-sm font-semibold text-brand-foreground/75">
           Student number · {student.student_number}
         </p>
@@ -565,7 +602,7 @@ function StudentOverview({
             : "Your student information and learning services"}
         </p>
       </section>
-      <section className="rounded-xl border bg-card p-5 shadow-card">
+      <section data-scroll-reveal className="rounded-xl border bg-card p-5 shadow-card">
         <h3 className="font-semibold text-brand">Your courses</h3>
         {coursesQuery.isLoading ? (
           <p className="mt-2 text-sm text-muted-foreground">Loading course enrolments…</p>
@@ -610,6 +647,7 @@ function StudentOverview({
           <button
             key={title}
             type="button"
+            data-scroll-reveal
             onClick={() => {
               const destination = navMap[index];
               if (destination) onNavigate(destination);
@@ -624,7 +662,7 @@ function StudentOverview({
           </button>
         ))}
       </div>
-      <section className="rounded-xl border bg-card p-5 shadow-card">
+      <section data-scroll-reveal className="rounded-xl border bg-card p-5 shadow-card">
         <h3 className="font-semibold text-brand">Your enrolment</h3>
         <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
           <div>
@@ -678,7 +716,11 @@ function LearningSection({ courseId }: { courseId: string | null }) {
   return query.data?.length ? (
     <div className="space-y-3">
       {query.data.map((material) => (
-        <article key={material.id} className="rounded-xl border bg-card p-5 shadow-card">
+        <article
+          key={material.id}
+          data-scroll-reveal
+          className="rounded-xl border bg-card p-5 shadow-card"
+        >
           <h2 className="font-semibold text-brand">{material.title}</h2>
           <p className="mt-1 text-xs uppercase tracking-wide text-primary">
             {material.material_type}
@@ -1148,7 +1190,11 @@ function AssignmentsSection({ student }: { student: Student }) {
         const submissionOpen = isAssignmentOpenForSubmission(assignment.due_date, currentTime);
         const deadlinePassed = !submissionOpen;
         return (
-          <article key={assignment.id} className="rounded-xl border bg-card p-5 shadow-card">
+          <article
+            key={assignment.id}
+            data-scroll-reveal
+            className="rounded-xl border bg-card p-5 shadow-card"
+          >
             <div className="flex flex-wrap items-start justify-between gap-2">
               <h2 className="font-semibold text-brand">{assignment.title}</h2>
               <Badge variant={submission ? "default" : "secondary"}>
@@ -1403,6 +1449,26 @@ function ResultsSection({ studentId }: { studentId: string }) {
   );
 }
 
+function showReceiptPopup(windowRef: Window, ready: boolean) {
+  if (windowRef.closed) return;
+  windowRef.document.title = ready ? "Receipt download started" : "Preparing your receipt";
+  windowRef.document.head.innerHTML = `<meta name="viewport" content="width=device-width, initial-scale=1"><style>
+    *{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:#fff8f1;color:#321018;font:15px Inter,Arial,sans-serif}
+    main{width:min(360px,calc(100% - 36px));padding:34px 28px;text-align:center;background:#fff;border:1px solid #eaded8;border-radius:20px;box-shadow:0 18px 55px #68091518}
+    .icon{height:62px;width:62px;margin:0 auto 18px;display:grid;place-items:center;border-radius:18px;background:#fff1e8;color:#f1582b}
+    .printer{animation:print .7s ease-in-out infinite}.check{color:#287a52;animation:ready .4s ease both}
+    .paper{height:4px;margin-top:22px;overflow:hidden;border-radius:9px;background:#f2e9e4}.paper:after{content:"";display:block;width:42%;height:100%;border-radius:9px;background:#f1582b;animation:progress 1.2s ease-in-out infinite}
+    h1{margin:0;font-size:18px;color:#680915}p{margin:8px 0 0;line-height:1.55;color:#75666a}
+    @keyframes print{25%{transform:translateY(-3px) rotate(-7deg)}50%{transform:translateY(1px) rotate(5deg)}75%{transform:translateY(-1px) rotate(-3deg}}
+    @keyframes ready{from{transform:scale(.7);opacity:0}to{transform:scale(1);opacity:1}}
+    @keyframes progress{from{transform:translateX(-110%)}to{transform:translateX(250%)}}
+    @media(prefers-reduced-motion:reduce){*,*:before{animation:none!important}}
+  </style>`;
+  windowRef.document.body.innerHTML = ready
+    ? `<main role="status" aria-live="polite"><div class="icon check"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 4 4L19 6"/></svg></div><h1>Receipt ready</h1><p>Your download has started. This window will close shortly.</p></main>`
+    : `<main role="status" aria-live="polite"><div class="icon printer"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 14h12v8H6z"/></svg></div><h1>Preparing your receipt</h1><p>Creating your secure, school-branded PDF…</p><div class="paper" aria-hidden="true"></div></main>`;
+}
+
 function FeesSection({
   studentId,
   studentNumber,
@@ -1414,6 +1480,14 @@ function FeesSection({
 }) {
   const queryClient = useQueryClient();
   const [amount, setAmount] = useState("");
+  const [receiptReadyId, setReceiptReadyId] = useState<string | null>(null);
+  const receiptReadyTimer = useRef<number | null>(null);
+  useEffect(
+    () => () => {
+      if (receiptReadyTimer.current !== null) window.clearTimeout(receiptReadyTimer.current);
+    },
+    [],
+  );
   const [receiptPreviewUrl, setReceiptPreviewUrl] = useState<string | null>(null);
   useEffect(() => {
     if (!receiptPreviewUrl) return;
@@ -1458,7 +1532,7 @@ function FeesSection({
         notifications: notifications.data,
       };
     },
-    refetchInterval: 20_000,
+    refetchOnWindowFocus: "always",
   });
   const paymentMutation = useMutation({
     mutationFn: async () => {
@@ -1526,7 +1600,12 @@ function FeesSection({
     },
   });
   const receiptMutation = useMutation({
-    mutationFn: async ({ paymentId, mode }: { paymentId: string; mode: "view" | "download" }) => {
+    mutationFn: async (
+      variables:
+        | { paymentId: string; mode: "view" }
+        | { paymentId: string; mode: "download"; windowRef: Window },
+    ) => {
+      const { paymentId, mode } = variables;
       const { data, error } = await supabase.functions.invoke("generate-fee-receipt", {
         body: { paymentId, mode },
       });
@@ -1542,31 +1621,52 @@ function FeesSection({
       }
       if (!(data instanceof Blob) || data.type !== "application/pdf")
         throw new Error("The receipt service returned an invalid PDF.");
-      return { receipt: data, mode };
+      return { pdf: data, ...variables };
     },
-    onSuccess: ({ receipt, mode }) => {
-      const objectUrl = URL.createObjectURL(receipt);
+    onSuccess: (result) => {
+      const { pdf, mode, paymentId } = result;
+      const objectUrl = URL.createObjectURL(pdf);
       if (mode === "view") {
         setReceiptPreviewUrl(objectUrl);
       } else {
-        const link = document.createElement("a");
-        link.href = objectUrl;
-        link.download = "Profia-fee-receipt.pdf";
-        document.body.append(link);
-        link.click();
-        link.remove();
+        const { windowRef } = result;
+        const download = document.createElement("a");
+        download.href = objectUrl;
+        download.download = "Profia-fee-receipt.pdf";
+        document.body.append(download);
+        download.click();
+        download.remove();
+        showReceiptPopup(windowRef, true);
+        setReceiptReadyId(paymentId);
+        if (receiptReadyTimer.current !== null) window.clearTimeout(receiptReadyTimer.current);
+        receiptReadyTimer.current = window.setTimeout(() => {
+          setReceiptReadyId(null);
+          receiptReadyTimer.current = null;
+          windowRef.close();
+        }, 1600);
         window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
       }
       void queryClient.invalidateQueries({ queryKey: ["student", "fees", studentId] });
     },
-    onError: (error) => {
+    onError: (error, variables) => {
+      if (variables.mode === "download") variables.windowRef.close();
       toast.error("Could not download receipt", {
         description: error instanceof Error ? error.message : "Please retry.",
       });
     },
   });
   function openReceipt(paymentId: string, mode: "view" | "download") {
-    receiptMutation.mutate({ paymentId, mode });
+    if (mode === "view") {
+      receiptMutation.mutate({ paymentId, mode });
+      return;
+    }
+    const windowRef = window.open("about:blank", "_blank");
+    if (!windowRef) {
+      toast.error("Allow pop-ups to download your receipt.");
+      return;
+    }
+    showReceiptPopup(windowRef, false);
+    receiptMutation.mutate({ paymentId, mode, windowRef });
   }
   function downloadStatement() {
     const windowRef = window.open("about:blank", "_blank");
@@ -1598,7 +1698,7 @@ function FeesSection({
           </div>
         ))}
       </section>
-      <section className="rounded-xl border bg-card p-5 shadow-card">
+      <section data-scroll-reveal className="rounded-xl border bg-card p-5 shadow-card">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="font-semibold text-brand">Pay fees with PayHero</h2>
@@ -1656,7 +1756,7 @@ function FeesSection({
           prompt you requested.
         </p>
       </section>
-      <section className="rounded-xl border bg-card p-5 shadow-card">
+      <section data-scroll-reveal className="rounded-xl border bg-card p-5 shadow-card">
         <h2 className="font-semibold text-brand">Billed charges · {studentNumber}</h2>
         {query.data?.fees.length ? (
           <div className="mt-3 divide-y">
@@ -1674,7 +1774,7 @@ function FeesSection({
           <p className="mt-3 text-sm text-muted-foreground">No fee charges have been recorded.</p>
         )}
       </section>
-      <section className="rounded-xl border bg-card p-5 shadow-card">
+      <section data-scroll-reveal className="rounded-xl border bg-card p-5 shadow-card">
         <h2 className="font-semibold text-brand">Confirmed payments</h2>
         {query.data?.payments.length ? (
           <div className="mt-3 divide-y">
@@ -1708,9 +1808,27 @@ function FeesSection({
                     variant="ghost"
                     disabled={receiptMutation.isPending}
                     onClick={() => openReceipt(payment.id, "download")}
+                    className={
+                      receiptMutation.isPending &&
+                      receiptMutation.variables?.paymentId === payment.id
+                        ? "receipt-download-active"
+                        : undefined
+                    }
                   >
-                    <Download />
-                    Download
+                    {receiptMutation.isPending &&
+                    receiptMutation.variables?.paymentId === payment.id ? (
+                      <Printer className="receipt-printing" />
+                    ) : receiptReadyId === payment.id ? (
+                      <CheckCircle2 className="receipt-ready text-success" />
+                    ) : (
+                      <Download />
+                    )}
+                    {receiptMutation.isPending &&
+                    receiptMutation.variables?.paymentId === payment.id
+                      ? "Preparing…"
+                      : receiptReadyId === payment.id
+                        ? "Download started"
+                        : "Download"}
                   </Button>
                 </span>
               </div>
@@ -1759,7 +1877,7 @@ function FeesSection({
         </div>
       )}
       {query.data?.notifications.length ? (
-        <section className="rounded-xl border bg-card p-5 shadow-card">
+        <section data-scroll-reveal className="rounded-xl border bg-card p-5 shadow-card">
           <h2 className="font-semibold text-brand">Payment notifications</h2>
           <ul className="mt-3 divide-y">
             {query.data.notifications.map((notification) => (
@@ -1953,11 +2071,14 @@ function PortalMessage({
 }
 function Loading() {
   return (
-    <div
-      role="status"
-      className="animate-pulse rounded-xl border bg-card p-8 text-sm text-muted-foreground"
-    >
-      Loading…
+    <div role="status" aria-label="Loading student information" className="space-y-4">
+      <span className="sr-only">Loading…</span>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <div className="loading-shimmer h-24 rounded-xl" />
+        <div className="loading-shimmer h-24 rounded-xl" />
+        <div className="loading-shimmer h-24 rounded-xl" />
+      </div>
+      <div className="loading-shimmer h-40 rounded-xl" />
     </div>
   );
 }

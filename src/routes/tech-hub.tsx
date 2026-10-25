@@ -5,8 +5,8 @@ import { TechHubPage } from "@/components/site/PublicPages";
 export const Route = createFileRoute("/tech-hub")({
   head: () =>
     seo(
-      "Profia Tech Hub — Profia Institute",
-      "Profia Tech Hub at Profia Institute, Homa Bay.",
+      "Technology and Digital Training — Profia Tech Hub Homa Bay",
+      "Discover technology, digital learning and training opportunities at Profia Tech Hub, Profia Institute in Homa Bay.",
       "/tech-hub",
     ),
   component: TechHubPage,

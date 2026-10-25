@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/accordion";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
+import { getYouTubeEmbedUrl } from "@/lib/content-format";
 import { formatKES, useGeneral, useMedia, whatsappLink } from "@/lib/site";
 import { cn } from "@/lib/utils";
 
@@ -473,17 +474,31 @@ export function HomepageMedia() {
         subtitle="Highlights and updates from our campus."
       />
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {data.map((item) => (
-          <figure key={item.id} className="overflow-hidden rounded-xl border bg-card shadow-card">
-            <img
-              src={item.url}
-              alt={item.alt ?? item.caption ?? "Profia Institute"}
-              loading="lazy"
-              className="aspect-[4/3] w-full object-cover"
-            />
-            {item.caption && <figcaption className="p-3 text-sm">{item.caption}</figcaption>}
-          </figure>
-        ))}
+        {data.map((item) => {
+          const videoUrl = getYouTubeEmbedUrl(item.url);
+          return (
+            <figure key={item.id} className="overflow-hidden rounded-xl border bg-card shadow-card">
+              {videoUrl ? (
+                <iframe
+                  src={videoUrl}
+                  title={item.caption ?? "Life at Profia Institute"}
+                  className="aspect-video w-full"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  referrerPolicy="strict-origin-when-cross-origin"
+                  allowFullScreen
+                />
+              ) : (
+                <img
+                  src={item.url}
+                  alt={item.alt ?? item.caption ?? "Profia Institute"}
+                  loading="lazy"
+                  className="aspect-[4/3] w-full object-cover"
+                />
+              )}
+              {item.caption && <figcaption className="p-3 text-sm">{item.caption}</figcaption>}
+            </figure>
+          );
+        })}
       </div>
     </section>
   );

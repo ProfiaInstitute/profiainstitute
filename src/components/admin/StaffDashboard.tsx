@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from "react";
+import { Fragment, useMemo, useRef, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Activity,
@@ -37,6 +37,7 @@ import { ManagementPanel } from "@/components/admin/ManagementPanel";
 import { FaqManagementPanel } from "@/components/admin/FaqManagementPanel";
 import { StudentProgressionPanel } from "@/components/admin/StudentProgressionPanel";
 import { AssignmentSubmissionsPanel } from "@/components/admin/AssignmentSubmissionsPanel";
+import { CatManagementPanel } from "@/components/admin/CatManagementPanel";
 import { OnlineCourseLmsPanel } from "@/components/admin/OnlineCourseLmsPanel";
 import { PayHeroSettingsPanel } from "@/components/admin/PayHeroSettingsPanel";
 import { FeeStatementTemplatePanel } from "@/components/admin/FeeStatementTemplatePanel";
@@ -50,7 +51,9 @@ import {
   supportedContentType,
 } from "@/lib/file-uploads";
 import type { Enums, Tables } from "@/integrations/supabase/types";
+import { downloadContentAttachment } from "@/lib/content-download";
 import { formatKES } from "@/lib/site";
+import { useScrollReveal } from "@/lib/motion";
 
 type DashboardSection =
   | "dashboard"
@@ -161,7 +164,7 @@ const navItems: { id: DashboardSection; title: string; icon: LucideIcon; roles: 
     id: "announcements",
     title: "Announcements",
     icon: Megaphone,
-    roles: ["super_admin", "content_admin"],
+    roles: ["super_admin"],
   },
   { id: "media", title: "Media", icon: FileText, roles: ["super_admin", "content_admin"] },
   { id: "messages", title: "Messages", icon: Mail, roles: ["super_admin", "admissions_admin"] },
@@ -181,6 +184,28 @@ const navItems: { id: DashboardSection; title: string; icon: LucideIcon; roles: 
   },
 ];
 
+const navGroups: { title: string; ids: DashboardSection[] }[] = [
+  { title: "Overview", ids: ["dashboard"] },
+  { title: "Students & admissions", ids: ["applications", "students", "admissions", "messages"] },
+  {
+    title: "Academics & finance",
+    ids: [
+      "courses",
+      "schools",
+      "academics",
+      "results",
+      "fees",
+      "payhero",
+      "materials",
+      "lms",
+      "assignments",
+      "progression",
+    ],
+  },
+  { title: "Website content", ids: ["faqs", "articles", "announcements", "media"] },
+  { title: "Administration", ids: ["reports", "audit", "staff", "settings"] },
+];
+
 export function StaffDashboard() {
   const { user, loading } = useUser();
   const rolesQuery = useRoles(user?.id);
@@ -188,6 +213,8 @@ export function StaffDashboard() {
   const visibleNav = navItems.filter((item) => item.roles.some((role) => can(roles, [role])));
   const [section, setSection] = useState<DashboardSection>("dashboard");
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const contentRef = useRef<HTMLDivElement>(null);
+  useScrollReveal(contentRef, `${section}:${roles.join(",")}`, false);
   const [passwordSetup, setPasswordSetup] = useState(
     () =>
       typeof window !== "undefined" &&
@@ -303,21 +330,34 @@ export function StaffDashboard() {
           <p className="px-3 pb-2 pt-3 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
             Workspace
           </p>
-          <nav className="space-y-1">
-            {visibleNav.map(({ id, title, icon: Icon }) => (
-              <button
-                key={id}
-                type="button"
-                onClick={() => {
-                  setSection(id);
-                  setMobileNavOpen(false);
-                }}
-                className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition ${section === id ? "bg-brand text-brand-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
-              >
-                <Icon className="h-4 w-4 shrink-0" />
-                {title}
-              </button>
-            ))}
+          <nav className="space-y-5" aria-label="Admin workspace">
+            {navGroups.map((group) => {
+              const items = visibleNav.filter((item) => group.ids.includes(item.id));
+              if (!items.length) return null;
+              return (
+                <div key={group.title}>
+                  <p className="mb-1 px-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/80">
+                    {group.title}
+                  </p>
+                  <div className="space-y-0.5">
+                    {items.map(({ id, title, icon: Icon }) => (
+                      <button
+                        key={id}
+                        type="button"
+                        onClick={() => {
+                          setSection(id);
+                          setMobileNavOpen(false);
+                        }}
+                        className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition ${section === id ? "bg-brand text-brand-foreground shadow-sm" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
+                      >
+                        <Icon className="h-4 w-4 shrink-0" />
+                        {title}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
           </nav>
           <div className="mt-8 rounded-xl bg-cream p-4">
             <p className="text-xs font-semibold uppercase tracking-wide text-primary">
@@ -346,7 +386,9 @@ export function StaffDashboard() {
                 Staff workspace
               </Button>
             </div>
-            {content}
+            <div key={section} ref={contentRef} className="dashboard-section-transition">
+              {content}
+            </div>
           </div>
         </main>
       </div>
@@ -671,23 +713,62 @@ function Overview({ onNavigate }: { onNavigate: (section: DashboardSection) => v
   const stats = useQuery({
     queryKey: ["admin", "overview"],
     queryFn: async () => {
-      const [apps, students, courses, openIntakes, unreadMessages] = await Promise.all([
-        supabase.from("applications").select("id,status"),
-        supabase.from("students").select("id,status"),
-        supabase.from("courses").select("id,published"),
-        supabase.from("intakes").select("id").eq("is_open", true),
-        supabase.from("contact_messages").select("id").eq("status", "new"),
+      const [
+        applications,
+        submittedApplications,
+        reviewApplications,
+        students,
+        activeStudents,
+        courses,
+        publishedCourses,
+        openIntakes,
+        unreadMessages,
+      ] = await Promise.all([
+        supabase.from("applications").select("id", { count: "exact", head: true }),
+        supabase
+          .from("applications")
+          .select("id", { count: "exact", head: true })
+          .eq("status", "submitted"),
+        supabase
+          .from("applications")
+          .select("id", { count: "exact", head: true })
+          .eq("status", "under_review"),
+        supabase.from("students").select("id", { count: "exact", head: true }),
+        supabase
+          .from("students")
+          .select("id", { count: "exact", head: true })
+          .eq("status", "active"),
+        supabase.from("courses").select("id", { count: "exact", head: true }),
+        supabase.from("courses").select("id", { count: "exact", head: true }).eq("published", true),
+        supabase.from("intakes").select("id", { count: "exact", head: true }).eq("is_open", true),
+        supabase
+          .from("contact_messages")
+          .select("id", { count: "exact", head: true })
+          .eq("status", "new"),
       ]);
-      const failed = [apps, students, courses, openIntakes, unreadMessages].find(
-        (result) => result.error,
-      );
+      const results = [
+        applications,
+        submittedApplications,
+        reviewApplications,
+        students,
+        activeStudents,
+        courses,
+        publishedCourses,
+        openIntakes,
+        unreadMessages,
+      ];
+      const failed = results.find((result) => result.error);
       if (failed?.error) throw failed.error;
       return {
-        applications: apps.data ?? [],
-        students: students.data ?? [],
-        courses: courses.data ?? [],
-        openIntakes: openIntakes.data?.length ?? 0,
-        unreadMessages: unreadMessages.data?.length ?? 0,
+        applications: applications.count ?? 0,
+        submittedApplications: submittedApplications.count ?? 0,
+        reviewApplications: reviewApplications.count ?? 0,
+        students: students.count ?? 0,
+        activeStudents: activeStudents.count ?? 0,
+        courses: courses.count ?? 0,
+        publishedCourses: publishedCourses.count ?? 0,
+        openIntakes: openIntakes.count ?? 0,
+        unreadMessages: unreadMessages.count ?? 0,
       };
     },
   });
@@ -699,22 +780,22 @@ function Overview({ onNavigate }: { onNavigate: (section: DashboardSection) => v
   const metrics = [
     {
       label: "Applications",
-      value: data.applications.length,
-      hint: `${data.applications.filter((app) => app.status === "submitted" || app.status === "under_review").length} need review`,
+      value: data.applications,
+      hint: `${data.submittedApplications + data.reviewApplications} need review`,
       icon: ClipboardList,
       section: "applications" as const,
     },
     {
       label: "Students",
-      value: data.students.length,
-      hint: `${data.students.filter((student) => student.status === "active").length} active`,
+      value: data.students,
+      hint: `${data.activeStudents} active`,
       icon: Users,
       section: "students" as const,
     },
     {
       label: "Active courses",
-      value: data.courses.filter((course) => course.published).length,
-      hint: `${data.courses.length} courses total`,
+      value: data.publishedCourses,
+      hint: `${data.courses} courses total`,
       icon: BookOpen,
       section: "courses" as const,
     },
@@ -729,7 +810,10 @@ function Overview({ onNavigate }: { onNavigate: (section: DashboardSection) => v
 
   return (
     <div className="space-y-6">
-      <section className="rounded-2xl bg-gradient-brand p-6 text-brand-foreground shadow-card sm:p-8">
+      <section
+        data-scroll-reveal
+        className="rounded-2xl bg-gradient-brand p-6 text-brand-foreground shadow-card sm:p-8"
+      >
         <p className="text-sm font-semibold text-brand-foreground/75">Administration overview</p>
         <h2 className="mt-2 text-2xl font-bold sm:text-3xl">Welcome to the Profia workspace</h2>
         <p className="mt-2 max-w-2xl text-sm text-brand-foreground/80">
@@ -742,6 +826,7 @@ function Overview({ onNavigate }: { onNavigate: (section: DashboardSection) => v
             key={label}
             type="button"
             onClick={() => onNavigate(section)}
+            data-scroll-reveal
             className="rounded-xl border bg-card p-5 text-left shadow-card transition hover:-translate-y-0.5 hover:shadow-lift"
           >
             <div className="flex items-center justify-between">
@@ -756,14 +841,12 @@ function Overview({ onNavigate }: { onNavigate: (section: DashboardSection) => v
         ))}
       </div>
       <div className="grid gap-4 md:grid-cols-2">
-        <div className="rounded-xl border bg-card p-5 shadow-card">
+        <div data-scroll-reveal className="rounded-xl border bg-card p-5 shadow-card">
           <h3 className="font-semibold text-brand">Admissions queue</h3>
           <p className="mt-1 text-sm text-muted-foreground">
             Applications awaiting initial review.
           </p>
-          <p className="mt-5 text-3xl font-bold text-primary">
-            {data.applications.filter((app) => app.status === "submitted").length}
-          </p>
+          <p className="mt-5 text-3xl font-bold text-primary">{data.submittedApplications}</p>
           <Button
             variant="outline"
             size="sm"
@@ -773,7 +856,7 @@ function Overview({ onNavigate }: { onNavigate: (section: DashboardSection) => v
             Review applications
           </Button>
         </div>
-        <div className="rounded-xl border bg-card p-5 shadow-card">
+        <div data-scroll-reveal className="rounded-xl border bg-card p-5 shadow-card">
           <h3 className="font-semibold text-brand">Messages awaiting response</h3>
           <p className="mt-1 text-sm text-muted-foreground">
             New enquiries from the public contact form.
@@ -791,14 +874,17 @@ function Overview({ onNavigate }: { onNavigate: (section: DashboardSection) => v
       </div>
       <Button
         variant="outline"
-        onClick={() => void queryClient.invalidateQueries({ queryKey: ["admin", "overview"] })}
+        onClick={() =>
+          void queryClient.invalidateQueries({
+            queryKey: ["admin", "overview"],
+          })
+        }
       >
         <Activity /> Refresh dashboard
       </Button>
     </div>
   );
 }
-
 function ApplicationsPanel() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
@@ -816,7 +902,20 @@ function ApplicationsPanel() {
       return data;
     },
   });
+  const enroll = async (id: string) => {
+    const { error } = await supabase.rpc("enroll_application", { _application_id: id });
+    if (error) {
+      toast.error("Could not enroll applicant", { description: error.message });
+      return;
+    }
+    toast.success("Student record and course enrollment are up to date");
+    await queryClient.invalidateQueries({ queryKey: ["admin"] });
+  };
   const update = async (id: string, nextStatus: Enums<"application_status">) => {
+    if (nextStatus === "enrolled") {
+      await enroll(id);
+      return;
+    }
     const { error } = await supabase
       .from("applications")
       .update({ status: nextStatus })
@@ -914,22 +1013,9 @@ function ApplicationsPanel() {
                   </option>
                 ))}
               </select>
-              {app.status === "accepted" && (
-                <Button
-                  size="sm"
-                  onClick={async () => {
-                    const { error } = await supabase.rpc("enroll_application", {
-                      _application_id: app.id,
-                    });
-                    if (error)
-                      toast.error("Could not enroll applicant", { description: error.message });
-                    else {
-                      toast.success("Student record and enrollment created");
-                      await queryClient.invalidateQueries({ queryKey: ["admin"] });
-                    }
-                  }}
-                >
-                  Enroll applicant
+              {(app.status === "accepted" || app.status === "enrolled") && (
+                <Button size="sm" onClick={() => void enroll(app.id)}>
+                  {app.status === "accepted" ? "Enroll applicant" : "Sync student record"}
                 </Button>
               )}
             </div>
@@ -2242,6 +2328,7 @@ function FeeManagementPanel() {
 function DataDirectory({ section }: { section: DashboardSection }) {
   const queryClient = useQueryClient();
   const [savingRecord, setSavingRecord] = useState(false);
+  const [editingContentId, setEditingContentId] = useState<string | null>(null);
   const [editingFee, setEditingFee] = useState<{
     id: string;
     description: string;
@@ -2398,6 +2485,19 @@ function DataDirectory({ section }: { section: DashboardSection }) {
     );
   if (query.isLoading) return <LoadingState />;
   if (query.error) return <ErrorPanel error={query.error} retry={() => query.refetch()} />;
+  async function invalidatePublicContent() {
+    if (section === "announcements") {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["public-announcements"] }),
+        queryClient.invalidateQueries({ queryKey: ["home_announcements"] }),
+      ]);
+    } else if (section === "articles") {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["articles"] }),
+        queryClient.invalidateQueries({ queryKey: ["article"] }),
+      ]);
+    }
+  }
   async function updateRecord(row: Record<string, unknown>) {
     if (!row["id"]) return;
     let error: { message: string } | null = null;
@@ -2440,7 +2540,10 @@ function DataDirectory({ section }: { section: DashboardSection }) {
       case "announcements": {
         const result = await supabase
           .from("announcements")
-          .update({ published: !row["published"] })
+          .update({
+            published: !row["published"],
+            ...(row["published"] ? {} : { show_public: true, show_on_homepage: true }),
+          })
           .eq("id", String(row["id"]));
         error = result.error;
         break;
@@ -2481,8 +2584,34 @@ function DataDirectory({ section }: { section: DashboardSection }) {
       toast.success("Record updated");
       await queryClient.invalidateQueries({ queryKey: ["admin", "directory", section] });
       await queryClient.invalidateQueries({ queryKey: ["admin", "overview"] });
+      await invalidatePublicContent();
       if (section === "media") await queryClient.invalidateQueries({ queryKey: ["media"] });
     }
+  }
+  async function deleteContentRecord(row: Record<string, unknown>) {
+    if (!row["id"] || !["articles", "announcements"].includes(section)) return;
+    if (!window.confirm(`Delete “${String(row["title"] ?? "this item")}”? This cannot be undone.`))
+      return;
+    const result =
+      section === "articles"
+        ? await supabase.from("articles").delete().eq("id", String(row["id"]))
+        : await supabase.from("announcements").delete().eq("id", String(row["id"]));
+    if (result.error) {
+      toast.error("Could not delete content", { description: result.error.message });
+      return;
+    }
+    const storagePath = storagePathFromPublicUrl(row["attachment_url"]);
+    if (storagePath) {
+      const { error } = await supabase.storage.from("media").remove([storagePath]);
+      if (error) toast.error("Content deleted, but its attachment could not be removed");
+    }
+    toast.success("Content deleted");
+    setEditingContentId(null);
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["admin", "directory", section] }),
+      queryClient.invalidateQueries({ queryKey: ["admin", "overview"] }),
+    ]);
+    await invalidatePublicContent();
   }
   const getRowEntries = (row: Record<string, unknown>) => {
     const entries = Object.entries(row).filter(
@@ -2546,11 +2675,19 @@ function DataDirectory({ section }: { section: DashboardSection }) {
         <ContentCreateForm
           section={section}
           onSaved={() =>
-            void queryClient.invalidateQueries({ queryKey: ["admin", "directory", section] })
+            void Promise.all([
+              queryClient.invalidateQueries({ queryKey: ["admin", "directory", section] }),
+              invalidatePublicContent(),
+            ])
           }
         />
       )}
-      {section === "assignments" && <AssignmentSubmissionsPanel />}
+      {section === "assignments" && (
+        <>
+          <CatManagementPanel />
+          <AssignmentSubmissionsPanel />
+        </>
+      )}
       {query.data?.length ? (
         <div className="mt-4 overflow-x-auto">
           <table className="w-full min-w-[640px] border-collapse text-left text-sm">
@@ -2583,135 +2720,181 @@ function DataDirectory({ section }: { section: DashboardSection }) {
             </thead>
             <tbody>
               {query.data.map((row, i) => (
-                <tr key={String(row["id"] ?? i)} className="border-b last:border-0">
-                  {getRowEntries(row).map(([key, value]) => (
-                    <td key={key} className="max-w-64 truncate px-3 py-2.5">
-                      {section === "fees" &&
-                      editingFee?.id === String(row["id"]) &&
-                      key === "description" ? (
-                        <Input
-                          aria-label="Fee charge description"
-                          value={editingFee.description}
-                          onChange={(event) =>
-                            setEditingFee({ ...editingFee, description: event.target.value })
-                          }
-                        />
-                      ) : section === "fees" &&
+                <Fragment key={String(row["id"] ?? i)}>
+                  <tr className="border-b last:border-0">
+                    {getRowEntries(row).map(([key, value]) => (
+                      <td key={key} className="max-w-64 truncate px-3 py-2.5">
+                        {section === "fees" &&
                         editingFee?.id === String(row["id"]) &&
-                        key === "amount" ? (
-                        <Input
-                          aria-label="Fee charge amount"
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={editingFee.amount}
-                          onChange={(event) =>
-                            setEditingFee({ ...editingFee, amount: event.target.value })
-                          }
-                        />
-                      ) : section === "fees" && key === "student" ? (
-                        feeStudentLabel(value)
-                      ) : (
-                        formatValue(value)
-                      )}
-                    </td>
-                  ))}
-                  {[
-                    "schools",
-                    "results",
-                    "materials",
-                    "assignments",
-                    "articles",
-                    "announcements",
-                    "media",
-                    "messages",
-                    "fees",
-                  ].includes(section) && (
-                    <td className="px-3 py-2.5">
-                      <div className="flex flex-wrap items-center gap-2">
-                        {(section === "materials" || section === "assignments") &&
-                          typeof row["file_path"] === "string" && (
-                            <AdminCourseFile path={row["file_path"]} />
-                          )}
-                        {(section === "articles" || section === "announcements") &&
-                          typeof row["attachment_url"] === "string" && (
-                            <a
-                              className="text-sm font-medium text-primary underline"
-                              href={row["attachment_url"]}
-                              target="_blank"
-                              rel="noreferrer"
-                            >
-                              Open attachment
-                            </a>
-                          )}
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={savingRecord || updateFeeMutation.isPending}
-                          onClick={() => {
-                            if (section !== "fees") {
-                              void updateRecord(row);
-                              return;
+                        key === "description" ? (
+                          <Input
+                            aria-label="Fee charge description"
+                            value={editingFee.description}
+                            onChange={(event) =>
+                              setEditingFee({ ...editingFee, description: event.target.value })
                             }
-                            if (editingFee?.id !== String(row["id"])) {
-                              setEditingFee({
-                                id: String(row["id"]),
-                                description: String(row["description"] ?? ""),
-                                amount: String(row["amount"] ?? ""),
-                              });
-                              return;
+                          />
+                        ) : section === "fees" &&
+                          editingFee?.id === String(row["id"]) &&
+                          key === "amount" ? (
+                          <Input
+                            aria-label="Fee charge amount"
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={editingFee.amount}
+                            onChange={(event) =>
+                              setEditingFee({ ...editingFee, amount: event.target.value })
                             }
-                            const amount = Number(editingFee.amount);
-                            if (
-                              !editingFee.description.trim() ||
-                              !Number.isFinite(amount) ||
-                              amount < 0
-                            ) {
-                              toast.error(
-                                "Enter a description and a valid non-negative fee amount.",
-                              );
-                              return;
-                            }
-                            updateFeeMutation.mutate({
-                              id: editingFee.id,
-                              description: editingFee.description.trim(),
-                              amount,
-                            });
-                          }}
-                        >
-                          {section === "fees"
-                            ? editingFee?.id === String(row["id"])
-                              ? updateFeeMutation.isPending
-                                ? "Saving…"
-                                : "Save charge"
-                              : "Edit charge"
-                            : section === "messages"
-                              ? row["status"] === "new"
-                                ? "Mark responded"
-                                : "Reopen"
-                              : section === "articles"
-                                ? row["status"] === "published"
-                                  ? "Unpublish"
-                                  : "Publish"
-                                : row["published"]
-                                  ? "Deactivate"
-                                  : "Activate"}
-                        </Button>
-                        {section === "fees" && editingFee?.id === String(row["id"]) && (
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="ghost"
-                            disabled={updateFeeMutation.isPending}
-                            onClick={() => setEditingFee(null)}
-                          >
-                            Cancel
-                          </Button>
+                          />
+                        ) : section === "fees" && key === "student" ? (
+                          feeStudentLabel(value)
+                        ) : (
+                          formatValue(value)
                         )}
-                      </div>
-                    </td>
-                  )}
-                </tr>
+                      </td>
+                    ))}
+                    {[
+                      "schools",
+                      "results",
+                      "materials",
+                      "assignments",
+                      "articles",
+                      "announcements",
+                      "media",
+                      "messages",
+                      "fees",
+                    ].includes(section) && (
+                      <td className="px-3 py-2.5">
+                        <div className="flex flex-wrap items-center gap-2">
+                          {(section === "materials" || section === "assignments") &&
+                            typeof row["file_path"] === "string" && (
+                              <AdminCourseFile path={row["file_path"]} />
+                            )}
+                          {(section === "articles" || section === "announcements") &&
+                            typeof row["attachment_url"] === "string" && (
+                              <ContentAttachmentDownload
+                                url={row["attachment_url"]}
+                                filename={
+                                  typeof row["attachment_file_name"] === "string"
+                                    ? row["attachment_file_name"]
+                                    : String(row["title"] ?? "attachment")
+                                }
+                              />
+                            )}
+                          {(section === "articles" || section === "announcements") && (
+                            <>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() =>
+                                  setEditingContentId(
+                                    editingContentId === String(row["id"])
+                                      ? null
+                                      : String(row["id"]),
+                                  )
+                                }
+                              >
+                                {editingContentId === String(row["id"]) ? "Close edit" : "Edit"}
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="destructive"
+                                disabled={savingRecord}
+                                onClick={() => void deleteContentRecord(row)}
+                              >
+                                Delete
+                              </Button>
+                            </>
+                          )}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={savingRecord || updateFeeMutation.isPending}
+                            onClick={() => {
+                              if (section !== "fees") {
+                                void updateRecord(row);
+                                return;
+                              }
+                              if (editingFee?.id !== String(row["id"])) {
+                                setEditingFee({
+                                  id: String(row["id"]),
+                                  description: String(row["description"] ?? ""),
+                                  amount: String(row["amount"] ?? ""),
+                                });
+                                return;
+                              }
+                              const amount = Number(editingFee.amount);
+                              if (
+                                !editingFee.description.trim() ||
+                                !Number.isFinite(amount) ||
+                                amount < 0
+                              ) {
+                                toast.error(
+                                  "Enter a description and a valid non-negative fee amount.",
+                                );
+                                return;
+                              }
+                              updateFeeMutation.mutate({
+                                id: editingFee.id,
+                                description: editingFee.description.trim(),
+                                amount,
+                              });
+                            }}
+                          >
+                            {section === "fees"
+                              ? editingFee?.id === String(row["id"])
+                                ? updateFeeMutation.isPending
+                                  ? "Saving…"
+                                  : "Save charge"
+                                : "Edit charge"
+                              : section === "messages"
+                                ? row["status"] === "new"
+                                  ? "Mark responded"
+                                  : "Reopen"
+                                : section === "articles"
+                                  ? row["status"] === "published"
+                                    ? "Unpublish"
+                                    : "Publish"
+                                  : row["published"]
+                                    ? "Deactivate"
+                                    : "Activate"}
+                          </Button>
+                          {section === "fees" && editingFee?.id === String(row["id"]) && (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              disabled={updateFeeMutation.isPending}
+                              onClick={() => setEditingFee(null)}
+                            >
+                              Cancel
+                            </Button>
+                          )}
+                        </div>
+                      </td>
+                    )}
+                  </tr>
+                  {editingContentId === String(row["id"]) &&
+                    (section === "articles" || section === "announcements") && (
+                      <tr>
+                        <td colSpan={getRowEntries(row).length + 1} className="bg-muted/20 p-3">
+                          <ContentEditForm
+                            section={section}
+                            record={row}
+                            onCancel={() => setEditingContentId(null)}
+                            onSaved={async () => {
+                              setEditingContentId(null);
+                              await queryClient.invalidateQueries({
+                                queryKey: ["admin", "directory", section],
+                              });
+                              await invalidatePublicContent();
+                            }}
+                          />
+                        </td>
+                      </tr>
+                    )}
+                </Fragment>
               ))}
             </tbody>
           </table>
@@ -3161,6 +3344,9 @@ function ContentCreateForm({
     alt: "",
     category: "homepage",
     file: null as File | null,
+    starts_at: "",
+    ends_at: "",
+    published: false,
   });
   const labels = {
     articles: "Write article",
@@ -3170,6 +3356,12 @@ function ContentCreateForm({
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const startsAt = dateTimeIsoOrNull(values.starts_at);
+    const endsAt = dateTimeIsoOrNull(values.ends_at);
+    if (startsAt && endsAt && new Date(endsAt) < new Date(startsAt)) {
+      toast.error("The announcement end date must be after its start date.");
+      return;
+    }
     const contentType = values.file ? supportedContentType(values.file) : null;
     if (values.file && (!contentType || values.file.size > MAX_CONTENT_UPLOAD_SIZE)) {
       toast.error(
@@ -3193,7 +3385,9 @@ function ContentCreateForm({
         });
       if (uploadError) {
         setSaving(false);
-        toast.error("Could not upload content file", { description: uploadError.message });
+        toast.error("Could not upload content file", {
+          description: uploadError.message,
+        });
         return;
       }
       uploadedUrl = supabase.storage.from("media").getPublicUrl(uploadedPath).data.publicUrl;
@@ -3213,6 +3407,7 @@ function ContentCreateForm({
         created_by: user?.id ?? null,
         attachment_url: uploadedUrl,
         attachment_type: contentType ? contentKind(contentType) : null,
+        attachment_file_name: values.file?.name ?? null,
         featured_image: contentType?.startsWith("image/") ? uploadedUrl : null,
         status: "draft",
       });
@@ -3224,7 +3419,12 @@ function ContentCreateForm({
         created_by: user?.id ?? null,
         attachment_url: uploadedUrl,
         attachment_type: contentType ? contentKind(contentType) : null,
-        published: false,
+        attachment_file_name: values.file?.name ?? null,
+        starts_at: startsAt,
+        ends_at: endsAt,
+        show_public: true,
+        show_on_homepage: true,
+        published: values.published,
       });
       error = result.error;
     } else {
@@ -3249,7 +3449,11 @@ function ContentCreateForm({
       }
       toast.error("Could not save content", { description: error.message });
     } else {
-      toast.success("Content saved as a draft");
+      toast.success(
+        section === "announcements" && values.published
+          ? "Announcement published"
+          : "Content saved as a draft",
+      );
       setValues({
         title: "",
         content: "",
@@ -3259,6 +3463,9 @@ function ContentCreateForm({
         alt: "",
         category: "homepage",
         file: null,
+        starts_at: "",
+        ends_at: "",
+        published: false,
       });
       onSaved();
     }
@@ -3313,13 +3520,41 @@ function ContentCreateForm({
                 onChange={(e) => setValues({ ...values, excerpt: e.target.value })}
               />
             )}
-            <Textarea
+            <RichTextEditor
               required
               rows={section === "articles" ? 8 : 4}
               placeholder={section === "articles" ? "Article content" : "Announcement details"}
               value={values.content}
-              onChange={(e) => setValues({ ...values, content: e.target.value })}
+              onChange={(content) => setValues({ ...values, content })}
             />
+            {section === "announcements" && (
+              <>
+                <label className="flex items-center gap-2 text-sm font-medium">
+                  <input
+                    type="checkbox"
+                    checked={values.published}
+                    onChange={(event) => setValues({ ...values, published: event.target.checked })}
+                  />
+                  Publish announcement
+                </label>
+                <label className="grid gap-1 text-sm font-medium sm:grid-cols-2">
+                  Starts at
+                  <Input
+                    type="datetime-local"
+                    value={values.starts_at}
+                    onChange={(event) => setValues({ ...values, starts_at: event.target.value })}
+                  />
+                </label>
+                <label className="grid gap-1 text-sm font-medium sm:grid-cols-2">
+                  Ends at
+                  <Input
+                    type="datetime-local"
+                    value={values.ends_at}
+                    onChange={(event) => setValues({ ...values, ends_at: event.target.value })}
+                  />
+                </label>
+              </>
+            )}
             <ContentFileInput
               file={values.file}
               onFile={(file) => setValues({ ...values, file })}
@@ -3327,12 +3562,343 @@ function ContentCreateForm({
             />
           </>
         )}
-        <Button disabled={saving}>{saving ? "Saving…" : "Save draft"}</Button>
+        <Button disabled={saving}>
+          {saving
+            ? "Saving…"
+            : section === "announcements" && values.published
+              ? "Publish"
+              : "Save draft"}
+        </Button>
       </form>
     </details>
   );
 }
 
+function dateTimeLocalValue(value: unknown) {
+  if (typeof value !== "string") return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const pad = (part: number) => String(part).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function dateTimeIsoOrNull(value: string) {
+  return value ? new Date(value).toISOString() : null;
+}
+
+function RichTextEditor({
+  value,
+  onChange,
+  ...textareaProps
+}: {
+  value: string;
+  onChange: (value: string) => void;
+} & React.ComponentProps<typeof Textarea>) {
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  function insertFormatting(format: "bold" | "italic" | "heading" | "list" | "link") {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const selected = value.slice(start, end);
+    let inserted = selected;
+    if (format === "bold") inserted = `**${selected || "bold text"}**`;
+    if (format === "italic") inserted = `*${selected || "italic text"}*`;
+    if (format === "heading") inserted = `## ${selected || "Heading"}`;
+    if (format === "list")
+      inserted = (selected || "List item")
+        .split("\n")
+        .map((line) => `- ${line}`)
+        .join("\n");
+    if (format === "link") inserted = `[${selected || "link text"}](https://example.com)`;
+    const next = `${value.slice(0, start)}${inserted}${value.slice(end)}`;
+    onChange(next);
+    requestAnimationFrame(() => {
+      textarea.focus();
+      textarea.setSelectionRange(start + inserted.length, start + inserted.length);
+    });
+  }
+
+  return (
+    <div className="grid gap-2 sm:col-span-2">
+      <div role="toolbar" aria-label="Text formatting" className="flex flex-wrap gap-1">
+        {(
+          [
+            ["bold", "Bold"],
+            ["italic", "Italic"],
+            ["heading", "Heading"],
+            ["list", "List"],
+            ["link", "Link"],
+          ] as const
+        ).map(([format, label]) => (
+          <Button
+            key={format}
+            type="button"
+            size="sm"
+            variant="outline"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => insertFormatting(format)}
+          >
+            {label}
+          </Button>
+        ))}
+      </div>
+      <Textarea
+        {...textareaProps}
+        ref={textareaRef}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      />
+      <span className="text-xs text-muted-foreground">
+        Formatting is safe to publish. Use the toolbar or Markdown-style syntax.
+      </span>
+    </div>
+  );
+}
+
+function ContentEditForm({
+  section,
+  record,
+  onCancel,
+  onSaved,
+}: {
+  section: "articles" | "announcements";
+  record: Record<string, unknown>;
+  onCancel: () => void;
+  onSaved: () => Promise<void>;
+}) {
+  const [saving, setSaving] = useState(false);
+  const [file, setFile] = useState<File | null>(null);
+  const [removeAttachment, setRemoveAttachment] = useState(false);
+  const [values, setValues] = useState({
+    title: String(record["title"] ?? ""),
+    content: String(record[section === "articles" ? "content" : "body"] ?? ""),
+    excerpt: String(record["excerpt"] ?? ""),
+    published: section === "articles" ? record["status"] === "published" : !!record["published"],
+    starts_at: dateTimeLocalValue(record["starts_at"]),
+    ends_at: dateTimeLocalValue(record["ends_at"]),
+  });
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const startsAt = dateTimeIsoOrNull(values.starts_at);
+    const endsAt = dateTimeIsoOrNull(values.ends_at);
+    if (
+      section === "announcements" &&
+      startsAt &&
+      endsAt &&
+      new Date(endsAt) < new Date(startsAt)
+    ) {
+      toast.error("The announcement end date must be after its start date.");
+      return;
+    }
+    const contentType = file ? supportedContentType(file) : null;
+    if (file && (!contentType || file.size > MAX_CONTENT_UPLOAD_SIZE)) {
+      toast.error(
+        !contentType
+          ? "Choose a PDF, Word document, image, audio, or video file."
+          : "Each file must be 100 MB or smaller.",
+      );
+      return;
+    }
+
+    setSaving(true);
+    const previousUrl =
+      typeof record["attachment_url"] === "string" ? record["attachment_url"] : null;
+    const previousPath = storagePathFromPublicUrl(previousUrl);
+    let uploadedPath: string | null = null;
+    let attachmentUrl = removeAttachment ? null : previousUrl;
+    let attachmentType = removeAttachment ? null : record["attachment_type"];
+    let attachmentFileName = removeAttachment
+      ? null
+      : typeof record["attachment_file_name"] === "string"
+        ? record["attachment_file_name"]
+        : null;
+    if (file && contentType) {
+      uploadedPath = `content/${crypto.randomUUID()}-${safeUploadFileName(file.name)}`;
+      const { error } = await supabase.storage.from("media").upload(uploadedPath, file, {
+        contentType,
+        upsert: false,
+      });
+      if (error) {
+        setSaving(false);
+        toast.error("Could not upload content file", {
+          description: error.message,
+        });
+        return;
+      }
+      attachmentUrl = supabase.storage.from("media").getPublicUrl(uploadedPath).data.publicUrl;
+      attachmentType = contentKind(contentType);
+      attachmentFileName = file.name;
+    }
+
+    const result =
+      section === "articles"
+        ? await supabase
+            .from("articles")
+            .update({
+              title: values.title.trim(),
+              slug: values.title
+                .trim()
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, "-")
+                .replace(/^-|-$/g, ""),
+              excerpt: values.excerpt.trim() || null,
+              content: values.content.trim(),
+              attachment_url: attachmentUrl,
+              attachment_type: typeof attachmentType === "string" ? attachmentType : null,
+              attachment_file_name: attachmentFileName,
+              featured_image:
+                attachmentType === "image"
+                  ? attachmentUrl
+                  : (removeAttachment || !!file) && record["attachment_type"] === "image"
+                    ? null
+                    : typeof record["featured_image"] === "string"
+                      ? record["featured_image"]
+                      : null,
+            })
+            .eq("id", String(record["id"]))
+        : await supabase
+            .from("announcements")
+            .update({
+              title: values.title.trim(),
+              body: values.content.trim(),
+              starts_at: startsAt,
+              ends_at: endsAt,
+              published: values.published,
+              show_public: true,
+              show_on_homepage: true,
+              attachment_url: attachmentUrl,
+              attachment_type: typeof attachmentType === "string" ? attachmentType : null,
+              attachment_file_name: attachmentFileName,
+            })
+            .eq("id", String(record["id"]));
+
+    if (result.error) {
+      if (uploadedPath) await supabase.storage.from("media").remove([uploadedPath]);
+      setSaving(false);
+      toast.error("Could not update content", {
+        description: result.error.message,
+      });
+      return;
+    }
+    if ((file || removeAttachment) && previousPath)
+      await supabase.storage.from("media").remove([previousPath]);
+    setSaving(false);
+    toast.success("Content updated");
+    await onSaved();
+  }
+
+  return (
+    <form onSubmit={submit} className="grid gap-3 rounded-lg border bg-card p-4">
+      <Input
+        required
+        aria-label="Content title"
+        value={values.title}
+        onChange={(event) => setValues({ ...values, title: event.target.value })}
+      />
+      {section === "articles" && (
+        <Input
+          aria-label="Article excerpt"
+          placeholder="Short excerpt"
+          value={values.excerpt}
+          onChange={(event) => setValues({ ...values, excerpt: event.target.value })}
+        />
+      )}
+      <RichTextEditor
+        required
+        rows={section === "articles" ? 8 : 4}
+        aria-label={section === "articles" ? "Article content" : "Announcement details"}
+        value={values.content}
+        onChange={(content) => setValues({ ...values, content })}
+      />
+      {section === "announcements" && (
+        <>
+          <label className="flex items-center gap-2 text-sm font-medium">
+            <input
+              type="checkbox"
+              checked={values.published}
+              onChange={(event) => setValues({ ...values, published: event.target.checked })}
+            />
+            Publish announcement
+          </label>
+          <label className="grid gap-1 text-sm font-medium">
+            Starts at
+            <Input
+              type="datetime-local"
+              value={values.starts_at}
+              onChange={(event) => setValues({ ...values, starts_at: event.target.value })}
+            />
+          </label>
+          <label className="grid gap-1 text-sm font-medium">
+            Ends at
+            <Input
+              type="datetime-local"
+              value={values.ends_at}
+              onChange={(event) => setValues({ ...values, ends_at: event.target.value })}
+            />
+          </label>
+        </>
+      )}
+      <ContentFileInput file={file} onFile={setFile} />
+      {record["attachment_file_name"] && (
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={removeAttachment}
+            onChange={(event) => setRemoveAttachment(event.target.checked)}
+          />
+          Remove current attachment ({String(record["attachment_file_name"])})
+        </label>
+      )}
+      <div className="flex gap-2">
+        <Button disabled={saving}>{saving ? "Saving…" : "Save changes"}</Button>
+        <Button type="button" variant="outline" onClick={onCancel} disabled={saving}>
+          Cancel
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+function ContentAttachmentDownload({ url, filename }: { url: string; filename: string }) {
+  const [downloading, setDownloading] = useState(false);
+  return (
+    <Button
+      type="button"
+      size="sm"
+      variant="link"
+      disabled={downloading}
+      onClick={async () => {
+        setDownloading(true);
+        try {
+          await downloadContentAttachment(url, filename);
+        } catch (error) {
+          toast.error("Could not download attachment", {
+            description: error instanceof Error ? error.message : undefined,
+          });
+        } finally {
+          setDownloading(false);
+        }
+      }}
+    >
+      {downloading ? "Preparing…" : "Download"}
+    </Button>
+  );
+}
+
+function storagePathFromPublicUrl(value: unknown) {
+  if (typeof value !== "string") return null;
+  try {
+    const url = new URL(value);
+    const prefix = "/storage/v1/object/public/media/";
+    const position = url.pathname.indexOf(prefix);
+    if (position === -1) return null;
+    return decodeURIComponent(url.pathname.slice(position + prefix.length));
+  } catch {
+    return null;
+  }
+}
 function ContentFileInput({
   file,
   onFile,
@@ -3423,11 +3989,15 @@ function FullPageMessage({
 }
 function LoadingState() {
   return (
-    <div
-      role="status"
-      className="animate-pulse rounded-xl border bg-card p-8 text-sm text-muted-foreground"
-    >
-      Loading workspace data…
+    <div role="status" aria-label="Loading workspace data" className="space-y-4">
+      <span className="sr-only">Loading workspace data…</span>
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="loading-shimmer h-28 rounded-xl" />
+        <div className="loading-shimmer h-28 rounded-xl" />
+        <div className="loading-shimmer h-28 rounded-xl" />
+        <div className="loading-shimmer h-28 rounded-xl" />
+      </div>
+      <div className="loading-shimmer h-64 rounded-xl" />
     </div>
   );
 }
