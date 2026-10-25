@@ -263,22 +263,23 @@
 .student-mobile-nav {
   padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
 }
+.student-app-content {
+  padding-bottom: calc(5rem + env(safe-area-inset-bottom));
+}
+@media (min-width: 1024px) {
+  .student-app-content {
+    padding-bottom: 2rem;
+  }
+}
+@media (display-mode: standalone) {
+  .student-app-shell {
+    min-height: 100dvh;
+  }
+}
 @media (prefers-reduced-motion: reduce) {
   * {
     animation: none !important;
     transition: none !important;
-  }
-
-  @media (max-width: 1023px) {
-    .student-app-content {
-      padding-bottom: calc(6.25rem + env(safe-area-inset-bottom));
-    }
-  }
-
-  @media (display-mode: standalone) {
-    .student-app-shell {
-      min-height: 100dvh;
-    }
   }
 }
 

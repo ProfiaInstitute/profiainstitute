@@ -529,7 +529,7 @@ function StudentWorkspace({
         </main>
       </div>
       <nav
-        className="student-mobile-nav fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t bg-background/95 px-2 pt-2 shadow-[0_-8px_24px_-16px_rgba(20,10,10,0.35)] backdrop-blur-lg lg:hidden"
+        className="student-mobile-nav fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t bg-background/95 px-2 pt-1 shadow-[0_-8px_24px_-16px_rgba(20,10,10,0.35)] backdrop-blur-lg lg:hidden"
         aria-label="Student app"
       >
         {mobileLinks.map((id) => {
@@ -542,7 +542,7 @@ function StudentWorkspace({
               type="button"
               onClick={() => onSection(id)}
               aria-current={section === id ? "page" : undefined}
-              className={`flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-[10px] font-semibold ${section === id ? "text-brand" : "text-muted-foreground"}`}
+              className={`flex min-w-0 flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-1 text-[10px] font-semibold ${section === id ? "text-brand" : "text-muted-foreground"}`}
             >
               <Icon className="h-5 w-5" />
               <span className="max-w-full truncate">{mobileLabels[id] ?? link.title}</span>
@@ -554,7 +554,7 @@ function StudentWorkspace({
           onClick={() => setMoreOpen(true)}
           aria-haspopup="dialog"
           aria-expanded={moreOpen}
-          className={`flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-[10px] font-semibold ${moreOpen || !mobileLinks.includes(section) ? "text-brand" : "text-muted-foreground"}`}
+          className={`flex min-w-0 flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-1 text-[10px] font-semibold ${moreOpen || !mobileLinks.includes(section) ? "text-brand" : "text-muted-foreground"}`}
         >
           <Ellipsis className="h-5 w-5" />
           <span>More</span>
