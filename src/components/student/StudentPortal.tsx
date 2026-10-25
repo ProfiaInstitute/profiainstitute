@@ -2,10 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   BookOpen,
+  Camera,
   CheckCircle2,
   ClipboardCheck,
   ClipboardList,
   Download,
+  Ellipsis,
   Eye,
   FileText,
   GraduationCap,
@@ -28,6 +30,21 @@ import { StudentCatsSection } from "@/components/student/StudentCatsSection";
 import { formatKES } from "@/lib/site";
 import { useScrollReveal } from "@/lib/motion";
 import type { Database, Tables } from "@/integrations/supabase/types";
+import { InstallAppButton } from "@/components/site/InstallAppButton";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import { ProfilePhotoAvatar } from "@/components/profile/ProfilePhotoAvatar";
+import {
+  fetchProfilePhotos,
+  PROFILE_PHOTO_MAX_BYTES,
+  PROFILE_PHOTO_TYPES,
+  type ProfilePhoto,
+} from "@/lib/profile-photos";
 
 type PortalSection =
   "overview" | "online" | "learning" | "assignments" | "cats" | "results" | "fees" | "profile";
@@ -211,8 +228,25 @@ function StudentWorkspace({
 }) {
   const queryClient = useQueryClient();
   const [phoneDraft, setPhoneDraft] = useState(enrollmentPhone);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [isOnline, setIsOnline] = useState(true);
   const contentRef = useRef<HTMLDivElement>(null);
+  const profilePhotoQuery = useQuery({
+    queryKey: ["profile-photo", userId],
+    queryFn: async () => (await fetchProfilePhotos([userId])).get(userId) ?? null,
+    staleTime: 50 * 60_000,
+  });
   useEffect(() => setPhoneDraft(enrollmentPhone), [enrollmentPhone]);
+  useEffect(() => {
+    const updateOnlineStatus = () => setIsOnline(navigator.onLine);
+    updateOnlineStatus();
+    window.addEventListener("online", updateOnlineStatus);
+    window.addEventListener("offline", updateOnlineStatus);
+    return () => {
+      window.removeEventListener("online", updateOnlineStatus);
+      window.removeEventListener("offline", updateOnlineStatus);
+    };
+  }, []);
   const studentQuery = useQuery({
     queryKey: ["student", "record", userId, selectedCourseId, enrollmentPhone],
     enabled: !selectedCourseId || Boolean(enrollmentPhone),
@@ -351,26 +385,77 @@ function StudentWorkspace({
     },
     { title: "Account", ids: ["fees", "profile"] },
   ];
+  const mobileLinks: PortalSection[] = ["overview", "online", "assignments", "fees"];
+  const mobileLabels: Partial<Record<PortalSection, string>> = {
+    overview: "Home",
+    online: "Courses",
+    assignments: "Tasks",
+  };
 
   return (
-    <div className="min-h-screen bg-muted/40">
-      <header className="sticky top-0 z-20 flex items-center justify-between gap-3 border-b bg-brand px-4 py-4 text-brand-foreground sm:px-6">
-        <div>
-          <a href="/" className="text-sm font-extrabold tracking-wide">
-            PROFIA <span className="font-medium text-brand-foreground/70">· STUDENT PORTAL</span>
+    <div className="student-app-shell min-h-screen bg-muted/40">
+      <header className="student-app-header sticky top-0 z-30 flex items-center justify-between gap-3 border-b bg-brand px-4 py-3 text-brand-foreground sm:px-6">
+        <div className="flex min-w-0 items-center gap-3">
+          <a
+            href="/"
+            className="flex shrink-0 items-center gap-2"
+            aria-label="Profia Institute home"
+          >
+            <ProfilePhotoAvatar
+              src={profilePhotoQuery.data?.url}
+              name={`${student.first_name} ${student.last_name}`}
+              className="h-9 w-9 rounded-xl ring-1 ring-brand-foreground/25"
+            />
+            <span className="hidden text-sm font-extrabold tracking-wide sm:inline">PROFIA</span>
           </a>
+          <span aria-hidden="true" className="text-brand-foreground/40">
+            /
+          </span>
+          <span className="truncate text-sm font-semibold">{pageTitle[section]}</span>
         </div>
         <div className="flex items-center gap-3">
-          <span className="hidden max-w-48 truncate text-sm text-brand-foreground/70 sm:block">
-            {email}
+          <span
+            className={`hidden items-center gap-1.5 text-xs sm:inline-flex ${isOnline ? "text-brand-foreground/70" : "text-orange-200"}`}
+            role="status"
+          >
+            <span
+              aria-hidden="true"
+              className={`h-2 w-2 rounded-full ${isOnline ? "bg-emerald-300" : "bg-orange-300"}`}
+            />
+            {isOnline ? "Online" : "Offline"}
           </span>
+          <InstallAppButton />
           <Button size="sm" variant="heroOutline" onClick={() => void signOut()}>
-            <LogOut /> Sign out
+            <LogOut />
+            <span className="hidden sm:inline">Sign out</span>
           </Button>
         </div>
       </header>
+      {profilePhotoQuery.error && (
+        <div
+          className="flex flex-wrap items-center justify-center gap-2 border-b border-destructive/20 bg-destructive/5 px-4 py-2 text-sm text-destructive"
+          role="alert"
+        >
+          Could not load your profile photo.{" "}
+          <button
+            type="button"
+            className="font-semibold underline"
+            onClick={() => void profilePhotoQuery.refetch()}
+          >
+            Retry
+          </button>
+        </div>
+      )}
+      {!isOnline && (
+        <div
+          className="border-b border-orange-200 bg-orange-50 px-4 py-2 text-center text-sm text-orange-900"
+          role="status"
+        >
+          You're offline. Reconnect to refresh your student information.
+        </div>
+      )}
       <div className="mx-auto flex max-w-7xl flex-col lg:flex-row">
-        <aside className="border-b bg-card p-3 lg:sticky lg:top-[65px] lg:h-[calc(100vh-65px)] lg:w-64 lg:shrink-0 lg:border-b-0 lg:border-r">
+        <aside className="hidden border-b bg-card p-3 lg:sticky lg:top-[65px] lg:block lg:h-[calc(100vh-65px)] lg:w-64 lg:shrink-0 lg:border-b-0 lg:border-r">
           <div className="hidden rounded-xl bg-cream p-4 lg:block">
             <p className="text-xs font-semibold uppercase tracking-wide text-primary">Student</p>
             <p className="mt-1 font-semibold text-brand">
@@ -405,7 +490,7 @@ function StudentWorkspace({
             ))}
           </nav>
         </aside>
-        <main className="min-w-0 flex-1 p-4 sm:p-6 lg:p-8">
+        <main className="student-app-content min-w-0 flex-1 p-4 pb-8 sm:p-6 lg:p-8">
           <div
             key={section}
             ref={contentRef}
@@ -429,14 +514,79 @@ function StudentWorkspace({
             {section === "profile" && (
               <ProfileSection
                 student={student}
-                refresh={() =>
-                  queryClient.invalidateQueries({ queryKey: ["student", "record", userId] })
-                }
+                userId={userId}
+                photo={profilePhotoQuery.data ?? null}
+                photoError={profilePhotoQuery.error}
+                refresh={() => {
+                  void Promise.all([
+                    queryClient.invalidateQueries({ queryKey: ["student", "record", userId] }),
+                    queryClient.invalidateQueries({ queryKey: ["profile-photo", userId] }),
+                  ]);
+                }}
               />
             )}
           </div>
         </main>
       </div>
+      <nav
+        className="student-mobile-nav fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t bg-background/95 px-2 pt-2 shadow-[0_-8px_24px_-16px_rgba(20,10,10,0.35)] backdrop-blur-lg lg:hidden"
+        aria-label="Student app"
+      >
+        {mobileLinks.map((id) => {
+          const link = links.find((item) => item.id === id);
+          if (!link) return null;
+          const Icon = link.icon;
+          return (
+            <button
+              key={id}
+              type="button"
+              onClick={() => onSection(id)}
+              aria-current={section === id ? "page" : undefined}
+              className={`flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-[10px] font-semibold ${section === id ? "text-brand" : "text-muted-foreground"}`}
+            >
+              <Icon className="h-5 w-5" />
+              <span className="max-w-full truncate">{mobileLabels[id] ?? link.title}</span>
+            </button>
+          );
+        })}
+        <button
+          type="button"
+          onClick={() => setMoreOpen(true)}
+          aria-haspopup="dialog"
+          aria-expanded={moreOpen}
+          className={`flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-[10px] font-semibold ${moreOpen || !mobileLinks.includes(section) ? "text-brand" : "text-muted-foreground"}`}
+        >
+          <Ellipsis className="h-5 w-5" />
+          <span>More</span>
+        </button>
+      </nav>
+      <Sheet open={moreOpen} onOpenChange={setMoreOpen}>
+        <SheetContent side="bottom" className="student-more-sheet rounded-t-3xl">
+          <SheetHeader className="mb-5 pr-8 text-left">
+            <SheetTitle>More student services</SheetTitle>
+            <SheetDescription>Learning tools and account settings</SheetDescription>
+          </SheetHeader>
+          <div className="grid grid-cols-2 gap-3 pb-2">
+            {links
+              .filter((link) => !mobileLinks.includes(link.id))
+              .map(({ id, title, icon: Icon }) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => {
+                    onSection(id);
+                    setMoreOpen(false);
+                  }}
+                  className={`flex min-h-16 items-center gap-3 rounded-2xl border p-4 text-left text-sm font-semibold ${section === id ? "border-brand bg-brand/5 text-brand" : "bg-card hover:bg-muted"}`}
+                >
+                  <Icon className="h-5 w-5 shrink-0" />
+                  {title}
+                </button>
+              ))}
+          </div>
+          <p className="mt-5 truncate text-xs text-muted-foreground">{email}</p>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
@@ -1896,12 +2046,92 @@ function FeesSection({
   );
 }
 
-function ProfileSection({ student, refresh }: { student: Student; refresh: () => void }) {
+function ProfileSection({
+  student,
+  userId,
+  photo,
+  photoError,
+  refresh,
+}: {
+  student: Student;
+  userId: string;
+  photo: ProfilePhoto | null;
+  photoError: Error | null;
+  refresh: () => void;
+}) {
   const [phone, setPhone] = useState(student.phone ?? "");
   const [altPhone, setAltPhone] = useState(student.alt_phone ?? "");
   const [town, setTown] = useState(student.town ?? "");
   const [address, setAddress] = useState(student.address ?? "");
   const [busy, setBusy] = useState(false);
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const photoInputRef = useRef<HTMLInputElement>(null);
+  const queryClient = useQueryClient();
+  async function uploadPhoto(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    if (!(PROFILE_PHOTO_TYPES as readonly string[]).includes(file.type)) {
+      toast.error("Choose a JPG, PNG or WebP image.");
+      return;
+    }
+    if (file.size > PROFILE_PHOTO_MAX_BYTES) {
+      toast.error("Profile photos must be 3 MB or smaller.");
+      return;
+    }
+
+    const extension =
+      file.type === "image/jpeg" ? "jpg" : file.type === "image/png" ? "png" : "webp";
+    const path = `${userId}/profile.${extension}`;
+    setPhotoBusy(true);
+    const { error: uploadError } = await supabase.storage
+      .from("profile-photos")
+      .upload(path, file, { upsert: true, contentType: file.type, cacheControl: "3600" });
+    if (uploadError) {
+      setPhotoBusy(false);
+      toast.error("Could not upload profile photo", { description: uploadError.message });
+      return;
+    }
+
+    const { data, error: profileError } = await supabase
+      .from("profiles")
+      .update({ avatar_url: path })
+      .eq("id", userId)
+      .select("id")
+      .maybeSingle();
+    if (profileError || !data) {
+      if (photo?.path !== path) {
+        const { error: cleanupError } = await supabase.storage
+          .from("profile-photos")
+          .remove([path]);
+        if (cleanupError)
+          console.error("Could not clean up an unlinked profile photo:", cleanupError.message);
+      }
+      setPhotoBusy(false);
+      toast.error("Could not save profile photo", {
+        description: profileError?.message ?? "Your profile could not be updated.",
+      });
+      return;
+    }
+
+    if (photo?.path && photo.path !== path) {
+      const { error: removeError } = await supabase.storage
+        .from("profile-photos")
+        .remove([photo.path]);
+      if (removeError)
+        toast.error("Photo updated, but the previous photo could not be removed", {
+          description: removeError.message,
+        });
+    }
+
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["profile-photo", userId] }),
+      queryClient.invalidateQueries({ queryKey: ["admin", "student-profile-photos"] }),
+    ]);
+    setPhotoBusy(false);
+    toast.success("Profile photo updated");
+  }
+
   async function save(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true);
@@ -1921,6 +2151,40 @@ function ProfileSection({ student, refresh }: { student: Student; refresh: () =>
   return (
     <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.8fr)]">
       <form onSubmit={save} className="space-y-4 rounded-xl border bg-card p-5 shadow-card">
+        <div className="flex items-center gap-4 border-b pb-4">
+          <ProfilePhotoAvatar
+            src={photo?.url}
+            name={`${student.first_name} ${student.last_name}`}
+            className="h-16 w-16 text-lg"
+          />
+          <div className="min-w-0 flex-1">
+            <h2 className="font-semibold text-brand">Profile photo</h2>
+            <p className="mt-1 text-xs text-muted-foreground">JPG, PNG or WebP · up to 3 MB</p>
+            {photoError && (
+              <p role="alert" className="mt-1 text-xs text-destructive">
+                Could not load profile photo: {photoError.message}
+              </p>
+            )}
+          </div>
+          <input
+            ref={photoInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            className="sr-only"
+            aria-label="Choose profile photo"
+            onChange={(event) => void uploadPhoto(event)}
+          />
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={photoBusy}
+            onClick={() => photoInputRef.current?.click()}
+          >
+            <Camera />
+            {photoBusy ? "Uploading…" : "Upload"}
+          </Button>
+        </div>
         <h2 className="font-semibold text-brand">Update contact details</h2>
         <label className="block space-y-1.5 text-sm font-medium">
           Phone

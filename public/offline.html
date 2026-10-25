@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#680915" />
+    <title>You're offline · Profia Institute</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        display: grid;
+        min-height: 100vh;
+        margin: 0;
+        padding: 24px;
+        place-items: center;
+        background: #fffaf6;
+        color: #352328;
+        font:
+          16px/1.6 system-ui,
+          sans-serif;
+      }
+      main {
+        width: min(100%, 420px);
+        text-align: center;
+      }
+      img {
+        width: 76px;
+        height: 76px;
+        border-radius: 22px;
+      }
+      h1 {
+        margin: 24px 0 8px;
+        color: #680915;
+        font-size: 1.6rem;
+      }
+      p {
+        margin: 0 0 24px;
+      }
+      button {
+        border: 0;
+        border-radius: 12px;
+        padding: 12px 20px;
+        background: #680915;
+        color: white;
+        font: inherit;
+        font-weight: 650;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <img src="/app-icon.svg" alt="" />
+      <h1>You're offline</h1>
+      <p>Reconnect to the internet to securely load your student portal and institute pages.</p>
+      <button type="button" onclick="location.reload()">Try again</button>
+    </main>
+  </body>
+</html>

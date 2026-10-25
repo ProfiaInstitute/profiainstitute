@@ -33,6 +33,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { ProfilePhotoAvatar } from "@/components/profile/ProfilePhotoAvatar";
 import { ManagementPanel } from "@/components/admin/ManagementPanel";
 import { FaqManagementPanel } from "@/components/admin/FaqManagementPanel";
 import { StudentProgressionPanel } from "@/components/admin/StudentProgressionPanel";
@@ -54,6 +55,8 @@ import type { Enums, Tables } from "@/integrations/supabase/types";
 import { downloadContentAttachment } from "@/lib/content-download";
 import { formatKES } from "@/lib/site";
 import { useScrollReveal } from "@/lib/motion";
+import { fetchProfilePhotos } from "@/lib/profile-photos";
+import { formatAuditTime, summarizeAuditChange } from "@/lib/audit-log";
 
 type DashboardSection =
   | "dashboard"
@@ -268,6 +271,8 @@ export function StaffDashboard() {
       <ManagementPanel />
     ) : section === "reports" ? (
       <ReportsPanel />
+    ) : section === "audit" ? (
+      <AuditLogPanel />
     ) : section === "settings" ? (
       <StaffPasswordSettings email={user.email ?? ""} />
     ) : section === "staff" ? (
@@ -1060,12 +1065,20 @@ function StudentsPanel({
       const { data, error } = await supabase
         .from("students")
         .select(
-          "id,student_number,application_id,first_name,middle_name,last_name,email,phone,status,course_id,intake_id,study_mode,intake:intakes(name)",
+          "id,user_id,student_number,application_id,first_name,middle_name,last_name,email,phone,status,course_id,intake_id,study_mode,intake:intakes(name)",
         )
         .order("created_at", { ascending: false });
       if (error) throw error;
       return data;
     },
+  });
+  const profileUserIds = (studentsQuery.data ?? [])
+    .map((student) => student.user_id)
+    .filter((id): id is string => !!id);
+  const profilePhotosQuery = useQuery({
+    queryKey: ["admin", "student-profile-photos", profileUserIds],
+    enabled: profileUserIds.length > 0,
+    queryFn: () => fetchProfilePhotos(profileUserIds),
   });
   const applicationIds = (studentsQuery.data ?? [])
     .map((student) => student.application_id)
@@ -1307,6 +1320,21 @@ function StudentsPanel({
           </Button>
         )}
       </div>
+      {profilePhotosQuery.error && (
+        <p
+          role="alert"
+          className="rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-sm text-destructive"
+        >
+          Could not load student profile photos: {profilePhotosQuery.error.message}
+          <button
+            type="button"
+            className="ml-2 font-semibold underline"
+            onClick={() => void profilePhotosQuery.refetch()}
+          >
+            Retry
+          </button>
+        </p>
+      )}
       {(adding || editingStudentId) && canManage && (
         <form
           className="grid gap-3 rounded-xl border bg-card p-4 sm:grid-cols-2"
@@ -1383,16 +1411,29 @@ function StudentsPanel({
             key={student.id}
             className="flex flex-col gap-3 rounded-xl border bg-card p-4 shadow-card sm:flex-row sm:items-center sm:justify-between"
           >
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <h3 className="font-semibold text-brand">
-                  {student.first_name} {student.middle_name} {student.last_name}
-                </h3>
-                <Badge variant={student.status === "active" ? "default" : "secondary"}>
-                  {student.status}
-                </Badge>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-3">
+                <ProfilePhotoAvatar
+                  src={
+                    student.user_id ? profilePhotosQuery.data?.get(student.user_id)?.url : undefined
+                  }
+                  name={`${student.first_name} ${student.last_name}`}
+                  className="h-12 w-12 border"
+                />
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="font-semibold text-brand">
+                      {student.first_name} {student.middle_name} {student.last_name}
+                    </h3>
+                    <Badge variant={student.status === "active" ? "default" : "secondary"}>
+                      {student.status}
+                    </Badge>
+                  </div>
+                  <p className="mt-1 text-xs font-semibold text-primary">
+                    {student.student_number}
+                  </p>
+                </div>
               </div>
-              <p className="mt-1 text-xs font-semibold text-primary">{student.student_number}</p>
               <p className="mt-1 text-sm text-muted-foreground">
                 {student.email}
                 {student.phone ? ` · ${student.phone}` : ""}
@@ -2321,6 +2362,84 @@ function FeeManagementPanel() {
           </p>
         )}
       </div>
+    </section>
+  );
+}
+
+function AuditLogPanel() {
+  const query = useQuery({
+    queryKey: ["admin", "audit-log"],
+    queryFn: async () => {
+      const { data: entries, error } = await supabase
+        .from("audit_logs")
+        .select("id,actor_id,action,entity,details,created_at")
+        .order("created_at", { ascending: false })
+        .limit(200);
+      if (error) throw error;
+
+      const actorIds = [
+        ...new Set((entries ?? []).flatMap((entry) => (entry.actor_id ? [entry.actor_id] : []))),
+      ];
+      const { data: actors, error: actorsError } = actorIds.length
+        ? await supabase.from("profiles").select("id,full_name").in("id", actorIds)
+        : { data: [], error: null };
+      if (actorsError) throw actorsError;
+
+      const actorNames = new Map((actors ?? []).map((actor) => [actor.id, actor.full_name]));
+      return (entries ?? []).map((entry) => ({
+        id: entry.id,
+        actor:
+          (entry.actor_id && actorNames.get(entry.actor_id)?.trim()) ||
+          (entry.actor_id ? "Unknown actor" : "System"),
+        change: summarizeAuditChange(entry.action, entry.entity, entry.details),
+        createdAt: entry.created_at,
+      }));
+    },
+  });
+
+  if (query.isLoading) return <LoadingState />;
+  if (query.error) return <ErrorPanel error={query.error} retry={() => void query.refetch()} />;
+
+  return (
+    <section className="space-y-4 rounded-xl border bg-card p-5 shadow-card">
+      <div>
+        <h2 className="font-semibold text-brand">Audit log</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Latest {Math.min(query.data?.length ?? 0, 200)} changes · read-only
+        </p>
+      </div>
+      {query.data?.length ? (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[480px] border-collapse text-left text-sm">
+            <thead>
+              <tr>
+                <th className="border-b px-3 py-2 text-xs font-semibold uppercase text-muted-foreground">
+                  Actor
+                </th>
+                <th className="border-b px-3 py-2 text-xs font-semibold uppercase text-muted-foreground">
+                  Change
+                </th>
+                <th className="border-b px-3 py-2 text-xs font-semibold uppercase text-muted-foreground">
+                  Time
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {query.data.map((entry) => (
+                <tr key={entry.id} className="border-b last:border-0">
+                  <td className="px-3 py-3 font-medium">{entry.actor}</td>
+                  <td className="px-3 py-3">{entry.change}</td>
+                  <td className="whitespace-nowrap px-3 py-3 text-muted-foreground">
+                    <time dateTime={entry.createdAt}>{formatAuditTime(entry.createdAt)}</time>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <EmptyPanel title="No audit activity yet" detail="Recorded changes will appear here." />
+      )}
     </section>
   );
 }

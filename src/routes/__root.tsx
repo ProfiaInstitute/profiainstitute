@@ -15,6 +15,7 @@ import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { SiteHeader } from "@/components/site/SiteHeader";
 import { SiteFooter } from "@/components/site/SiteFooter";
+import { PwaInstallProvider } from "@/components/site/InstallAppButton";
 import { WhatsAppFloat } from "@/components/site/common";
 import { Toaster } from "@/components/ui/sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -133,6 +134,10 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { name: "theme-color", content: "#680915" },
+      { name: "mobile-web-app-capable", content: "yes" },
+      { name: "apple-mobile-web-app-capable", content: "yes" },
+      { name: "apple-mobile-web-app-title", content: "Profia Institute" },
+      { name: "apple-mobile-web-app-status-bar-style", content: "black-translucent" },
       { name: "author", content: "Profia Institute" },
       { property: "og:site_name", content: "Profia Institute" },
       { property: "og:image", content: "https://www.profiainstitute.com/images/logo.png" },
@@ -143,6 +148,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { rel: "stylesheet", href: appCss },
       { rel: "icon", type: "image/png", href: "/favicon.png" },
       { rel: "apple-touch-icon", href: "/images/logo.png" },
+      { rel: "manifest", href: "/manifest.webmanifest" },
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
       { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
       {
@@ -182,6 +188,13 @@ function RootComponent() {
   const isApp = pathname.startsWith("/admin") || pathname.startsWith("/student");
 
   useEffect(() => {
+    if (!import.meta.env.PROD || !("serviceWorker" in navigator)) return;
+    void navigator.serviceWorker.register("/sw.js").catch((error: unknown) => {
+      console.error("Could not register the Profia app service worker:", error);
+    });
+  }, []);
+
+  useEffect(() => {
     const { data } = supabase.auth.onAuthStateChange((event) => {
       if (event !== "SIGNED_IN" && event !== "SIGNED_OUT" && event !== "USER_UPDATED") return;
       router.invalidate();
@@ -192,15 +205,17 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      {!isApp && <SiteHeader />}
-      <main>
-        <div key={pathname} className="page-transition">
-          <Outlet />
-        </div>
-      </main>
-      {!isApp && <SiteFooter />}
-      {!isApp && <WhatsAppFloat />}
-      <Toaster richColors position="top-center" />
+      <PwaInstallProvider>
+        {!isApp && <SiteHeader />}
+        <main>
+          <div key={pathname} className={isApp ? undefined : "page-transition"}>
+            <Outlet />
+          </div>
+        </main>
+        {!isApp && <SiteFooter />}
+        {!isApp && <WhatsAppFloat />}
+        <Toaster richColors position="top-center" />
+      </PwaInstallProvider>
     </QueryClientProvider>
   );
 }
