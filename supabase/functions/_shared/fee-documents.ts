@@ -1,4 +1,4 @@
-import { PDFDocument, degrees, rgb, StandardFonts } from "https://esm.sh/pdf-lib@1.17.1";
+import { PDFDocument, rgb, StandardFonts } from "https://esm.sh/pdf-lib@1.17.1";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { loadPayHeroCredentials, type PayHeroCredentials } from "./payhero.ts";
 import { officialFaviconBase64 } from "./receipt-brand.ts";
@@ -20,6 +20,7 @@ type Student = {
 type FeeDocumentSettings = {
   institutionName: string;
   logoUrl: string;
+  websiteUrl: string;
   phones: string[];
   email: string;
   address: string;
@@ -349,6 +350,12 @@ async function buildFeePdf({
         color: brand,
       },
     );
+    if (type === "receipt" && payment) {
+      page.drawText(
+        `Receipt no. ${safeText(payment.receipt_reference ?? payment.reference ?? payment.id)}`,
+        { x: 44, y: 705, size: 8, font, color: muted },
+      );
+    }
     y = 695;
   };
   const drawPaidStamp = () => {
@@ -416,7 +423,7 @@ async function buildFeePdf({
       y,
       size: isHeader ? 8 : 9,
       font: isHeader ? bold : font,
-      color: isHeader ? muted : black,
+      color: isHeader ? maroon : black,
     });
     const text = safeText(right);
     const width = (isHeader ? bold : font).widthOfTextAtSize(text, isHeader ? 8 : 9);
@@ -425,7 +432,7 @@ async function buildFeePdf({
       y,
       size: isHeader ? 8 : 9,
       font: isHeader ? bold : font,
-      color: isHeader ? muted : black,
+      color: isHeader ? maroon : black,
     });
     y -= 19;
   };
@@ -496,7 +503,10 @@ async function buildFeePdf({
     line("Payment status", "PAID");
     line("Amount paid", `KES ${formatAmount(payment.amount)}`);
   } else {
-    line("Statement generated", new Date().toLocaleString("en-KE"));
+    line(
+      "Statement generated",
+      generatedAt.toLocaleString("en-KE", { timeZone: "Africa/Nairobi" }),
+    );
     if (courseTitle) line("Course", courseTitle);
     section("Charges");
     tableRow("Charge description", "Amount (KES)", true);
@@ -539,7 +549,7 @@ async function buildFeePdf({
     if (documentSettings.address) line("Address", documentSettings.address);
   }
 
-  const issued = `Generated ${formatSchoolDateTime(generatedAt)} EAT  |  ${officialWebsiteUrl}`;
+  const issued = `Generated ${formatSchoolDateTime(generatedAt)} EAT  |  ${documentSettings.websiteUrl || officialWebsiteUrl}`;
   document.getPages().forEach((pdfPage, index) => {
     pdfPage.drawLine({
       start: { x: 42, y: 48 },
@@ -615,6 +625,7 @@ async function loadFeeDocumentSettings(
         stringValue(general.logo_url) ??
         "https://www.profiainstitute.com/favicon.png",
     ),
+    websiteUrl: "https://www.profiainstitute.com",
     phones: Array.isArray(general.phones)
       ? general.phones.filter((phone): phone is string => typeof phone === "string")
       : [],

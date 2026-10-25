@@ -14,6 +14,7 @@ import {
   RefreshCw,
   UserRound,
   Wallet,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -1487,6 +1488,18 @@ function FeesSection({
     },
     [],
   );
+  const [receiptPreviewUrl, setReceiptPreviewUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!receiptPreviewUrl) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setReceiptPreviewUrl(null);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      window.removeEventListener("keydown", closeOnEscape);
+      URL.revokeObjectURL(receiptPreviewUrl);
+    };
+  }, [receiptPreviewUrl]);
   const query = useQuery({
     queryKey: ["student", "fees", studentId],
     queryFn: async () => {
@@ -1587,15 +1600,12 @@ function FeesSection({
     },
   });
   const receiptMutation = useMutation({
-    mutationFn: async ({
-      paymentId,
-      mode,
-      windowRef,
-    }: {
-      paymentId: string;
-      mode: "view" | "download";
-      windowRef: Window;
-    }) => {
+    mutationFn: async (
+      variables:
+        | { paymentId: string; mode: "view" }
+        | { paymentId: string; mode: "download"; windowRef: Window },
+    ) => {
+      const { paymentId, mode } = variables;
       const { data, error } = await supabase.functions.invoke("generate-fee-receipt", {
         body: { paymentId, mode },
       });
@@ -1611,17 +1621,21 @@ function FeesSection({
       }
       if (!(data instanceof Blob) || data.type !== "application/pdf")
         throw new Error("The receipt service returned an invalid PDF.");
-      return { pdf: data, mode, paymentId, windowRef };
+      return { pdf: data, ...variables };
     },
-    onSuccess: ({ pdf, mode, paymentId, windowRef }) => {
+    onSuccess: (result) => {
+      const { pdf, mode, paymentId } = result;
       const objectUrl = URL.createObjectURL(pdf);
       if (mode === "view") {
-        windowRef.location.replace(objectUrl);
+        setReceiptPreviewUrl(objectUrl);
       } else {
+        const { windowRef } = result;
         const download = document.createElement("a");
         download.href = objectUrl;
         download.download = "Profia-fee-receipt.pdf";
+        document.body.append(download);
         download.click();
+        download.remove();
         showReceiptPopup(windowRef, true);
         setReceiptReadyId(paymentId);
         if (receiptReadyTimer.current !== null) window.clearTimeout(receiptReadyTimer.current);
@@ -1634,17 +1648,21 @@ function FeesSection({
       }
       void queryClient.invalidateQueries({ queryKey: ["student", "fees", studentId] });
     },
-    onError: (error, { windowRef }) => {
-      windowRef.close();
+    onError: (error, variables) => {
+      if (variables.mode === "download") variables.windowRef.close();
       toast.error("Could not download receipt", {
         description: error instanceof Error ? error.message : "Please retry.",
       });
     },
   });
   function openReceipt(paymentId: string, mode: "view" | "download") {
+    if (mode === "view") {
+      receiptMutation.mutate({ paymentId, mode });
+      return;
+    }
     const windowRef = window.open("about:blank", "_blank");
     if (!windowRef) {
-      toast.error(`Allow pop-ups to ${mode === "view" ? "view" : "download"} your receipt.`);
+      toast.error("Allow pop-ups to download your receipt.");
       return;
     }
     showReceiptPopup(windowRef, false);
@@ -1822,6 +1840,42 @@ function FeesSection({
           </p>
         )}
       </section>
+      {receiptPreviewUrl && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setReceiptPreviewUrl(null);
+          }}
+        >
+          <section
+            aria-labelledby="fee-receipt-title"
+            aria-modal="true"
+            className="flex h-[90vh] w-full max-w-5xl flex-col gap-4 rounded-lg border bg-background p-6 shadow-lg"
+            role="dialog"
+          >
+            <header className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold leading-none" id="fee-receipt-title">
+                Fee receipt
+              </h2>
+              <Button
+                aria-label="Close receipt preview"
+                onClick={() => setReceiptPreviewUrl(null)}
+                size="icon"
+                type="button"
+                variant="ghost"
+              >
+                <X />
+              </Button>
+            </header>
+            <iframe
+              className="min-h-0 w-full flex-1 rounded-md border"
+              src={receiptPreviewUrl}
+              title="Fee receipt PDF preview"
+              referrerPolicy="no-referrer"
+            />
+          </section>
+        </div>
+      )}
       {query.data?.notifications.length ? (
         <section data-scroll-reveal className="rounded-xl border bg-card p-5 shadow-card">
           <h2 className="font-semibold text-brand">Payment notifications</h2>

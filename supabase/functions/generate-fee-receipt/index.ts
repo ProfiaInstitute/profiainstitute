@@ -81,6 +81,7 @@ Deno.serve(async (request: Request) => {
         "Content-Disposition": `${mode === "view" ? "inline" : "attachment"}; filename="Profia-fee-receipt.pdf"`,
         "Cache-Control": "private, no-store, max-age=0",
         "X-Content-Type-Options": "nosniff",
+        "Referrer-Policy": "no-referrer",
       },
     });
   } catch (error) {
