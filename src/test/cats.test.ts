@@ -1,0 +1,115 @@
+import { describe, expect, it } from "vitest";
+import type { Json } from "@/integrations/supabase/types";
+import { parseAdminCats, parseStudentCatAttempt, parseStudentCats } from "@/lib/cats";
+
+describe("CAT response parsing", () => {
+  it("parses the student's available CATs and submitted marks", () => {
+    const value: Json = [
+      {
+        id: "cat-1",
+        title: "Unit CAT",
+        instructions: null,
+        duration_minutes: 30,
+        opens_at: "2026-10-25T08:00:00.000Z",
+        closes_at: "2026-10-25T10:00:00.000Z",
+        attempt_id: "attempt-1",
+        started_at: "2026-10-25T08:10:00.000Z",
+        submitted_at: "2026-10-25T08:20:00.000Z",
+        score: 4,
+        max_score: 5,
+        available: true,
+        in_progress: false,
+      },
+    ];
+
+    expect(parseStudentCats(value)).toEqual([
+      expect.objectContaining({
+        id: "cat-1",
+        attemptId: "attempt-1",
+        score: 4,
+        maxScore: 5,
+        inProgress: false,
+      }),
+    ]);
+  });
+
+  it("parses student questions without accepting or exposing an answer key", () => {
+    const value: Json = {
+      id: "attempt-1",
+      assessment_id: "cat-1",
+      title: "Unit CAT",
+      instructions: "Choose one answer.",
+      duration_minutes: 30,
+      started_at: "2026-10-25T08:10:00.000Z",
+      deadline: "2026-10-25T08:40:00.000Z",
+      submitted_at: null,
+      score: null,
+      max_score: null,
+      questions: [
+        {
+          id: "question-1",
+          prompt: "Which option is correct?",
+          options: [
+            { key: "A", text: "First" },
+            { key: "B", text: "Second" },
+            { key: "C", text: "Third" },
+            { key: "D", text: "Fourth" },
+          ],
+          points: 2,
+          selected_option: "B",
+        },
+      ],
+    };
+
+    const attempt = parseStudentCatAttempt(value);
+    expect(attempt.questions[0]?.selectedOption).toBe("B");
+    expect(attempt.questions[0]).not.toHaveProperty("correctOption");
+  });
+
+  it("includes question choices and student responses in the staff view", () => {
+    const value: Json = [
+      {
+        id: "cat-1",
+        course_id: "course-1",
+        course_title: "Course",
+        title: "Unit CAT",
+        instructions: null,
+        duration_minutes: 30,
+        opens_at: "2026-10-25T08:00:00.000Z",
+        closes_at: "2026-10-25T10:00:00.000Z",
+        questions: [
+          {
+            id: "question-1",
+            prompt: "Question",
+            option_a: "A choice",
+            option_b: "B choice",
+            option_c: "C choice",
+            option_d: "D choice",
+            correct_option: "C",
+            points: 1,
+          },
+        ],
+        attempts: [
+          {
+            id: "attempt-1",
+            student_number: "PRF/2026/0001",
+            student_name: "Student Name",
+            started_at: "2026-10-25T08:10:00.000Z",
+            submitted_at: "2026-10-25T08:15:00.000Z",
+            score: 0,
+            max_score: 1,
+            answers: [{ question_id: "question-1", selected_option: "A" }],
+          },
+        ],
+      },
+    ];
+
+    const [cat] = parseAdminCats(value);
+    expect(cat?.questions[0]?.correctOption).toBe("C");
+    expect(cat?.attempts[0]?.answers[0]?.selectedOption).toBe("A");
+  });
+
+  it("rejects malformed service responses instead of hiding invalid CAT data", () => {
+    expect(() => parseStudentCats({})).toThrow("invalid list");
+  });
+});

@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   BookOpen,
   CheckCircle2,
+  ClipboardCheck,
   ClipboardList,
   Download,
   Eye,
@@ -22,12 +23,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 import { useUser } from "@/lib/auth";
 import { isAssignmentOpenForSubmission } from "@/lib/assignments";
+import { StudentCatsSection } from "@/components/student/StudentCatsSection";
 import { formatKES } from "@/lib/site";
 import { useScrollReveal } from "@/lib/motion";
 import type { Database, Tables } from "@/integrations/supabase/types";
 
 type PortalSection =
-  "overview" | "online" | "learning" | "assignments" | "results" | "fees" | "profile";
+  "overview" | "online" | "learning" | "assignments" | "cats" | "results" | "fees" | "profile";
 type Student = Tables<"students">;
 
 export function StudentPortal({ selectedCourseId }: { selectedCourseId: string | null }) {
@@ -326,6 +328,7 @@ function StudentWorkspace({
     online: "My online courses",
     learning: "Learning materials",
     assignments: "Assignments",
+    cats: "CATs",
     results: "My results",
     fees: "Fees & payments",
     profile: "My profile",
@@ -335,12 +338,16 @@ function StudentWorkspace({
     { id: "online", title: "My online courses", icon: BookOpen },
     { id: "learning", title: "Learning materials", icon: BookOpen },
     { id: "assignments", title: "Assignments", icon: ClipboardList },
+    { id: "cats", title: "CATs", icon: ClipboardCheck },
     { id: "results", title: "Results", icon: FileText },
     { id: "fees", title: "Fees", icon: Wallet },
     { id: "profile", title: "My profile", icon: UserRound },
   ];
   const linkGroups: { title: string; ids: PortalSection[] }[] = [
-    { title: "Learning", ids: ["overview", "online", "learning", "assignments", "results"] },
+    {
+      title: "Learning",
+      ids: ["overview", "online", "learning", "assignments", "cats", "results"],
+    },
     { title: "Account", ids: ["fees", "profile"] },
   ];
 
@@ -409,6 +416,7 @@ function StudentWorkspace({
             {section === "online" && <OnlineCoursesSection student={student} />}
             {section === "learning" && <LearningSection courseId={student.course_id} />}
             {section === "assignments" && <AssignmentsSection student={student} />}
+            {section === "cats" && <StudentCatsSection courseId={student.course_id} />}
             {section === "results" && <ResultsSection studentId={student.id} />}
             {section === "fees" && (
               <FeesSection

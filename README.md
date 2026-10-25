@@ -2529,6 +2529,20 @@ using the admin or student portal. Keep migrations in numeric order. In
 particular, `0002_admin_setup_and_student_ops.sql` replaces the initial
 Super Admin bootstrap with an email allowlist.
 
+### Course CATs
+
+Apply `drizzle/migrations/0023_cat_assessments.sql` after the existing
+migrations to enable CATs. Academic admins and Super Admins create and publish
+course CATs from **Admin → Assignments → CATs**. Each CAT has a local-time
+access window, a per-student timer, and multiple-choice questions with
+server-validated answer keys. Students sign in to the existing student portal
+and use **CATs** to start or resume an attempt for their assigned course.
+Attempts are limited to one per student and CAT; answers are saved as they are
+selected, marked automatically on submission or time expiry, and the student
+can see their mark after submission. Staff can review each attempt and its
+selected answers in the Assignments area. Answer keys are not exposed through
+student database access.
+
 To bootstrap the first Super Admin:
 
 1. In Supabase Authentication, invite the intended administrator to the

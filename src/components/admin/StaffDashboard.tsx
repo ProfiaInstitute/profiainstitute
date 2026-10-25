@@ -37,6 +37,7 @@ import { ManagementPanel } from "@/components/admin/ManagementPanel";
 import { FaqManagementPanel } from "@/components/admin/FaqManagementPanel";
 import { StudentProgressionPanel } from "@/components/admin/StudentProgressionPanel";
 import { AssignmentSubmissionsPanel } from "@/components/admin/AssignmentSubmissionsPanel";
+import { CatManagementPanel } from "@/components/admin/CatManagementPanel";
 import { OnlineCourseLmsPanel } from "@/components/admin/OnlineCourseLmsPanel";
 import { PayHeroSettingsPanel } from "@/components/admin/PayHeroSettingsPanel";
 import { FeeStatementTemplatePanel } from "@/components/admin/FeeStatementTemplatePanel";
@@ -2681,7 +2682,12 @@ function DataDirectory({ section }: { section: DashboardSection }) {
           }
         />
       )}
-      {section === "assignments" && <AssignmentSubmissionsPanel />}
+      {section === "assignments" && (
+        <>
+          <CatManagementPanel />
+          <AssignmentSubmissionsPanel />
+        </>
+      )}
       {query.data?.length ? (
         <div className="mt-4 overflow-x-auto">
           <table className="w-full min-w-[640px] border-collapse text-left text-sm">
