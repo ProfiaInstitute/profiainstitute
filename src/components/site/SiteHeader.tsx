@@ -3,6 +3,7 @@ import { useState } from "react";
 import { ChevronDown, Menu, Phone, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useGeneral } from "@/lib/site";
+import { InstallAppButton } from "@/components/site/InstallAppButton";
 
 const schools = [
   { to: "/business", label: "School of Business" },
@@ -104,6 +105,7 @@ export function SiteHeader() {
             )}
           </nav>
           <div className="flex items-center gap-2">
+            <InstallAppButton />
             <Button asChild variant="hero" className="px-4 sm:px-6">
               <Link to="/admission" search={{}}>
                 Apply Now

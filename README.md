@@ -2543,6 +2543,14 @@ can see their mark after submission. Staff can review each attempt and its
 selected answers in the Assignments area. Answer keys are not exposed through
 student database access.
 
+### Student profile photos
+
+Apply `drizzle/migrations/0024_student_profile_photos.sql` after the existing
+migrations to enable private student profile-photo uploads. Students can upload
+a JPG, PNG, or WebP image up to 3 MB from **My profile**. Photos appear in the
+student portal and staff student directory using expiring signed URLs. The
+Audit Log is read-only and displays actor names, summarized changes, and times.
+
 To bootstrap the first Super Admin:
 
 1. In Supabase Authentication, invite the intended administrator to the
