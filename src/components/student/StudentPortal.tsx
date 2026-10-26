@@ -74,6 +74,87 @@ export function StudentPortal({ selectedCourseId }: { selectedCourseId: string |
   );
 }
 
+function StudentAnnouncements({ studentId }: { studentId: string }) {
+  const announcementsQuery = useQuery({
+    queryKey: ["student-announcements", studentId],
+    queryFn: async () => {
+      const now = new Date().toISOString();
+      const { data, error } = await supabase
+        .from("announcements")
+        .select("id, title, body, starts_at, ends_at, cta_label, cta_url")
+        .eq("published", true)
+        .eq("show_to_students", true)
+        .or(`starts_at.is.null,starts_at.lte.${now}`)
+        .or(`ends_at.is.null,ends_at.gt.${now}`)
+        .order("created_at", { ascending: false })
+        .limit(5);
+      if (error) throw error;
+      return data ?? [];
+    },
+    staleTime: 60_000,
+    refetchInterval: 60_000,
+  });
+
+  if (
+    announcementsQuery.isLoading ||
+    (!announcementsQuery.data?.length && !announcementsQuery.error)
+  )
+    return null;
+
+  return (
+    <section
+      className="mx-auto mt-4 grid w-full max-w-7xl gap-3 px-4 sm:px-6 lg:px-8"
+      aria-label="Student announcements"
+    >
+      {announcementsQuery.error ? (
+        <div
+          className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm"
+          role="alert"
+        >
+          <p>Student announcements could not be loaded.</p>
+          <button
+            type="button"
+            className="mt-1 font-semibold underline"
+            onClick={() => void announcementsQuery.refetch()}
+          >
+            Try again
+          </button>
+        </div>
+      ) : (
+        announcementsQuery.data?.map((announcement) => (
+          <article
+            key={announcement.id}
+            className="rounded-xl border border-primary/20 bg-primary/5 p-4 sm:p-5"
+          >
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-semibold uppercase tracking-wide text-primary">Notice</p>
+                <h2 className="mt-1 font-bold text-brand">{announcement.title}</h2>
+                {announcement.body && (
+                  <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-foreground/80">
+                    {announcement.body}
+                  </p>
+                )}
+              </div>
+              {announcement.cta_label && announcement.cta_url && (
+                <a
+                  href={announcement.cta_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex shrink-0 items-center rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+                >
+                  {announcement.cta_label}
+                  <span className="sr-only"> (opens in a new tab)</span>
+                </a>
+              )}
+            </div>
+          </article>
+        ))
+      )}
+    </section>
+  );
+}
+
 function StudentSignIn({
   selectedCourseId,
   onEnrollmentPhone,
@@ -509,6 +590,7 @@ function StudentWorkspace({
           You're offline. Reconnect to refresh your student information.
         </div>
       )}
+      <StudentAnnouncements studentId={student.id} />
       <div className="mx-auto flex max-w-7xl flex-col lg:flex-row">
         <aside className="hidden border-b bg-card p-4 lg:sticky lg:top-[65px] lg:block lg:h-[calc(100vh-65px)] lg:w-64 lg:shrink-0 lg:border-b-0 lg:border-r">
           <div className="hidden rounded-xl border bg-cream p-4 lg:block">
