@@ -3,8 +3,9 @@ import { seo } from "@/lib/site";
 import { OnlineApplication } from "@/components/site/OnlineApplication";
 
 export const Route = createFileRoute("/admission")({
-  validateSearch: (search: Record<string, unknown>): { course?: string } => ({
+  validateSearch: (search: Record<string, unknown>): { course?: string; level?: string } => ({
     ...(typeof search["course"] === "string" ? { course: search["course"] } : {}),
+    ...(typeof search["level"] === "string" ? { level: search["level"] } : {}),
   }),
   head: () =>
     seo(
@@ -16,7 +17,7 @@ export const Route = createFileRoute("/admission")({
 });
 
 function AdmissionPage() {
-  const { course } = Route.useSearch();
+  const { course, level } = Route.useSearch();
   return (
     <>
       <section className="bg-brand py-12 text-brand-foreground sm:py-16">
@@ -30,7 +31,10 @@ function AdmissionPage() {
         </div>
       </section>
       <section className="container-site py-10 sm:py-14">
-        <OnlineApplication {...(course ? { initialCourseId: course } : {})} />
+        <OnlineApplication
+          {...(course ? { initialCourseId: course } : {})}
+          {...(level ? { initialLevelId: level } : {})}
+        />
       </section>
     </>
   );

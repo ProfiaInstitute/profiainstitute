@@ -212,6 +212,7 @@ export type Database = {
           id: string;
           institution_attended: string | null;
           intake_id: string | null;
+          level_id: string | null;
           kcse_grade: string | null;
           last_name: string;
           middle_name: string | null;
@@ -245,6 +246,7 @@ export type Database = {
           id?: string;
           institution_attended?: string | null;
           intake_id?: string | null;
+          level_id?: string | null;
           kcse_grade?: string | null;
           last_name: string;
           middle_name?: string | null;
@@ -278,6 +280,7 @@ export type Database = {
           id?: string;
           institution_attended?: string | null;
           intake_id?: string | null;
+          level_id?: string | null;
           kcse_grade?: string | null;
           last_name?: string;
           middle_name?: string | null;
@@ -307,6 +310,13 @@ export type Database = {
             columns: ["intake_id"];
             isOneToOne: false;
             referencedRelation: "intakes";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "applications_level_id_fkey";
+            columns: ["level_id"];
+            isOneToOne: false;
+            referencedRelation: "course_levels";
             referencedColumns: ["id"];
           },
           {
@@ -542,12 +552,69 @@ export type Database = {
         };
         Relationships: [];
       };
+      course_levels: {
+        Row: {
+          code: string | null;
+          course_id: string;
+          created_at: string;
+          description: string | null;
+          fee_items: Json;
+          fee_structure_path: string | null;
+          fee_structure_url: string | null;
+          id: string;
+          name: string;
+          published: boolean;
+          sort_order: number;
+          total_fee: number;
+          updated_at: string;
+        };
+        Insert: {
+          code?: string | null;
+          course_id: string;
+          created_at?: string;
+          description?: string | null;
+          fee_items?: Json;
+          fee_structure_path?: string | null;
+          fee_structure_url?: string | null;
+          id?: string;
+          name: string;
+          published?: boolean;
+          sort_order?: number;
+          total_fee?: number;
+          updated_at?: string;
+        };
+        Update: {
+          code?: string | null;
+          course_id?: string;
+          created_at?: string;
+          description?: string | null;
+          fee_items?: Json;
+          fee_structure_path?: string | null;
+          fee_structure_url?: string | null;
+          id?: string;
+          name?: string;
+          published?: boolean;
+          sort_order?: number;
+          total_fee?: number;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "course_levels_course_id_fkey";
+            columns: ["course_id"];
+            isOneToOne: false;
+            referencedRelation: "courses";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       course_units: {
         Row: {
           code: string | null;
           course_id: string;
           created_at: string;
           id: string;
+          level_id: string | null;
           semester: string | null;
           sort_order: number;
           title: string;
@@ -558,6 +625,7 @@ export type Database = {
           course_id: string;
           created_at?: string;
           id?: string;
+          level_id?: string | null;
           semester?: string | null;
           sort_order?: number;
           title: string;
@@ -568,6 +636,7 @@ export type Database = {
           course_id?: string;
           created_at?: string;
           id?: string;
+          level_id?: string | null;
           semester?: string | null;
           sort_order?: number;
           title?: string;
@@ -579,6 +648,13 @@ export type Database = {
             columns: ["course_id"];
             isOneToOne: false;
             referencedRelation: "courses";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "course_units_level_id_fkey";
+            columns: ["level_id"];
+            isOneToOne: false;
+            referencedRelation: "course_levels";
             referencedColumns: ["id"];
           },
         ];
@@ -722,6 +798,7 @@ export type Database = {
           created_at: string;
           id: string;
           intake_id: string | null;
+          level_id: string | null;
           progress: number;
           status: string;
           student_id: string;
@@ -734,6 +811,7 @@ export type Database = {
           created_at?: string;
           id?: string;
           intake_id?: string | null;
+          level_id?: string | null;
           progress?: number;
           status?: string;
           student_id: string;
@@ -746,6 +824,7 @@ export type Database = {
           created_at?: string;
           id?: string;
           intake_id?: string | null;
+          level_id?: string | null;
           progress?: number;
           status?: string;
           student_id?: string;
@@ -771,6 +850,13 @@ export type Database = {
             columns: ["intake_id"];
             isOneToOne: false;
             referencedRelation: "intakes";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "enrollments_level_id_fkey";
+            columns: ["level_id"];
+            isOneToOne: false;
+            referencedRelation: "course_levels";
             referencedColumns: ["id"];
           },
           {
@@ -1598,6 +1684,7 @@ export type Database = {
           gender: string | null;
           id: string;
           intake_id: string | null;
+          level_id: string | null;
           last_name: string;
           middle_name: string | null;
           national_id: string | null;
@@ -1623,6 +1710,7 @@ export type Database = {
           gender?: string | null;
           id?: string;
           intake_id?: string | null;
+          level_id?: string | null;
           last_name: string;
           middle_name?: string | null;
           national_id?: string | null;
@@ -1648,6 +1736,7 @@ export type Database = {
           gender?: string | null;
           id?: string;
           intake_id?: string | null;
+          level_id?: string | null;
           last_name?: string;
           middle_name?: string | null;
           national_id?: string | null;
@@ -1679,6 +1768,13 @@ export type Database = {
             columns: ["intake_id"];
             isOneToOne: false;
             referencedRelation: "intakes";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "students_level_id_fkey";
+            columns: ["level_id"];
+            isOneToOne: false;
+            referencedRelation: "course_levels";
             referencedColumns: ["id"];
           },
         ];

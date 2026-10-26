@@ -1,9 +1,24 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowRight, Check, Megaphone, Newspaper, Phone, Wallet, MapPin } from "lucide-react";
+import { useEffect, useState } from "react";
+import {
+  ArrowRight,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  GraduationCap,
+  Megaphone,
+  Newspaper,
+  Pause,
+  Phone,
+  Play,
+  Wallet,
+  MapPin,
+  UserRound,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
-import { SCHOOL_ROUTES, seo, useActiveIntake, useSchools, useSetting } from "@/lib/site";
+import { SCHOOL_ROUTES, seo, useActiveIntake, useMedia, useSchools, useSetting } from "@/lib/site";
 import {
   CardGridSkeleton,
   EmptyState,
@@ -42,6 +57,11 @@ function Home() {
     image?: string;
   };
   const activeIntake = useActiveIntake();
+  const heroMedia = useMedia("hero");
+  const [slideIndex, setSlideIndex] = useState(0);
+  const [carouselPaused, setCarouselPaused] = useState(false);
+  const [carouselHovered, setCarouselHovered] = useState(false);
+  const [reducedMotion, setReducedMotion] = useState(false);
   const hero = useSetting("content.hero", {
     title: "Become a Certified Public Accountant at Profia Institute",
     cta: "Apply now",
@@ -61,22 +81,67 @@ function Home() {
   const cbc = useSetting<CbcSettings>("content.cbc", { enabled: true, items: [] });
   const web = useSetting<WebSettings>("content.webdev", { enabled: true });
   const stats = useSetting<{ items: { value: string; label: string }[] }>("stats", { items: [] });
+  const slides = heroMedia.data?.length
+    ? heroMedia.data
+    : [
+        {
+          id: "default-hero",
+          url: hero.image,
+          caption: null,
+          alt: null,
+          slot: null,
+          sort_order: 0,
+        },
+      ];
+  const currentSlide = slides[slideIndex % slides.length] ?? slides[0]!;
+
+  useEffect(() => {
+    const preference = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const updatePreference = () => setReducedMotion(preference.matches);
+    updatePreference();
+    preference.addEventListener("change", updatePreference);
+    return () => preference.removeEventListener("change", updatePreference);
+  }, []);
+
+  useEffect(() => {
+    if (slides.length < 2 || carouselPaused || carouselHovered || reducedMotion) return;
+    const interval = window.setInterval(() => {
+      setSlideIndex((index) => (index + 1) % slides.length);
+    }, 6500);
+    return () => window.clearInterval(interval);
+  }, [carouselHovered, carouselPaused, reducedMotion, slides.length]);
+
+  useEffect(() => {
+    setSlideIndex((index) => Math.min(index, Math.max(0, slides.length - 1)));
+  }, [slides.length]);
 
   return (
     <>
       {/* HERO */}
-      <section className="relative isolate overflow-hidden bg-brand text-brand-foreground">
+      <section
+        className="relative isolate min-h-[34rem] overflow-hidden bg-brand text-brand-foreground sm:min-h-[39rem]"
+        onMouseEnter={() => setCarouselHovered(true)}
+        onMouseLeave={() => setCarouselHovered(false)}
+        role="region"
+        aria-label="Featured stories"
+        aria-roledescription={slides.length > 1 ? "carousel" : undefined}
+      >
         <img
-          src={hero.image}
-          alt="Profia Institute class in session"
-          className="absolute inset-0 -z-20 h-full w-full object-cover"
+          key={currentSlide.id}
+          src={currentSlide.url}
+          alt={currentSlide.alt || "Profia Institute"}
+          className="hero-slide-image absolute inset-0 -z-20 h-full w-full object-cover"
           fetchPriority="high"
         />
         <div className="absolute inset-0 -z-10 bg-hero-overlay" />
-        <div className="container-site py-20 sm:py-32">
-          <div className="max-w-2xl animate-fade-up">
+        <div className="container-site grid min-h-[34rem] items-center gap-10 py-14 sm:min-h-[39rem] sm:py-20 lg:grid-cols-[1fr_20rem] lg:py-24">
+          <div className="max-w-3xl animate-fade-up">
+            <p className="inline-flex items-center gap-2 rounded-full border border-white/25 bg-black/15 px-4 py-2 text-xs font-bold uppercase tracking-[0.18em] text-white/95 backdrop-blur-sm">
+              <span className="h-2 w-2 rounded-full bg-primary" />
+              Profia Institute of Professionals · Homa Bay
+            </p>
             {intakeBadge && (
-              <span className="inline-flex items-center gap-2 rounded-full bg-primary px-3 py-1 text-sm font-semibold text-primary-foreground">
+              <span className="mt-5 inline-flex items-center gap-2 rounded-full bg-primary px-3 py-1.5 text-sm font-semibold text-primary-foreground">
                 <Check className="h-4 w-4" /> {intakeBadge}
               </span>
             )}
@@ -85,10 +150,23 @@ function Home() {
                 Admissions details are temporarily unavailable.
               </p>
             )}
+            {heroMedia.error && (
+              <p role="status" className="mt-3 text-sm">
+                Featured slides are temporarily unavailable. Showing the default campus image.
+              </p>
+            )}
             {intakeDetails && (
               <p className="mt-3 text-sm font-medium text-brand-foreground/90">{intakeDetails}</p>
             )}
-            <h1 className="mt-5 text-4xl font-extrabold leading-[1.1] sm:text-6xl">{hero.title}</h1>
+            <h1 className="mt-5 max-w-3xl text-4xl font-extrabold leading-[1.08] tracking-tight sm:text-6xl lg:text-7xl">
+              <span aria-live="polite" aria-atomic="true">
+                {currentSlide.caption || hero.title}
+              </span>
+            </h1>
+            <p className="mt-5 max-w-2xl text-base leading-7 text-white/85 sm:text-lg">
+              Build practical skills, earn recognised qualifications and take your next step with a
+              learning community rooted in Homa Bay.
+            </p>
             <div className="mt-8 flex flex-wrap gap-3">
               <Button asChild variant="hero" size="lg">
                 <Link to="/admission" search={{}}>
@@ -100,14 +178,121 @@ function Home() {
               </Button>
             </div>
           </div>
+          <aside className="hidden rounded-2xl border border-white/20 bg-white/95 p-6 text-foreground shadow-lift backdrop-blur-sm lg:block">
+            <p className="eyebrow">Your next step starts here</p>
+            <h2 className="mt-2 text-2xl font-bold text-brand">Find your place at Profia</h2>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              Explore career-focused programmes and get the information you need to begin.
+            </p>
+            <div className="mt-6 divide-y">
+              <Link
+                to="/admission"
+                search={{}}
+                className="group flex items-center justify-between gap-3 py-4 font-semibold text-brand transition-colors hover:text-primary"
+              >
+                Apply for admission
+                <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+              </Link>
+              <Link
+                to="/academics"
+                className="group flex items-center justify-between gap-3 py-4 font-semibold text-brand transition-colors hover:text-primary"
+              >
+                Explore our schools
+                <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+              </Link>
+              <Link
+                to="/student"
+                search={{ course: undefined }}
+                className="group flex items-center justify-between gap-3 py-4 font-semibold text-brand transition-colors hover:text-primary"
+              >
+                Open student portal
+                <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+              </Link>
+            </div>
+            {activeIntake.data && (
+              <div className="mt-2 rounded-xl bg-cream p-4">
+                <p className="text-xs font-bold uppercase tracking-wider text-primary">
+                  Current intake
+                </p>
+                <p className="mt-1 font-semibold text-brand">{activeIntake.data.name}</p>
+                {activeIntake.data.application_deadline && (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Apply by{" "}
+                    {new Date(
+                      `${activeIntake.data.application_deadline}T00:00:00`,
+                    ).toLocaleDateString("en-KE", { dateStyle: "medium" })}
+                  </p>
+                )}
+              </div>
+            )}
+          </aside>
         </div>
+        {slides.length > 1 && (
+          <div className="container-site absolute inset-x-0 bottom-5 z-10 flex items-center justify-center gap-2 sm:bottom-7 lg:justify-start">
+            <button
+              type="button"
+              aria-label="Previous hero slide"
+              onClick={() => setSlideIndex((index) => (index - 1 + slides.length) % slides.length)}
+              className="flex h-9 w-9 items-center justify-center rounded-full border border-white/40 bg-black/20 text-white transition hover:bg-white/20"
+            >
+              <ChevronLeft className="h-5 w-5" />
+            </button>
+            {slides.map((slide, index) => (
+              <button
+                key={slide.id}
+                type="button"
+                aria-label={`Show hero slide ${index + 1}`}
+                aria-current={slideIndex === index ? "true" : undefined}
+                onClick={() => setSlideIndex(index)}
+                className={`h-2.5 rounded-full transition-all ${slideIndex === index ? "w-8 bg-primary" : "w-2.5 bg-white/70 hover:bg-white"}`}
+              />
+            ))}
+            <button
+              type="button"
+              aria-label="Next hero slide"
+              onClick={() => setSlideIndex((index) => (index + 1) % slides.length)}
+              className="flex h-9 w-9 items-center justify-center rounded-full border border-white/40 bg-black/20 text-white transition hover:bg-white/20"
+            >
+              <ChevronRight className="h-5 w-5" />
+            </button>
+            <button
+              type="button"
+              aria-label={carouselPaused ? "Play hero slideshow" : "Pause hero slideshow"}
+              aria-pressed={carouselPaused}
+              onClick={() => setCarouselPaused((paused) => !paused)}
+              className="flex h-9 w-9 items-center justify-center rounded-full border border-white/40 bg-black/20 text-white transition hover:bg-white/20"
+            >
+              {carouselPaused ? <Play className="h-4 w-4" /> : <Pause className="h-4 w-4" />}
+            </button>
+          </div>
+        )}
       </section>
 
       <AnnouncementStrip />
 
+      <QuickLinks />
+
+      {stats.items?.length > 0 && (
+        <section className="border-b bg-background">
+          <div className="container-site grid grid-cols-2 divide-x py-8 text-center sm:grid-cols-4">
+            {stats.items.map((stat) => (
+              <div key={stat.label} className="px-3 sm:px-4">
+                <div className="text-3xl font-extrabold text-primary sm:text-4xl">{stat.value}</div>
+                <div className="mt-1 text-xs font-medium text-muted-foreground sm:text-sm">
+                  {stat.label}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      <AcademicsGrid />
+      <LatestNews />
+
       {/* CBC */}
       {cbc.enabled && (
-        <section className="bg-cream py-16">
+        <section className="bg-cream py-16 sm:py-20">
           <div className="container-site grid items-center gap-10 lg:grid-cols-2">
             <div>
               <p className="eyebrow">💻 {cbc.badge}</p>
@@ -151,7 +336,7 @@ function Home() {
 
       {/* WEB DEV */}
       {web.enabled && (
-        <section className="py-16">
+        <section className="py-16 sm:py-20">
           <div className="container-site grid items-center gap-10 overflow-hidden rounded-2xl bg-gradient-brand text-brand-foreground lg:grid-cols-2">
             <div className="p-8 sm:p-12">
               <span className="rounded-full bg-primary px-3 py-1 text-sm font-semibold">
@@ -176,22 +361,6 @@ function Home() {
         </section>
       )}
 
-      {/* STATS */}
-      {stats.items?.length > 0 && (
-        <section className="border-y bg-background">
-          <div className="container-site grid grid-cols-2 divide-x py-10 text-center">
-            {stats.items.map((s) => (
-              <div key={s.label} className="px-4">
-                <div className="text-4xl font-extrabold text-primary sm:text-5xl">{s.value}</div>
-                <div className="mt-1 text-sm font-medium text-muted-foreground">{s.label}</div>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-
-      <AcademicsGrid />
-      <LatestNews />
       <HomepageMedia />
       <Partners />
     </>
@@ -224,14 +393,15 @@ function InfoRow({
 }
 
 function AnnouncementStrip() {
-  const { data } = useQuery({
+  const { data, error } = useQuery({
     queryKey: ["home_announcements"],
     queryFn: async () => {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("announcements")
         .select("id,title,category,starts_at,ends_at")
         .eq("published", true)
         .order("created_at", { ascending: false });
+      if (error) throw error;
       const now = Date.now();
       return (data ?? [])
         .filter(
@@ -242,19 +412,95 @@ function AnnouncementStrip() {
         .slice(0, 3);
     },
   });
+  if (error)
+    return (
+      <div
+        className="bg-brand-deep px-4 py-3 text-center text-sm text-brand-foreground"
+        role="status"
+      >
+        Current notices are temporarily unavailable. Please check the announcements page later.
+      </div>
+    );
   if (!data?.length) return null;
   return (
-    <div className="bg-primary text-primary-foreground">
-      <div className="container-site flex flex-wrap items-center gap-x-6 gap-y-1 py-3 text-sm font-medium">
-        <Megaphone className="h-4 w-4" />
-        {data.map((a) => (
-          <span key={a.id}>{a.title}</span>
-        ))}
-        <Link to="/announcements" className="ml-auto underline">
-          All announcements
+    <div className="announcement-strip bg-brand-deep text-brand-foreground">
+      <div className="container-site flex h-12 items-center gap-4">
+        <span className="flex shrink-0 items-center gap-2 text-xs font-bold uppercase tracking-wider text-primary sm:text-sm">
+          <Megaphone className="h-4 w-4" /> Latest notices
+        </span>
+        <div
+          className="announcement-marquee min-w-0 flex-1"
+          role="region"
+          aria-label="Profia announcements"
+        >
+          <div className="announcement-marquee-track">
+            {[0, 1].map((copy) => (
+              <div
+                key={copy}
+                className="announcement-marquee-content"
+                aria-hidden={copy === 1 ? true : undefined}
+              >
+                {data.map((announcement) => (
+                  <span key={`${copy}-${announcement.id}`} className="flex items-center gap-3">
+                    <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-primary" />
+                    {announcement.title}
+                  </span>
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+        <Link
+          to="/announcements"
+          className="shrink-0 text-xs font-semibold underline underline-offset-4 hover:text-primary sm:text-sm"
+        >
+          All notices
         </Link>
       </div>
     </div>
+  );
+}
+
+function QuickLinks() {
+  const links = [
+    {
+      to: "/admission",
+      label: "Join Profia",
+      detail: "Start your application",
+      icon: GraduationCap,
+    },
+    { to: "/academics", label: "Find a course", detail: "Explore our programmes", icon: Check },
+    {
+      to: "/student",
+      label: "Student portal",
+      detail: "Learning and student services",
+      icon: UserRound,
+      student: true,
+    },
+    { to: "/contact", label: "Talk to us", detail: "Get help from admissions", icon: Phone },
+  ];
+  return (
+    <section className="relative z-10 -mt-1 border-b bg-background py-4 sm:py-5">
+      <div className="container-site grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {links.map(({ to, label, detail, icon: Icon, student }) => (
+          <Link
+            key={label}
+            to={to}
+            {...(student ? { search: { course: undefined } } : {})}
+            className="group flex min-h-20 items-center gap-3 rounded-xl border bg-card px-4 py-3 transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-card sm:px-5"
+          >
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-accent text-primary">
+              <Icon className="h-5 w-5" />
+            </span>
+            <span className="min-w-0">
+              <span className="block truncate font-bold text-brand">{label}</span>
+              <span className="mt-0.5 block truncate text-xs text-muted-foreground">{detail}</span>
+            </span>
+            <ArrowRight className="ml-auto hidden h-4 w-4 shrink-0 text-primary transition-transform group-hover:translate-x-1 sm:block" />
+          </Link>
+        ))}
+      </div>
+    </section>
   );
 }
 

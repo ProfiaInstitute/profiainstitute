@@ -5,6 +5,8 @@ import {
   ArrowRight,
   CheckCircle2,
   Clock3,
+  ChevronDown,
+  Download,
   GraduationCap,
   MapPin,
   MessageCircle,
@@ -28,6 +30,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { getYouTubeEmbedUrl, renderContentMarkup } from "@/lib/content-format";
 import { downloadContentAttachment } from "@/lib/content-download";
 import type { Tables } from "@/integrations/supabase/types";
+import type { Json } from "@/integrations/supabase/types";
 import {
   FACILITY_LOCATION,
   SCHOOL_ROUTES,
@@ -162,11 +165,7 @@ export function AcademicsPage() {
                     </p>
                   )}
                   {course.application_enabled !== false ? (
-                    <Button asChild size="sm" className="mt-4">
-                      <Link to="/admission" search={{ course: course.id }}>
-                        Apply for this course
-                      </Link>
-                    </Button>
+                    <CourseLevelsDetails courseId={course.id} />
                   ) : (
                     <p className="mt-4 text-sm font-medium text-muted-foreground">
                       Applications are currently closed.
@@ -184,6 +183,156 @@ export function AcademicsPage() {
         </div>
       </section>
     </>
+  );
+}
+
+function CourseLevelsDetails({ courseId }: { courseId: string }) {
+  const levels = useQuery({
+    queryKey: ["course-levels", courseId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("course_levels")
+        .select("id,name,code,description,fee_items,total_fee,fee_structure_url")
+        .eq("course_id", courseId)
+        .eq("published", true)
+        .order("sort_order")
+        .order("name");
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  if (levels.isLoading) {
+    return <p className="mt-4 text-sm text-muted-foreground">Loading course levels…</p>;
+  }
+  if (levels.error) {
+    return (
+      <p role="alert" className="mt-4 text-sm text-destructive">
+        Could not load course levels: {levels.error.message}
+      </p>
+    );
+  }
+  if (!levels.data?.length) {
+    return (
+      <p className="mt-4 text-sm text-muted-foreground">
+        Level details are being updated. Contact admissions for help applying.
+      </p>
+    );
+  }
+
+  return (
+    <div className="mt-4 space-y-3">
+      {levels.data.map((level) => (
+        <CourseLevelDetails key={level.id} courseId={courseId} level={level} />
+      ))}
+    </div>
+  );
+}
+
+function CourseLevelDetails({
+  courseId,
+  level,
+}: {
+  courseId: string;
+  level: {
+    id: string;
+    name: string;
+    code: string | null;
+    description: string | null;
+    fee_items: Json;
+    total_fee: number;
+    fee_structure_url: string | null;
+  };
+}) {
+  const [open, setOpen] = useState(false);
+  const units = useQuery({
+    queryKey: ["course-level-units", level.id],
+    enabled: open,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("course_units")
+        .select("id,code,title,semester")
+        .eq("level_id", level.id)
+        .order("sort_order")
+        .order("title");
+      if (error) throw error;
+      return data;
+    },
+  });
+  const feeItems = Array.isArray(level.fee_items)
+    ? level.fee_items.flatMap((item) => {
+        if (typeof item !== "object" || item === null || Array.isArray(item)) return [];
+        const label = item["label"];
+        const amount = item["amount"];
+        return typeof label === "string" && typeof amount === "number" ? [{ label, amount }] : [];
+      })
+    : [];
+
+  return (
+    <details
+      className="rounded-lg border bg-background"
+      open={open}
+      onToggle={(event) => setOpen(event.currentTarget.open)}
+    >
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-3">
+        <span>
+          <span className="block font-semibold text-brand">
+            {level.name}
+            {level.code ? ` · ${level.code}` : ""}
+          </span>
+          <span className="mt-1 block text-xs text-muted-foreground">
+            Fees: {formatKES(level.total_fee)}
+          </span>
+        </span>
+        <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+      </summary>
+      <div className="border-t px-3 pb-3 pt-3">
+        {level.description && <p className="text-sm text-muted-foreground">{level.description}</p>}
+        {feeItems.length > 0 && (
+          <ul className="mt-3 space-y-1 text-sm">
+            {feeItems.map((item, index) => (
+              <li key={`${item.label}-${index}`} className="flex justify-between gap-3">
+                <span>{item.label}</span>
+                <span>{formatKES(item.amount)}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+        {units.isLoading ? (
+          <p className="mt-3 text-sm text-muted-foreground">Loading units…</p>
+        ) : units.error ? (
+          <p role="alert" className="mt-3 text-sm text-destructive">
+            {units.error.message}
+          </p>
+        ) : units.data?.length ? (
+          <ul className="mt-3 space-y-2 text-sm">
+            {units.data.map((unit) => (
+              <li key={unit.id}>
+                {unit.code && <strong>{unit.code} · </strong>}
+                {unit.title}
+                {unit.semester && <span className="text-muted-foreground"> · {unit.semester}</span>}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-3 text-sm text-muted-foreground">Units will be shared by the school.</p>
+        )}
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Button asChild size="sm">
+            <Link to="/admission" search={{ course: courseId, level: level.id }}>
+              Apply for this level
+            </Link>
+          </Button>
+          {level.fee_structure_url && (
+            <Button asChild size="sm" variant="outline">
+              <a href={level.fee_structure_url} target="_blank" rel="noreferrer">
+                <Download className="h-4 w-4" /> Fee structure
+              </a>
+            </Button>
+          )}
+        </div>
+      </div>
+    </details>
   );
 }
 

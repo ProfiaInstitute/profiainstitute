@@ -29,6 +29,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { toast } from "sonner";
+import { createExcelWorkbook } from "@/lib/excel-export";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -42,6 +43,7 @@ import { CatManagementPanel } from "@/components/admin/CatManagementPanel";
 import { OnlineCourseLmsPanel } from "@/components/admin/OnlineCourseLmsPanel";
 import { PayHeroSettingsPanel } from "@/components/admin/PayHeroSettingsPanel";
 import { FeeStatementTemplatePanel } from "@/components/admin/FeeStatementTemplatePanel";
+import { SiteMediaManager } from "@/components/admin/SiteMediaManager";
 import { supabase } from "@/integrations/supabase/client";
 import { can, useRoles, useUser, type AppRole } from "@/lib/auth";
 import type { Json } from "@/integrations/supabase/types";
@@ -169,7 +171,12 @@ const navItems: { id: DashboardSection; title: string; icon: LucideIcon; roles: 
     icon: Megaphone,
     roles: ["super_admin"],
   },
-  { id: "media", title: "Media", icon: FileText, roles: ["super_admin", "content_admin"] },
+  {
+    id: "media",
+    title: "Site media & banners",
+    icon: FileText,
+    roles: ["super_admin", "content_admin"],
+  },
   { id: "messages", title: "Messages", icon: Mail, roles: ["super_admin", "admissions_admin"] },
   {
     id: "reports",
@@ -256,6 +263,8 @@ export function StaffDashboard() {
   const content =
     section === "dashboard" ? (
       <Overview onNavigate={setSection} />
+    ) : section === "media" ? (
+      <SiteMediaManager />
     ) : section === "applications" ? (
       <ApplicationsPanel />
     ) : section === "students" ? (
@@ -294,30 +303,33 @@ export function StaffDashboard() {
     );
 
   return (
-    <div className="min-h-screen bg-muted/40 text-foreground">
-      <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b bg-brand px-4 text-brand-foreground sm:px-6">
+    <div className="admin-workspace min-h-screen bg-muted/40 text-foreground">
+      <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border/70 bg-background/95 px-4 text-foreground shadow-sm backdrop-blur sm:px-6">
         <div className="flex items-center gap-3">
           <button
             type="button"
-            className="rounded p-2 hover:bg-brand-foreground/10 lg:hidden"
+            className="rounded-lg p-2 text-brand hover:bg-accent lg:hidden"
             aria-label="Toggle navigation"
             onClick={() => setMobileNavOpen(!mobileNavOpen)}
           >
             <LayoutDashboard className="h-5 w-5" />
           </button>
-          <a href="/" className="text-sm font-extrabold tracking-wide">
-            PROFIA{" "}
-            <span className="hidden font-medium text-brand-foreground/70 sm:inline">
-              · ADMINISTRATION
+          <a href="/" className="flex items-center gap-2.5">
+            <img src="/images/logo.png" alt="" className="h-10 w-auto" />
+            <span>
+              <span className="block text-sm font-extrabold leading-tight text-brand">PROFIA</span>
+              <span className="hidden text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground sm:block">
+                Administration
+              </span>
             </span>
           </a>
         </div>
         <div className="flex items-center gap-3">
-          <span className="hidden max-w-48 truncate text-sm text-brand-foreground/75 sm:block">
+          <span className="hidden max-w-48 truncate text-sm text-muted-foreground sm:block">
             {user.email}
           </span>
           <Button
-            variant="heroOutline"
+            variant="outline"
             size="sm"
             onClick={async () => {
               const { error } = await supabase.auth.signOut();
@@ -330,10 +342,10 @@ export function StaffDashboard() {
       </header>
       <div className="mx-auto flex max-w-[1600px]">
         <aside
-          className={`${mobileNavOpen ? "block" : "hidden"} fixed inset-y-16 left-0 z-20 w-72 overflow-y-auto border-r bg-card p-3 lg:sticky lg:top-16 lg:block lg:h-[calc(100vh-4rem)] lg:shrink-0`}
+          className={`${mobileNavOpen ? "block" : "hidden"} fixed inset-y-16 left-0 z-20 w-72 overflow-y-auto border-r bg-card p-4 shadow-card lg:sticky lg:top-16 lg:block lg:h-[calc(100vh-4rem)] lg:shrink-0 lg:shadow-none`}
         >
-          <p className="px-3 pb-2 pt-3 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-            Workspace
+          <p className="px-3 pb-2 pt-2 text-xs font-semibold uppercase tracking-widest text-primary">
+            Profia workspace
           </p>
           <nav className="space-y-5" aria-label="Admin workspace">
             {navGroups.map((group) => {
@@ -353,7 +365,7 @@ export function StaffDashboard() {
                           setSection(id);
                           setMobileNavOpen(false);
                         }}
-                        className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition ${section === id ? "bg-brand text-brand-foreground shadow-sm" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
+                        className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition ${section === id ? "bg-accent text-brand shadow-sm ring-1 ring-primary/15" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
                       >
                         <Icon className="h-4 w-4 shrink-0" />
                         {title}
@@ -364,7 +376,7 @@ export function StaffDashboard() {
               );
             })}
           </nav>
-          <div className="mt-8 rounded-xl bg-cream p-4">
+          <div className="mt-8 rounded-xl border bg-cream p-4">
             <p className="text-xs font-semibold uppercase tracking-wide text-primary">
               Signed in as
             </p>
@@ -377,8 +389,8 @@ export function StaffDashboard() {
           <div className="mx-auto max-w-6xl">
             <div className="mb-6 flex items-center justify-between gap-3">
               <div>
-                <p className="eyebrow">Profia Institute</p>
-                <h1 className="mt-1 text-2xl font-bold text-brand">{sectionTitle}</h1>
+                <p className="eyebrow">Profia Institute · Administration</p>
+                <h1 className="mt-1 text-2xl font-bold text-brand sm:text-3xl">{sectionTitle}</h1>
               </div>
               <Button
                 type="button"
@@ -668,47 +680,79 @@ function StaffSignIn() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-brand px-4 py-10">
-      <form
-        onSubmit={submit}
-        className="w-full max-w-md space-y-5 rounded-2xl border bg-card p-7 shadow-card"
-      >
-        <a href="/" className="text-sm font-medium text-primary hover:underline">
-          ← Profia Institute website
+    <div className="min-h-screen bg-muted/50">
+      <header className="flex h-16 items-center justify-between border-b bg-background px-4 sm:px-8">
+        <a href="/" className="flex items-center gap-2.5" aria-label="Profia Institute home">
+          <img src="/images/logo.png" alt="" className="h-10 w-auto" />
+          <span>
+            <span className="block text-sm font-extrabold leading-tight text-brand">PROFIA</span>
+            <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Institute of Professionals
+            </span>
+          </span>
         </a>
-        <div>
-          <p className="eyebrow">Secure staff access</p>
-          <h1 className="mt-2 text-2xl font-bold text-brand">Admin sign in</h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Staff accounts are created by invitation from a Super Admin. If you need access, contact
-            the Institute administrator.
-          </p>
-        </div>
-        <label className="block space-y-1.5 text-sm font-medium">
-          Email
-          <Input
-            type="email"
-            required
-            autoComplete="username"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
+        <a href="/" className="text-sm font-semibold text-brand hover:text-primary">
+          ← Back to website
+        </a>
+      </header>
+      <main className="container-site grid min-h-[calc(100vh-4rem)] items-center gap-10 py-8 lg:grid-cols-[1fr_28rem] lg:py-12">
+        <section className="relative hidden min-h-[34rem] overflow-hidden rounded-3xl bg-brand text-brand-foreground shadow-card lg:block">
+          <img
+            src="/images/profia_school.webp"
+            alt="Profia Institute campus"
+            className="absolute inset-0 h-full w-full object-cover"
           />
-        </label>
-        <label className="block space-y-1.5 text-sm font-medium">
-          Password
-          <Input
-            type="password"
-            required
-            autoComplete="current-password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-          />
-        </label>
-        {error && <ErrorBanner message={error} />}
-        <Button className="w-full" disabled={busy}>
-          {busy ? "Signing in…" : "Sign in"}
-        </Button>
-      </form>
+          <div className="absolute inset-0 bg-hero-overlay" />
+          <div className="absolute inset-x-0 bottom-0 p-10">
+            <p className="text-xs font-bold uppercase tracking-[0.2em] text-primary">
+              Profia Institute · Homa Bay
+            </p>
+            <h2 className="mt-3 max-w-lg text-4xl font-extrabold leading-tight">
+              Supporting every step of the student journey.
+            </h2>
+            <p className="mt-4 max-w-md leading-7 text-white/80">
+              Manage admissions, academics and student services from your secure workspace.
+            </p>
+          </div>
+        </section>
+        <form
+          onSubmit={submit}
+          className="mx-auto w-full max-w-md space-y-5 rounded-2xl border bg-card p-7 shadow-lift sm:p-9"
+        >
+          <div>
+            <p className="eyebrow">Secure staff access</p>
+            <h1 className="mt-2 text-2xl font-bold text-brand">Admin sign in</h1>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              Staff accounts are created by invitation from a Super Admin. If you need access,
+              contact the Institute administrator.
+            </p>
+          </div>
+          <label className="block space-y-1.5 text-sm font-medium">
+            Email
+            <Input
+              type="email"
+              required
+              autoComplete="username"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+            />
+          </label>
+          <label className="block space-y-1.5 text-sm font-medium">
+            Password
+            <Input
+              type="password"
+              required
+              autoComplete="current-password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+            />
+          </label>
+          {error && <ErrorBanner message={error} />}
+          <Button className="w-full" disabled={busy}>
+            {busy ? "Signing in…" : "Sign in"}
+          </Button>
+        </form>
+      </main>
     </div>
   );
 }
@@ -900,7 +944,7 @@ function ApplicationsPanel() {
       const { data, error } = await supabase
         .from("applications")
         .select(
-          "id,application_number,first_name,last_name,email,phone,status,created_at,admin_message,study_mode,courses(title),intakes(name)",
+          "id,application_number,first_name,last_name,email,phone,status,created_at,admin_message,study_mode,level_id,courses(title),course_levels(name),intakes(name)",
         )
         .order("created_at", { ascending: false });
       if (error) throw error;
@@ -971,9 +1015,14 @@ function ApplicationsPanel() {
             </option>
           ))}
         </select>
-        <Button variant="outline" onClick={() => exportCsv("applications.csv", filtered)}>
-          <ArrowDownToLine /> Export CSV
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => exportCsv("applications.csv", filtered)}>
+            <ArrowDownToLine /> Export CSV
+          </Button>
+          <Button variant="outline" onClick={() => exportExcel("applications.xlsx", filtered)}>
+            <ArrowDownToLine /> Export Excel
+          </Button>
+        </div>
       </div>
       {filtered.length ? (
         filtered.map((app) => (
@@ -1000,6 +1049,7 @@ function ApplicationsPanel() {
             </div>
             <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-sm text-muted-foreground">
               <span>Course: {relationName(app.courses)}</span>
+              <span>Level: {relationName(app.course_levels)}</span>
               <span>Intake: {relationName(app.intakes)}</span>
               <span>Received: {new Date(app.created_at).toLocaleDateString("en-KE")}</span>
             </div>
@@ -1065,7 +1115,7 @@ function StudentsPanel({
       const { data, error } = await supabase
         .from("students")
         .select(
-          "id,user_id,student_number,application_id,first_name,middle_name,last_name,email,phone,status,course_id,intake_id,study_mode,intake:intakes(name)",
+          "id,user_id,student_number,application_id,first_name,middle_name,last_name,email,phone,status,course_id,level_id,intake_id,study_mode,level:course_levels(name),intake:intakes(name)",
         )
         .order("created_at", { ascending: false });
       if (error) throw error;
@@ -1297,9 +1347,14 @@ function StudentsPanel({
             onChange={(event) => setSearch(event.target.value)}
           />
         </div>
-        <Button variant="outline" onClick={() => exportCsv("students.csv", filtered)}>
-          <ArrowDownToLine /> Export CSV
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => exportCsv("students.csv", filtered)}>
+            <ArrowDownToLine /> Export CSV
+          </Button>
+          <Button variant="outline" onClick={() => exportExcel("students.xlsx", filtered)}>
+            <ArrowDownToLine /> Export Excel
+          </Button>
+        </div>
         {canManage && (
           <Button
             onClick={() => {
@@ -1439,7 +1494,7 @@ function StudentsPanel({
                 {student.phone ? ` · ${student.phone}` : ""}
               </p>
               <p className="mt-1 text-xs text-muted-foreground">
-                Intake: {relationName(student.intake)}
+                Level: {relationName(student.level)} · Intake: {relationName(student.intake)}
               </p>
               {studentCourseQuery.error ? (
                 <p role="alert" className="mt-2 text-xs text-destructive">
@@ -1650,17 +1705,36 @@ function ReportsPanel() {
   return (
     <div className="space-y-5">
       <div className="flex justify-end">
-        <Button
-          variant="outline"
-          onClick={() =>
-            exportCsv(
-              "applications-by-course.csv",
-              Object.entries(byCourse).map(([course, count]) => ({ course, applications: count })),
-            )
-          }
-        >
-          <ArrowDownToLine /> Export application report
-        </Button>
+        <div className="flex flex-wrap justify-end gap-2">
+          <Button
+            variant="outline"
+            onClick={() =>
+              exportCsv(
+                "applications-by-course.csv",
+                Object.entries(byCourse).map(([course, count]) => ({
+                  course,
+                  applications: count,
+                })),
+              )
+            }
+          >
+            <ArrowDownToLine /> Export CSV
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() =>
+              exportExcel(
+                "applications-by-course.xlsx",
+                Object.entries(byCourse).map(([course, count]) => ({
+                  course,
+                  applications: count,
+                })),
+              )
+            }
+          >
+            <ArrowDownToLine /> Export Excel
+          </Button>
+        </div>
       </div>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <ReportCard
@@ -2751,26 +2825,48 @@ function DataDirectory({ section }: { section: DashboardSection }) {
             Latest {Math.min(query.data?.length ?? 0, 200)} records
           </p>
         </div>
-        <Button
-          variant="outline"
-          onClick={() =>
-            exportCsv(
-              `${section}.csv`,
-              section === "fees"
-                ? (query.data ?? []).map((row) => ({
-                    ...Object.fromEntries(
-                      Object.entries(row).filter(
-                        ([key]) => key !== "student" && key !== "id" && !key.endsWith("_id"),
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={() =>
+              exportCsv(
+                `${section}.csv`,
+                section === "fees"
+                  ? (query.data ?? []).map((row) => ({
+                      ...Object.fromEntries(
+                        Object.entries(row).filter(
+                          ([key]) => key !== "student" && key !== "id" && !key.endsWith("_id"),
+                        ),
                       ),
-                    ),
-                    student: feeStudentLabel(row["student"]),
-                  }))
-                : (query.data ?? []),
-            )
-          }
-        >
-          <ArrowDownToLine /> Export CSV
-        </Button>
+                      student: feeStudentLabel(row["student"]),
+                    }))
+                  : (query.data ?? []),
+              )
+            }
+          >
+            <ArrowDownToLine /> Export CSV
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() =>
+              exportExcel(
+                `${section}.xlsx`,
+                section === "fees"
+                  ? (query.data ?? []).map((row) => ({
+                      ...Object.fromEntries(
+                        Object.entries(row).filter(
+                          ([key]) => key !== "student" && key !== "id" && !key.endsWith("_id"),
+                        ),
+                      ),
+                      student: feeStudentLabel(row["student"]),
+                    }))
+                  : (query.data ?? []),
+              )
+            }
+          >
+            <ArrowDownToLine /> Export Excel
+          </Button>
+        </div>
       </div>
       {["schools", "academics", "results", "fees", "materials", "assignments"].includes(
         section,
@@ -3712,7 +3808,7 @@ function RichTextEditor({
 }: {
   value: string;
   onChange: (value: string) => void;
-} & React.ComponentProps<typeof Textarea>) {
+} & Omit<React.ComponentProps<typeof Textarea>, "onChange" | "value">) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   function insertFormatting(format: "bold" | "italic" | "heading" | "list" | "link") {
     const textarea = textareaRef.current;
@@ -3960,7 +4056,7 @@ function ContentEditForm({
         </>
       )}
       <ContentFileInput file={file} onFile={setFile} />
-      {record["attachment_file_name"] && (
+      {typeof record["attachment_file_name"] === "string" && (
         <label className="flex items-center gap-2 text-sm">
           <input
             type="checkbox"
@@ -4446,4 +4542,27 @@ function exportCsv(fileName: string, rows: readonly object[]) {
   link.download = fileName;
   link.click();
   URL.revokeObjectURL(url);
+}
+function exportExcel(fileName: string, rows: readonly object[]) {
+  if (!rows.length) {
+    toast.error("There are no records to export.");
+    return;
+  }
+  try {
+    const workbook = createExcelWorkbook(rows);
+    const url = URL.createObjectURL(
+      new Blob([new Uint8Array(workbook)], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      }),
+    );
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = fileName.replace(/\.csv$/i, ".xlsx");
+    link.click();
+    URL.revokeObjectURL(url);
+  } catch (error) {
+    toast.error("Could not export Excel workbook", {
+      description: error instanceof Error ? error.message : String(error),
+    });
+  }
 }

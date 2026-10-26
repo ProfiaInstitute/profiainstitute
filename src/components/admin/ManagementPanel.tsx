@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   BookOpen,
   CalendarDays,
+  Layers3,
   LogOut,
   Pencil,
   Plus,
@@ -17,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
+import { CourseLevelsManager } from "@/components/admin/CourseLevelsManager";
 import { can, useRoles, useUser } from "@/lib/auth";
 import type { Enums, Tables, TablesInsert, TablesUpdate } from "@/integrations/supabase/types";
 
@@ -71,7 +73,7 @@ export function ManagementPanel() {
   const roles = rolesQuery.data;
   const canManageCourses = can(roles, ["academic_admin"]);
   const canManageIntakes = can(roles, ["admissions_admin", "academic_admin"]);
-  const [section, setSection] = useState<"courses" | "intakes">("courses");
+  const [section, setSection] = useState<"courses" | "levels" | "intakes">("courses");
 
   useEffect(() => {
     if (!canManageCourses && canManageIntakes) setSection("intakes");
@@ -149,6 +151,15 @@ export function ManagementPanel() {
                 Courses
               </NavButton>
             )}
+            {canManageCourses && (
+              <NavButton
+                active={section === "levels"}
+                onClick={() => setSection("levels")}
+                icon={<Layers3 />}
+              >
+                Course levels & units
+              </NavButton>
+            )}
             {canManageIntakes && (
               <NavButton
                 active={section === "intakes"}
@@ -159,7 +170,13 @@ export function ManagementPanel() {
               </NavButton>
             )}
           </aside>
-          {section === "courses" && canManageCourses ? <CoursesManager /> : <IntakesManager />}
+          {section === "courses" && canManageCourses ? (
+            <CoursesManager />
+          ) : section === "levels" && canManageCourses ? (
+            <CourseLevelsManager />
+          ) : (
+            <IntakesManager />
+          )}
         </div>
       </main>
     </div>
@@ -232,6 +249,7 @@ function CoursesManager() {
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState<Course | null>(null);
   const [draft, setDraft] = useState<CourseDraft>(emptyCourse);
+  const [imageFile, setImageFile] = useState<File | null>(null);
   const schoolsQuery = useQuery({
     queryKey: ["admin", "schools"],
     queryFn: async () => {
@@ -252,25 +270,79 @@ function CoursesManager() {
     mutationFn: async (input: {
       id?: string;
       values: TablesInsert<"courses"> | TablesUpdate<"courses">;
+      imageFile?: File | null;
     }) => {
+      let uploadedPath: string | null = null;
+      let values = input.values;
+      if (input.imageFile) {
+        if (
+          !["image/jpeg", "image/png", "image/webp", "image/gif"].includes(input.imageFile.type) ||
+          input.imageFile.size > 100 * 1024 * 1024
+        ) {
+          throw new Error("Choose a JPG, PNG, GIF, or WebP image up to 100 MB.");
+        }
+        const safeName = input.imageFile.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+        uploadedPath = `courses/${crypto.randomUUID()}/${crypto.randomUUID()}-${safeName}`;
+        const { error: uploadError } = await supabase.storage
+          .from("media")
+          .upload(uploadedPath, input.imageFile, {
+            contentType: input.imageFile.type,
+            upsert: false,
+          });
+        if (uploadError) throw uploadError;
+        values = {
+          ...input.values,
+          image_url: supabase.storage.from("media").getPublicUrl(uploadedPath).data.publicUrl,
+        };
+      }
       const request = input.id
-        ? supabase.from("courses").update(input.values).eq("id", input.id).select("id").single()
+        ? supabase.from("courses").update(values).eq("id", input.id).select("id,image_url").single()
         : supabase
             .from("courses")
-            .insert(input.values as TablesInsert<"courses">)
-            .select("id")
+            .insert(values as TablesInsert<"courses">)
+            .select("id,image_url")
             .single();
-      const { error } = await request;
-      if (error) throw error;
+      const { data, error } = await request;
+      if (error) {
+        if (uploadedPath) {
+          const { error: cleanupError } = await supabase.storage
+            .from("media")
+            .remove([uploadedPath]);
+          if (cleanupError) {
+            throw new Error(
+              `${error.message}. The unused uploaded image could not be removed: ${cleanupError.message}`,
+            );
+          }
+        }
+        throw error;
+      }
+      if (uploadedPath && data.image_url) {
+        const previousPath = data.image_url.split("/storage/v1/object/public/media/")[1];
+        if (previousPath?.startsWith("courses/")) {
+          const { error: removeError } = await supabase.storage
+            .from("media")
+            .remove([decodeURIComponent(previousPath)]);
+          if (removeError) {
+            toast.error("Old course image could not be removed", {
+              description: removeError.message,
+            });
+          }
+        }
+      }
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["admin", "courses"] });
       await queryClient.invalidateQueries({ queryKey: ["courses"] });
+      await queryClient.invalidateQueries({ queryKey: ["admin", "course-levels"] });
       toast.success(editing ? "Course updated" : "Course added");
       setEditing(null);
       setDraft(emptyCourse);
+      setImageFile(null);
     },
-    onError: (error) => toast.error("Could not save course", { description: error.message }),
+    onError: (error) => {
+      void queryClient.invalidateQueries({ queryKey: ["admin", "courses"] });
+      toast.error("Could not save course", { description: error.message });
+    },
   });
   const archiveCourse = useMutation({
     mutationFn: async (id: string) => {
@@ -302,6 +374,7 @@ function CoursesManager() {
 
   function editCourse(course: Course) {
     setEditing(course);
+    setImageFile(null);
     setDraft({
       application_enabled: course.application_enabled,
       course_code: course.course_code ?? "",
@@ -320,6 +393,14 @@ function CoursesManager() {
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (
+      imageFile &&
+      (!["image/jpeg", "image/png", "image/webp", "image/gif"].includes(imageFile.type) ||
+        imageFile.size > 100 * 1024 * 1024)
+    ) {
+      toast.error("Choose a JPG, PNG, GIF, or WebP image up to 100 MB.");
+      return;
+    }
     if (!draft.school_id) {
       toast.error("Choose a school before saving this course.");
       return;
@@ -345,7 +426,7 @@ function CoursesManager() {
       slug,
       summary: draft.description?.trim() || null,
     };
-    saveCourse.mutate(editing ? { id: editing.id, values } : { values });
+    saveCourse.mutate(editing ? { id: editing.id, values, imageFile } : { values, imageFile });
   }
 
   if (coursesQuery.error || schoolsQuery.error) {
@@ -446,6 +527,7 @@ function CoursesManager() {
                 onClick={() => {
                   setEditing(null);
                   setDraft(emptyCourse);
+                  setImageFile(null);
                 }}
               >
                 <X /> Cancel
@@ -533,12 +615,23 @@ function CoursesManager() {
               onChange={(event) => setDraft({ ...draft, requirements: event.target.value })}
             />
           </Field>
-          <Field label="Image URL">
+          <Field label="Course image URL (optional)">
             <Input
               type="url"
               value={draft.image_url ?? ""}
               onChange={(event) => setDraft({ ...draft, image_url: event.target.value })}
+              placeholder="https://…"
             />
+          </Field>
+          <Field label="Or upload a local image">
+            <Input
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif"
+              onChange={(event) => setImageFile(event.target.files?.[0] ?? null)}
+            />
+            <span className="text-xs text-muted-foreground">
+              JPG, PNG, GIF, or WebP · up to 100 MB{imageFile ? ` · ${imageFile.name}` : ""}
+            </span>
           </Field>
           <div className="space-y-2 rounded-lg bg-muted/50 p-3">
             <CheckField

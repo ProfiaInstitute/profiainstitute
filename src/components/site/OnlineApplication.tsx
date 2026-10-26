@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
-import { STUDY_MODES, useActiveIntake } from "@/lib/site";
+import { formatKES, STUDY_MODES, useActiveIntake } from "@/lib/site";
 import type { Enums, Json } from "@/integrations/supabase/types";
 
 const inputClass =
@@ -30,6 +30,7 @@ type ApplicationFormValues = {
   year_completed: string;
   kcse_grade: string;
   course_id: string;
+  level_id: string;
   study_mode: Enums<"study_mode">;
   previous_training: string;
   work_experience: string;
@@ -75,6 +76,7 @@ const initialValues: ApplicationFormValues = {
   year_completed: "",
   kcse_grade: "",
   course_id: "",
+  level_id: "",
   study_mode: "full_time",
   previous_training: "",
   work_experience: "",
@@ -82,9 +84,19 @@ const initialValues: ApplicationFormValues = {
   heard_about: "",
 };
 
-export function OnlineApplication({ initialCourseId }: { initialCourseId?: string }) {
+export function OnlineApplication({
+  initialCourseId,
+  initialLevelId,
+}: {
+  initialCourseId?: string;
+  initialLevelId?: string;
+}) {
   const activeIntake = useActiveIntake();
-  const [values, setValues] = useState({ ...initialValues, course_id: initialCourseId ?? "" });
+  const [values, setValues] = useState({
+    ...initialValues,
+    course_id: initialCourseId ?? "",
+    level_id: initialLevelId ?? "",
+  });
   const [submitting, setSubmitting] = useState(false);
   const [applicationNumber, setApplicationNumber] = useState("");
   const [submittedApplication, setSubmittedApplication] = useState<SubmittedApplication | null>(
@@ -96,6 +108,36 @@ export function OnlineApplication({ initialCourseId }: { initialCourseId?: strin
     "Other certificates": [],
     "Birth certificate": [],
     "ID or passport": [],
+  });
+  const levels = useQuery({
+    queryKey: ["application-course-levels", values.course_id],
+    enabled: Boolean(values.course_id),
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("course_levels")
+        .select("id,name,code,description,fee_items,total_fee,fee_structure_url,sort_order")
+        .eq("course_id", values.course_id)
+        .eq("published", true)
+        .order("sort_order")
+        .order("name");
+      if (error) throw error;
+      return data;
+    },
+  });
+  const selectedLevel = levels.data?.find((level) => level.id === values.level_id);
+  const units = useQuery({
+    queryKey: ["application-level-units", values.level_id],
+    enabled: Boolean(values.level_id),
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("course_units")
+        .select("id,code,title,semester")
+        .eq("level_id", values.level_id)
+        .order("sort_order")
+        .order("title");
+      if (error) throw error;
+      return data;
+    },
   });
   const [documentUploadError, setDocumentUploadError] = useState("");
   const [uploadingDocuments, setUploadingDocuments] = useState(false);
@@ -116,11 +158,20 @@ export function OnlineApplication({ initialCourseId }: { initialCourseId?: strin
       };
     },
   });
+  const selectedCourse = options.data?.courses.find((course) => course.id === values.course_id);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!values.course_id) {
       toast.error("Select the course you want to apply for.");
+      return;
+    }
+    if (!values.level_id || !selectedLevel) {
+      toast.error("Select a course level before submitting your application.");
+      return;
+    }
+    if (values.study_mode === "online" && !selectedCourse?.available_online) {
+      toast.error("Online study is not available for this course.");
       return;
     }
     if (!/^\+?[0-9 ]{9,15}$/.test(values.phone.trim())) {
@@ -293,7 +344,9 @@ export function OnlineApplication({ initialCourseId }: { initialCourseId?: strin
   if (options.error || activeIntake.error)
     return (
       <ErrorPanel
-        message={options.error?.message ?? activeIntake.error?.message ?? "Could not load admissions."}
+        message={
+          options.error?.message ?? activeIntake.error?.message ?? "Could not load admissions."
+        }
         retry={() => {
           void options.refetch();
           void activeIntake.refetch();
@@ -412,7 +465,18 @@ export function OnlineApplication({ initialCourseId }: { initialCourseId?: strin
               required
               className={inputClass}
               value={values.course_id}
-              onChange={(e) => setValues({ ...values, course_id: e.target.value })}
+              onChange={(e) =>
+                setValues({
+                  ...values,
+                  course_id: e.target.value,
+                  level_id: "",
+                  ...(values.study_mode === "online" &&
+                  !options.data?.courses.find((course) => course.id === e.target.value)
+                    ?.available_online
+                    ? { study_mode: "full_time" as const }
+                    : {}),
+                })
+              }
             >
               <option value="">Choose a course</option>
               {options.data?.courses.map((course) => (
@@ -436,6 +500,33 @@ export function OnlineApplication({ initialCourseId }: { initialCourseId?: strin
               }
             />
           </Field>
+          <Field label="Course level *">
+            <select
+              required
+              className={inputClass}
+              value={values.level_id}
+              disabled={!values.course_id || levels.isLoading}
+              onChange={(e) => setValues({ ...values, level_id: e.target.value })}
+            >
+              <option value="">{levels.isLoading ? "Loading levels…" : "Choose a level"}</option>
+              {levels.data?.map((level) => (
+                <option key={level.id} value={level.id}>
+                  {level.name}
+                  {level.code ? ` · ${level.code}` : ""}
+                </option>
+              ))}
+            </select>
+            {levels.error && (
+              <span role="alert" className="text-xs text-destructive">
+                Could not load course levels: {levels.error.message}
+              </span>
+            )}
+            {values.course_id && !levels.isLoading && !levels.error && !levels.data?.length && (
+              <span className="text-xs text-muted-foreground">
+                No published levels are available for this course. Please contact admissions.
+              </span>
+            )}
+          </Field>
           <Field label="Study mode">
             <select
               className={inputClass}
@@ -444,15 +535,63 @@ export function OnlineApplication({ initialCourseId }: { initialCourseId?: strin
                 setValues({ ...values, study_mode: e.target.value as Enums<"study_mode"> })
               }
             >
-              {Object.entries(STUDY_MODES).map(([key, value]) => (
-                <option key={key} value={key}>
-                  {value}
-                </option>
-              ))}
+              {Object.entries(STUDY_MODES)
+                .filter(([key]) => key !== "online" || selectedCourse?.available_online)
+                .map(([key, value]) => (
+                  <option key={key} value={key}>
+                    {value}
+                  </option>
+                ))}
             </select>
           </Field>
         </div>
       </fieldset>
+      {selectedLevel && (
+        <div className="rounded-xl border bg-muted/40 p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h3 className="font-semibold text-brand">{selectedLevel.name} course outline</h3>
+              {selectedLevel.description && (
+                <p className="mt-1 text-sm text-muted-foreground">{selectedLevel.description}</p>
+              )}
+            </div>
+            <p className="font-bold text-primary">{formatKES(selectedLevel.total_fee)}</p>
+          </div>
+          {units.isLoading ? (
+            <p className="mt-3 text-sm text-muted-foreground">Loading units…</p>
+          ) : units.error ? (
+            <p role="alert" className="mt-3 text-sm text-destructive">
+              Could not load units: {units.error.message}
+            </p>
+          ) : units.data?.length ? (
+            <ul className="mt-3 grid gap-2 sm:grid-cols-2">
+              {units.data.map((unit) => (
+                <li key={unit.id} className="rounded-lg bg-background px-3 py-2 text-sm">
+                  {unit.code && <span className="font-semibold">{unit.code} · </span>}
+                  {unit.title}
+                  {unit.semester && (
+                    <span className="block text-xs text-muted-foreground">{unit.semester}</span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-3 text-sm text-muted-foreground">
+              Unit details will be shared by the school.
+            </p>
+          )}
+          {selectedLevel.fee_structure_url && (
+            <a
+              href={selectedLevel.fee_structure_url}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-3 inline-flex text-sm font-semibold text-primary underline"
+            >
+              Download fee structure
+            </a>
+          )}
+        </div>
+      )}
       <fieldset className="space-y-4">
         <legend className="font-semibold text-brand">Education and location</legend>
         <div className="grid gap-4 sm:grid-cols-2">
@@ -533,7 +672,8 @@ export function OnlineApplication({ initialCourseId }: { initialCourseId?: strin
                   }
                   setDocuments((current) => ({
                     ...current,
-                    [id]: id === "Other certificates" ? [...current[id], ...files] : files.slice(0, 1),
+                    [id]:
+                      id === "Other certificates" ? [...current[id], ...files] : files.slice(0, 1),
                   }));
                 }}
               />
@@ -681,9 +821,7 @@ export function ApplicationStatusLookup({ initialNumber }: { initialNumber?: str
               }
             />
           </div>
-          {adminMessage && (
-            <p className="mt-4 rounded-lg bg-cream p-4 text-sm">{adminMessage}</p>
-          )}
+          {adminMessage && <p className="mt-4 rounded-lg bg-cream p-4 text-sm">{adminMessage}</p>}
         </section>
       )}
     </div>

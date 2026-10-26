@@ -5,7 +5,7 @@ export function ProfilePhotoAvatar({
   name,
   className,
 }: {
-  src?: string;
+  src?: string | undefined;
   name: string;
   className?: string;
 }) {
