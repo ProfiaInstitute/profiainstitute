@@ -2551,6 +2551,53 @@ a JPG, PNG, or WebP image up to 3 MB from **My profile**. Photos appear in the
 student portal and staff student directory using expiring signed URLs. The
 Audit Log is read-only and displays actor names, summarized changes, and times.
 
+### Course levels, units, fees, and online learners
+
+Apply `drizzle/migrations/0025_course_levels_and_online_students.sql` after
+migration `0024_student_profile_photos.sql`. It adds editable course levels,
+level-specific unit lists and fee schedules, enforces level selection in public
+applications, and creates the LMS enrollment for admitted online applicants.
+Existing courses receive a starter Level 1 using their current fee and units.
+
+Academic admins manage levels, units, fee breakdowns, and downloadable PDF fee
+schedules from **Admin → Courses → Course levels & units**. Students can inspect
+published levels and units in the public course catalogue and download each
+level's fee structure. Course images may be uploaded locally or supplied by URL.
+Students applying online must select an online-enabled course and a published
+level. Approved online-only learners receive an LMS-focused portal with their
+assigned online courses, fees, and profile tools rather than full-time academic
+sections.
+
+### Admission email and WhatsApp notifications
+
+Apply `drizzle/migrations/0026_application_admission_notifications.sql` after
+migration `0025_course_levels_and_online_students.sql`. It queues email and
+WhatsApp notifications whenever an application status changes to **Accepted**
+or **Enrolled**. Each message tells the student to create or access their
+student-portal account using the same email address entered on the application.
+Delivery attempts are recorded and retried automatically by the notification
+worker.
+
+Deploy `supabase/functions/send-application-notifications` and configure these
+Edge Function secrets: `RESEND_API_KEY`, `SCHOOL_EMAIL_FROM`,
+`PUBLIC_SITE_URL`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`,
+`WHATSAPP_TEMPLATE_NAME`, and optionally `WHATSAPP_TEMPLATE_LANGUAGE` and
+`WHATSAPP_API_VERSION`. The WhatsApp template must be approved by Meta and
+contain six body text parameters, in order: student name, status, application
+number, application email, student portal URL, and the school's WhatsApp
+contact number. The contact number is read from the `general.whatsapp` site
+setting; the API phone-number ID and token must belong to the school's
+WhatsApp Business sender and are separate credentials.
+
+Schedule authenticated POST requests to
+`/functions/v1/send-application-notifications` at least once per minute, using
+the Supabase service-role key in the `Authorization: Bearer …` header. Use
+Supabase Scheduled Edge Functions or another trusted scheduler; never put the
+service-role key in the website. Email delivery uses Resend, and WhatsApp
+delivery uses the WhatsApp Cloud API. Missing provider configuration or
+unapproved templates are reported as failed deliveries and retried up to five
+times.
+
 To bootstrap the first Super Admin:
 
 1. In Supabase Authentication, invite the intended administrator to the

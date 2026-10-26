@@ -1,4 +1,5 @@
 import { Link } from "@tanstack/react-router";
+import { useRouterState } from "@tanstack/react-router";
 import { useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import {
   Briefcase,
@@ -78,11 +79,15 @@ export function PageHero({
   eyebrow?: string;
   children?: ReactNode;
 }) {
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
+  const pageBanners = useMedia("page-banner");
+  const pageBanner = pageBanners.data?.find((item) => item.slot === pathname);
+  const backgroundImage = pageBanner?.url || image;
   return (
     <section className="relative isolate overflow-hidden bg-brand text-brand-foreground">
-      {image && (
+      {backgroundImage && (
         <img
-          src={image}
+          src={backgroundImage}
           alt=""
           className="absolute inset-0 -z-20 h-full w-full object-cover"
           fetchPriority="high"
