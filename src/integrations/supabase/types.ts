@@ -39,6 +39,8 @@ export type Database = {
           attachment_url: string | null;
           body: string;
           category: string;
+          cta_label: string | null;
+          cta_url: string | null;
           created_at: string;
           created_by: string | null;
           ends_at: string | null;
@@ -57,6 +59,8 @@ export type Database = {
           attachment_url?: string | null;
           body?: string;
           category?: string;
+          cta_label?: string | null;
+          cta_url?: string | null;
           created_at?: string;
           created_by?: string | null;
           ends_at?: string | null;
@@ -75,6 +79,8 @@ export type Database = {
           attachment_url?: string | null;
           body?: string;
           category?: string;
+          cta_label?: string | null;
+          cta_url?: string | null;
           created_at?: string;
           created_by?: string | null;
           ends_at?: string | null;

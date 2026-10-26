@@ -217,7 +217,7 @@ const navGroups: { title: string; ids: DashboardSection[] }[] = [
 ];
 
 export function StaffDashboard() {
-  const { user, loading } = useUser();
+  const { user, loading, error: sessionError } = useUser();
   const rolesQuery = useRoles(user?.id);
   const roles = rolesQuery.data ?? [];
   const visibleNav = navItems.filter((item) => item.roles.some((role) => can(roles, [role])));
@@ -231,8 +231,16 @@ export function StaffDashboard() {
       new URLSearchParams(window.location.search).get("setupPassword") === "1",
   );
 
-  if (loading || (user && rolesQuery.isLoading))
-    return <FullPageMessage title="Loading secure workspace…" />;
+  if (loading) return <FullPageMessage title="Loading secure workspace…" />;
+  if (sessionError)
+    return (
+      <FullPageMessage
+        title="Could not load your sign-in session"
+        detail={sessionError.message}
+        retry={() => window.location.reload()}
+      />
+    );
+  if (user && rolesQuery.isLoading) return <FullPageMessage title="Loading secure workspace…" />;
   if (passwordSetup) {
     return (
       <StaffPasswordSetup
@@ -2683,6 +2691,7 @@ function DataDirectory({ section }: { section: DashboardSection }) {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["public-announcements"] }),
         queryClient.invalidateQueries({ queryKey: ["home_announcements"] }),
+        queryClient.invalidateQueries({ queryKey: ["student-announcements"] }),
       ]);
     } else if (section === "articles") {
       await Promise.all([
@@ -3561,6 +3570,9 @@ function ContentCreateForm({
     file: null as File | null,
     starts_at: "",
     ends_at: "",
+    show_to_students: false,
+    cta_label: "",
+    cta_url: "",
     published: false,
   });
   const labels = {
@@ -3576,6 +3588,18 @@ function ContentCreateForm({
     if (startsAt && endsAt && new Date(endsAt) < new Date(startsAt)) {
       toast.error("The announcement end date must be after its start date.");
       return;
+    }
+    if (section === "announcements") {
+      const hasCtaLabel = Boolean(values.cta_label.trim());
+      const hasCtaUrl = Boolean(values.cta_url.trim());
+      if (hasCtaLabel !== hasCtaUrl) {
+        toast.error("Enter both a CTA button label and URL, or leave both blank.");
+        return;
+      }
+      if (hasCtaUrl && !isSafeAnnouncementUrl(values.cta_url.trim())) {
+        toast.error("Enter a valid HTTP or HTTPS link for the announcement button.");
+        return;
+      }
     }
     const contentType = values.file ? supportedContentType(values.file) : null;
     if (values.file && (!contentType || values.file.size > MAX_CONTENT_UPLOAD_SIZE)) {
@@ -3639,6 +3663,9 @@ function ContentCreateForm({
         ends_at: endsAt,
         show_public: true,
         show_on_homepage: true,
+        show_to_students: values.show_to_students,
+        cta_label: values.cta_label.trim() || null,
+        cta_url: values.cta_url.trim() || null,
         published: values.published,
       });
       error = result.error;
@@ -3680,6 +3707,9 @@ function ContentCreateForm({
         file: null,
         starts_at: "",
         ends_at: "",
+        show_to_students: false,
+        cta_label: "",
+        cta_url: "",
         published: false,
       });
       onSaved();
@@ -3752,6 +3782,29 @@ function ContentCreateForm({
                   />
                   Publish announcement
                 </label>
+                <label className="flex items-center gap-2 text-sm font-medium">
+                  <input
+                    type="checkbox"
+                    checked={values.show_to_students}
+                    onChange={(event) =>
+                      setValues({ ...values, show_to_students: event.target.checked })
+                    }
+                  />
+                  Show in student portal
+                </label>
+                <Input
+                  aria-label="Announcement call-to-action label"
+                  placeholder="Button label (optional)"
+                  value={values.cta_label}
+                  onChange={(event) => setValues({ ...values, cta_label: event.target.value })}
+                />
+                <Input
+                  type="url"
+                  aria-label="Announcement call-to-action URL"
+                  placeholder="Button link, e.g. https://example.com (optional)"
+                  value={values.cta_url}
+                  onChange={(event) => setValues({ ...values, cta_url: event.target.value })}
+                />
                 <label className="grid gap-1 text-sm font-medium sm:grid-cols-2">
                   Starts at
                   <Input
@@ -3799,6 +3852,15 @@ function dateTimeLocalValue(value: unknown) {
 
 function dateTimeIsoOrNull(value: string) {
   return value ? new Date(value).toISOString() : null;
+}
+
+function isSafeAnnouncementUrl(value: string) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" || url.protocol === "http:";
+  } catch {
+    return false;
+  }
 }
 
 function RichTextEditor({
@@ -3892,6 +3954,9 @@ function ContentEditForm({
     published: section === "articles" ? record["status"] === "published" : !!record["published"],
     starts_at: dateTimeLocalValue(record["starts_at"]),
     ends_at: dateTimeLocalValue(record["ends_at"]),
+    show_to_students: record["show_to_students"] === true,
+    cta_label: String(record["cta_label"] ?? ""),
+    cta_url: String(record["cta_url"] ?? ""),
   });
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -3906,6 +3971,18 @@ function ContentEditForm({
     ) {
       toast.error("The announcement end date must be after its start date.");
       return;
+    }
+    if (section === "announcements") {
+      const hasCtaLabel = Boolean(values.cta_label.trim());
+      const hasCtaUrl = Boolean(values.cta_url.trim());
+      if (hasCtaLabel !== hasCtaUrl) {
+        toast.error("Enter both a CTA button label and URL, or leave both blank.");
+        return;
+      }
+      if (hasCtaUrl && !isSafeAnnouncementUrl(values.cta_url.trim())) {
+        toast.error("Enter a valid HTTP or HTTPS link for the announcement button.");
+        return;
+      }
     }
     const contentType = file ? supportedContentType(file) : null;
     if (file && (!contentType || file.size > MAX_CONTENT_UPLOAD_SIZE)) {
@@ -3981,6 +4058,9 @@ function ContentEditForm({
               starts_at: startsAt,
               ends_at: endsAt,
               published: values.published,
+              show_to_students: values.show_to_students,
+              cta_label: values.cta_label.trim() || null,
+              cta_url: values.cta_url.trim() || null,
               show_public: true,
               show_on_homepage: true,
               attachment_url: attachmentUrl,
@@ -4037,6 +4117,27 @@ function ContentEditForm({
             />
             Publish announcement
           </label>
+          <label className="flex items-center gap-2 text-sm font-medium">
+            <input
+              type="checkbox"
+              checked={values.show_to_students}
+              onChange={(event) => setValues({ ...values, show_to_students: event.target.checked })}
+            />
+            Show in student portal
+          </label>
+          <Input
+            aria-label="Announcement call-to-action label"
+            placeholder="Button label (optional)"
+            value={values.cta_label}
+            onChange={(event) => setValues({ ...values, cta_label: event.target.value })}
+          />
+          <Input
+            type="url"
+            aria-label="Announcement call-to-action URL"
+            placeholder="Button link, e.g. https://example.com (optional)"
+            value={values.cta_url}
+            onChange={(event) => setValues({ ...values, cta_url: event.target.value })}
+          />
           <label className="grid gap-1 text-sm font-medium">
             Starts at
             <Input

@@ -2645,6 +2645,14 @@ learners can select an online course, create a portal account, verify their
 email, and complete enrollment; the online enrollment process creates a
 student record and student number when no existing record matches.
 
+### Student portal announcements
+
+Apply `drizzle/migrations/0027_announcement_student_portal_cta.sql` after
+migration `0026_application_admission_notifications.sql`. Admins can choose
+whether each published announcement appears in the student portal and can
+optionally attach a button label and an HTTP(S) destination link. Announcements
+are displayed while their configured start/end dates are active.
+
 ### Student progression email follow-ups
 
 Apply `0003_student_progression_followups.sql` after migrations `0000` through

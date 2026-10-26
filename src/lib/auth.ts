@@ -3,7 +3,8 @@ import { useQuery } from "@tanstack/react-query";
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 
-export type AppRole = "super_admin" | "admissions_admin" | "academic_admin" | "content_admin" | "student";
+export type AppRole =
+  "super_admin" | "admissions_admin" | "academic_admin" | "content_admin" | "student";
 
 export const ROLE_LABELS: Record<AppRole, string> = {
   super_admin: "Super Admin",
@@ -16,15 +17,44 @@ export const ROLE_LABELS: Record<AppRole, string> = {
 export function useUser() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
-      setUser(data.user ?? null);
+    let mounted = true;
+    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!mounted) return;
+      setUser(session?.user ?? null);
+      setError(null);
       setLoading(false);
     });
-    const { data } = supabase.auth.onAuthStateChange((_e, s) => setUser(s?.user ?? null));
-    return () => data.subscription.unsubscribe();
+
+    void supabase.auth
+      .getSession()
+      .then(({ data: sessionData, error: sessionError }) => {
+        if (!mounted) return;
+        if (sessionError) {
+          setError(sessionError);
+          setUser(null);
+          return;
+        }
+        setUser(sessionData.session?.user ?? null);
+      })
+      .catch((reason: unknown) => {
+        if (!mounted) return;
+        setError(
+          reason instanceof Error ? reason : new Error("Could not read the sign-in session."),
+        );
+        setUser(null);
+      })
+      .finally(() => {
+        if (mounted) setLoading(false);
+      });
+
+    return () => {
+      mounted = false;
+      data.subscription.unsubscribe();
+    };
   }, []);
-  return { user, loading };
+  return { user, loading, error };
 }
 
 export function useRoles(userId?: string | null) {
@@ -32,7 +62,10 @@ export function useRoles(userId?: string | null) {
     queryKey: ["my_roles", userId],
     enabled: !!userId,
     queryFn: async () => {
-      const { data, error } = await supabase.from("user_roles").select("role").eq("user_id", userId!);
+      const { data, error } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", userId!);
       if (error) throw error;
       return (data ?? []).map((r) => r.role as AppRole);
     },
