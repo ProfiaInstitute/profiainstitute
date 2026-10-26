@@ -51,11 +51,19 @@ type PortalSection =
 type Student = Tables<"students">;
 
 export function StudentPortal({ selectedCourseId }: { selectedCourseId: string | null }) {
-  const { user, loading } = useUser();
+  const { user, loading, error: sessionError } = useUser();
   const [section, setSection] = useState<PortalSection>("overview");
   const [enrollmentPhone, setEnrollmentPhone] = useState("");
 
   if (loading) return <PortalMessage title="Loading student portal…" />;
+  if (sessionError)
+    return (
+      <PortalMessage
+        title="Could not load your sign-in session"
+        detail={sessionError.message}
+        retry={() => window.location.reload()}
+      />
+    );
   if (!user)
     return (
       <StudentSignIn selectedCourseId={selectedCourseId} onEnrollmentPhone={setEnrollmentPhone} />

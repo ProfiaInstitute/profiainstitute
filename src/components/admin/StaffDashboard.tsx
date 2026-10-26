@@ -217,7 +217,7 @@ const navGroups: { title: string; ids: DashboardSection[] }[] = [
 ];
 
 export function StaffDashboard() {
-  const { user, loading } = useUser();
+  const { user, loading, error: sessionError } = useUser();
   const rolesQuery = useRoles(user?.id);
   const roles = rolesQuery.data ?? [];
   const visibleNav = navItems.filter((item) => item.roles.some((role) => can(roles, [role])));
@@ -231,8 +231,16 @@ export function StaffDashboard() {
       new URLSearchParams(window.location.search).get("setupPassword") === "1",
   );
 
-  if (loading || (user && rolesQuery.isLoading))
-    return <FullPageMessage title="Loading secure workspace…" />;
+  if (loading) return <FullPageMessage title="Loading secure workspace…" />;
+  if (sessionError)
+    return (
+      <FullPageMessage
+        title="Could not load your sign-in session"
+        detail={sessionError.message}
+        retry={() => window.location.reload()}
+      />
+    );
+  if (user && rolesQuery.isLoading) return <FullPageMessage title="Loading secure workspace…" />;
   if (passwordSetup) {
     return (
       <StaffPasswordSetup
