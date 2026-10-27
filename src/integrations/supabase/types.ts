@@ -1,12 +1,5 @@
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
-type TableShape<Row, Insert, Update = Partial<Insert>> = {
-  Row: Row;
-  Insert: Insert;
-  Update: Update;
-  Relationships: [];
-};
-
 export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
@@ -1456,106 +1449,6 @@ export type Database = {
         };
         Relationships: [];
       };
-      facilitator_unit_assignments: TableShape<
-        {
-          active: boolean;
-          can_manage_assignments: boolean;
-          can_manage_cats: boolean;
-          can_manage_materials: boolean;
-          can_manage_results: boolean;
-          created_at: string;
-          created_by: string | null;
-          facilitator_id: string;
-          id: string;
-          unit_id: string;
-          updated_at: string;
-        },
-        {
-          active?: boolean;
-          can_manage_assignments?: boolean;
-          can_manage_cats?: boolean;
-          can_manage_materials?: boolean;
-          can_manage_results?: boolean;
-          created_at?: string;
-          created_by?: string | null;
-          facilitator_id: string;
-          id?: string;
-          unit_id: string;
-          updated_at?: string;
-        }
-      >;
-      portal_conversations: TableShape<
-        { created_at: string; id: string; student_id: string; updated_at: string },
-        { created_at?: string; id?: string; student_id: string; updated_at?: string }
-      >;
-      portal_messages: TableShape<
-        {
-          body: string;
-          conversation_id: string;
-          created_at: string;
-          id: string;
-          read_at: string | null;
-          sender_id: string;
-        },
-        {
-          body: string;
-          conversation_id: string;
-          created_at?: string;
-          id?: string;
-          read_at?: string | null;
-          sender_id: string;
-        }
-      >;
-      student_course_feedback: TableShape<
-        {
-          admin_reply: string | null;
-          body: string;
-          category: string;
-          created_at: string;
-          id: string;
-          status: string;
-          student_id: string;
-          subject: string;
-          updated_at: string;
-        },
-        {
-          admin_reply?: string | null;
-          body: string;
-          category: string;
-          created_at?: string;
-          id?: string;
-          status?: string;
-          student_id: string;
-          subject: string;
-          updated_at?: string;
-        }
-      >;
-      student_level_applications: TableShape<
-        {
-          admin_message: string | null;
-          created_at: string;
-          id: string;
-          level_id: string;
-          reviewed_at: string | null;
-          reviewed_by: string | null;
-          status: string;
-          student_id: string;
-          student_message: string | null;
-          updated_at: string;
-        },
-        {
-          admin_message?: string | null;
-          created_at?: string;
-          id?: string;
-          level_id: string;
-          reviewed_at?: string | null;
-          reviewed_by?: string | null;
-          status?: string;
-          student_id: string;
-          student_message?: string | null;
-          updated_at?: string;
-        }
-      >;
       progression_followups: {
         Row: {
           attempts: number;
@@ -2057,23 +1950,6 @@ export type Database = {
       claim_student_record: { Args: never; Returns: string };
       can_access_online_lesson: { Args: { _lesson_id: string }; Returns: boolean };
       can_access_online_lesson_file: { Args: { _file_path: string }; Returns: boolean };
-      create_facilitator_cat: {
-        Args: {
-          _closes_at: string;
-          _duration_minutes: number;
-          _instructions: string | null;
-          _opens_at: string;
-          _questions: Json;
-          _title: string;
-          _unit_id: string;
-        };
-        Returns: string;
-      };
-      facilitator_unit_permission: {
-        Args: { _permission?: string | null; _unit_id: string; _user_id: string };
-        Returns: boolean;
-      };
-      get_or_create_student_conversation: { Args: never; Returns: string };
       list_cat_assessments: { Args: never; Returns: Json };
       list_my_cats: { Args: never; Returns: Json };
       record_faq_search: {
@@ -2204,10 +2080,6 @@ export type Database = {
       my_course_id: { Args: never; Returns: string };
       my_student_id: { Args: never; Returns: string };
       next_student_number: { Args: never; Returns: string };
-      review_student_level_application: {
-        Args: { _admin_message?: string | null; _application_id: string; _decision: string };
-        Returns: undefined;
-      };
       queue_existing_progression_followups: { Args: never; Returns: number };
       retry_progression_followup: { Args: { _followup_id: string }; Returns: undefined };
       set_role_by_email: {
@@ -2223,10 +2095,6 @@ export type Database = {
         Returns: undefined;
       };
       submit_application: { Args: { p: Json }; Returns: Json };
-      submit_student_level_application: {
-        Args: { _level_id: string; _message?: string | null };
-        Returns: string;
-      };
       super_admin_exists: { Args: never; Returns: boolean };
       update_my_contact: {
         Args: {
@@ -2239,13 +2107,7 @@ export type Database = {
       };
     };
     Enums: {
-      app_role:
-        | "super_admin"
-        | "admissions_admin"
-        | "academic_admin"
-        | "content_admin"
-        | "student"
-        | "facilitator";
+      app_role: "super_admin" | "admissions_admin" | "academic_admin" | "content_admin" | "student";
       application_status:
         | "submitted"
         | "under_review"
@@ -2377,14 +2239,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      app_role: [
-        "super_admin",
-        "admissions_admin",
-        "academic_admin",
-        "content_admin",
-        "student",
-        "facilitator",
-      ],
+      app_role: ["super_admin", "admissions_admin", "academic_admin", "content_admin", "student"],
       application_status: [
         "submitted",
         "under_review",

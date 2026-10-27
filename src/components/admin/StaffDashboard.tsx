@@ -9,8 +9,6 @@ import {
   ChartNoAxesCombined,
   ClipboardList,
   CreditCard,
-  Eye,
-  EyeOff,
   FileText,
   GraduationCap,
   LayoutDashboard,
@@ -46,12 +44,6 @@ import { OnlineCourseLmsPanel } from "@/components/admin/OnlineCourseLmsPanel";
 import { PayHeroSettingsPanel } from "@/components/admin/PayHeroSettingsPanel";
 import { FeeStatementTemplatePanel } from "@/components/admin/FeeStatementTemplatePanel";
 import { SiteMediaManager } from "@/components/admin/SiteMediaManager";
-import { SiteCopyManager } from "@/components/admin/SiteCopyManager";
-import { PasswordResetPage } from "@/components/auth/PasswordResetPage";
-import { PortalInboxPanel } from "@/components/admin/PortalInboxPanel";
-import { CourseFeedbackPanel } from "@/components/admin/CourseFeedbackPanel";
-import { FacilitatorManager } from "@/components/admin/FacilitatorManager";
-import { NotificationBell } from "@/components/site/NotificationBell";
 import { supabase } from "@/integrations/supabase/client";
 import { can, useRoles, useUser, type AppRole } from "@/lib/auth";
 import type { Json } from "@/integrations/supabase/types";
@@ -86,13 +78,8 @@ type DashboardSection =
   | "progression"
   | "articles"
   | "announcements"
-  | "memos"
   | "media"
-  | "site-copy"
   | "messages"
-  | "student-inbox"
-  | "course-feedback"
-  | "facilitators"
   | "reports"
   | "audit"
   | "staff"
@@ -184,13 +171,6 @@ const navItems: { id: DashboardSection; title: string; icon: LucideIcon; roles: 
     icon: Megaphone,
     roles: ["super_admin"],
   },
-  { id: "memos", title: "Memos", icon: FileText, roles: ["super_admin", "content_admin"] },
-  {
-    id: "site-copy",
-    title: "Homepage & About copy",
-    icon: Newspaper,
-    roles: ["super_admin", "content_admin"],
-  },
   {
     id: "media",
     title: "Site media & banners",
@@ -199,18 +179,6 @@ const navItems: { id: DashboardSection; title: string; icon: LucideIcon; roles: 
   },
   { id: "messages", title: "Messages", icon: Mail, roles: ["super_admin", "admissions_admin"] },
   {
-    id: "student-inbox",
-    title: "Student portal inbox",
-    icon: Mail,
-    roles: ["super_admin", "admissions_admin", "academic_admin"],
-  },
-  {
-    id: "course-feedback",
-    title: "Student feedback",
-    icon: Mail,
-    roles: ["super_admin", "admissions_admin", "academic_admin"],
-  },
-  {
     id: "reports",
     title: "Reports",
     icon: ChartNoAxesCombined,
@@ -218,7 +186,6 @@ const navItems: { id: DashboardSection; title: string; icon: LucideIcon; roles: 
   },
   { id: "audit", title: "Audit Logs", icon: Activity, roles: ["super_admin"] },
   { id: "staff", title: "Staff", icon: Users, roles: ["super_admin"] },
-  { id: "facilitators", title: "Facilitators", icon: Users, roles: ["super_admin"] },
   {
     id: "settings",
     title: "Account settings",
@@ -229,10 +196,7 @@ const navItems: { id: DashboardSection; title: string; icon: LucideIcon; roles: 
 
 const navGroups: { title: string; ids: DashboardSection[] }[] = [
   { title: "Overview", ids: ["dashboard"] },
-  {
-    title: "Students & admissions",
-    ids: ["applications", "students", "admissions", "messages", "student-inbox", "course-feedback"],
-  },
+  { title: "Students & admissions", ids: ["applications", "students", "admissions", "messages"] },
   {
     title: "Academics & finance",
     ids: [
@@ -248,11 +212,8 @@ const navGroups: { title: string; ids: DashboardSection[] }[] = [
       "progression",
     ],
   },
-  {
-    title: "Website content",
-    ids: ["faqs", "articles", "announcements", "memos", "media", "site-copy"],
-  },
-  { title: "Administration", ids: ["reports", "audit", "staff", "facilitators", "settings"] },
+  { title: "Website content", ids: ["faqs", "articles", "announcements", "media"] },
+  { title: "Administration", ids: ["reports", "audit", "staff", "settings"] },
 ];
 
 export function StaffDashboard() {
@@ -269,11 +230,6 @@ export function StaffDashboard() {
       typeof window !== "undefined" &&
       new URLSearchParams(window.location.search).get("setupPassword") === "1",
   );
-  const [passwordReset, setPasswordReset] = useState(
-    () =>
-      typeof window !== "undefined" &&
-      new URLSearchParams(window.location.search).get("resetPassword") === "1",
-  );
 
   if (loading) return <FullPageMessage title="Loading secure workspace…" />;
   if (sessionError)
@@ -284,17 +240,6 @@ export function StaffDashboard() {
         retry={() => window.location.reload()}
       />
     );
-  if (passwordReset) {
-    return (
-      <PasswordResetPage
-        destination="/admin"
-        onComplete={() => {
-          window.history.replaceState({}, "", "/admin");
-          setPasswordReset(false);
-        }}
-      />
-    );
-  }
   if (user && rolesQuery.isLoading) return <FullPageMessage title="Loading secure workspace…" />;
   if (passwordSetup) {
     return (
@@ -320,26 +265,6 @@ export function StaffDashboard() {
         retry={() => rolesQuery.refetch()}
       />
     );
-  if (
-    roles.includes("facilitator") &&
-    !roles.some((role) =>
-      ["super_admin", "admissions_admin", "academic_admin", "content_admin"].includes(role),
-    )
-  ) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-muted/40 p-4">
-        <section className="w-full max-w-lg rounded-xl border bg-card p-6 shadow-card">
-          <h1 className="text-xl font-bold text-brand">Use the facilitator portal</h1>
-          <p className="mt-3 text-sm text-muted-foreground">
-            This account is assigned to teach specific course units.
-          </p>
-          <Button asChild className="mt-4">
-            <a href="/facilitator">Open facilitator portal</a>
-          </Button>
-        </section>
-      </div>
-    );
-  }
   if (visibleNav.length === 0) return <InitialAdminSetup userId={user.id} email={user.email} />;
 
   const sectionTitle = navItems.find((item) => item.id === section)?.title ?? "Dashboard";
@@ -348,8 +273,6 @@ export function StaffDashboard() {
       <Overview onNavigate={setSection} />
     ) : section === "media" ? (
       <SiteMediaManager />
-    ) : section === "site-copy" ? (
-      <SiteCopyManager />
     ) : section === "applications" ? (
       <ApplicationsPanel />
     ) : section === "students" ? (
@@ -373,12 +296,6 @@ export function StaffDashboard() {
       <StaffSettings />
     ) : section === "progression" ? (
       <StudentProgressionPanel />
-    ) : section === "student-inbox" ? (
-      <PortalInboxPanel />
-    ) : section === "course-feedback" ? (
-      <CourseFeedbackPanel />
-    ) : section === "facilitators" ? (
-      <FacilitatorManager />
     ) : section === "lms" ? (
       <OnlineCourseLmsPanel />
     ) : section === "fees" ? (
@@ -416,18 +333,6 @@ export function StaffDashboard() {
           </a>
         </div>
         <div className="flex items-center gap-3">
-          <NotificationBell
-            userId={user.id}
-            onNavigate={(category) =>
-              setSection(
-                category === "messages"
-                  ? "student-inbox"
-                  : category === "academics"
-                    ? "progression"
-                    : "course-feedback",
-              )
-            }
-          />
           <span className="hidden max-w-48 truncate text-sm text-muted-foreground sm:block">
             {user.email}
           </span>
@@ -759,29 +664,8 @@ function StaffPasswordSettings({ email }: { email: string }) {
 function StaffSignIn() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [recoveryBusy, setRecoveryBusy] = useState(false);
   const [error, setError] = useState("");
-
-  async function sendPasswordReset() {
-    if (!email.trim()) {
-      setError("Enter your email address first.");
-      return;
-    }
-    setRecoveryBusy(true);
-    setError("");
-    const { error: resetError } = await supabase.auth.resetPasswordForEmail(
-      email.trim().toLowerCase(),
-      { redirectTo: `${window.location.origin}/admin?resetPassword=1` },
-    );
-    setRecoveryBusy(false);
-    if (resetError) setError(resetError.message);
-    else
-      toast.success("Password reset email sent", {
-        description: "Check your inbox for the reset link.",
-      });
-  }
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -863,33 +747,14 @@ function StaffSignIn() {
           </label>
           <label className="block space-y-1.5 text-sm font-medium">
             Password
-            <span className="relative block">
-              <Input
-                type={showPassword ? "text" : "password"}
-                required
-                autoComplete="current-password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                className="pr-11"
-              />
-              <button
-                type="button"
-                className="absolute inset-y-0 right-0 grid w-11 place-items-center text-muted-foreground"
-                aria-label={showPassword ? "Hide password" : "Show password"}
-                onClick={() => setShowPassword(!showPassword)}
-              >
-                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-              </button>
-            </span>
+            <Input
+              type="password"
+              required
+              autoComplete="current-password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+            />
           </label>
-          <button
-            type="button"
-            className="text-sm font-semibold text-primary underline"
-            disabled={recoveryBusy}
-            onClick={() => void sendPasswordReset()}
-          >
-            {recoveryBusy ? "Sending reset link…" : "Forgot password?"}
-          </button>
           {error && <ErrorBanner message={error} />}
           <Button className="w-full" disabled={busy}>
             {busy ? "Signing in…" : "Sign in"}
@@ -2103,7 +1968,6 @@ function StaffSettings() {
           <option value="admissions_admin">Admissions Admin</option>
           <option value="academic_admin">Academic Admin</option>
           <option value="content_admin">Content Admin</option>
-          <option value="facilitator">Facilitator</option>
           <option value="super_admin">Super Admin</option>
         </select>
         <Button disabled={saving} onClick={() => void inviteStaff()}>
@@ -2704,7 +2568,6 @@ function DataDirectory({ section }: { section: DashboardSection }) {
     assignments: { table: "assignments", label: "assignments", order: "due_date" },
     articles: { table: "articles", label: "articles", order: "created_at" },
     announcements: { table: "announcements", label: "announcements", order: "created_at" },
-    memos: { table: "announcements", label: "memos", order: "created_at" },
     media: { table: "media", label: "media items", order: "created_at" },
     messages: { table: "contact_messages", label: "messages", order: "created_at" },
     audit: { table: "audit_logs", label: "audit log entries", order: "created_at" },
@@ -2780,16 +2643,6 @@ function DataDirectory({ section }: { section: DashboardSection }) {
           error = result.error;
           break;
         }
-        case "memos": {
-          const result = await supabase
-            .from("announcements")
-            .select("*")
-            .eq("category", "memo")
-            .order("created_at", { ascending: false });
-          data = result.data;
-          error = result.error;
-          break;
-        }
         case "media": {
           const result = await supabase
             .from("media")
@@ -2834,7 +2687,7 @@ function DataDirectory({ section }: { section: DashboardSection }) {
   if (query.isLoading) return <LoadingState />;
   if (query.error) return <ErrorPanel error={query.error} retry={() => query.refetch()} />;
   async function invalidatePublicContent() {
-    if (section === "announcements" || section === "memos") {
+    if (section === "announcements") {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["public-announcements"] }),
         queryClient.invalidateQueries({ queryKey: ["home_announcements"] }),
@@ -2886,15 +2739,12 @@ function DataDirectory({ section }: { section: DashboardSection }) {
         error = result.error;
         break;
       }
-      case "announcements":
-      case "memos": {
+      case "announcements": {
         const result = await supabase
           .from("announcements")
           .update({
             published: !row["published"],
-            ...(row["published"]
-              ? {}
-              : { show_public: true, show_on_homepage: true, show_to_students: true }),
+            ...(row["published"] ? {} : { show_public: true, show_on_homepage: true }),
           })
           .eq("id", String(row["id"]));
         error = result.error;
@@ -2941,7 +2791,7 @@ function DataDirectory({ section }: { section: DashboardSection }) {
     }
   }
   async function deleteContentRecord(row: Record<string, unknown>) {
-    if (!row["id"] || !["articles", "announcements", "memos"].includes(section)) return;
+    if (!row["id"] || !["articles", "announcements"].includes(section)) return;
     if (!window.confirm(`Delete “${String(row["title"] ?? "this item")}”? This cannot be undone.`))
       return;
     const result =
@@ -3045,7 +2895,7 @@ function DataDirectory({ section }: { section: DashboardSection }) {
           saving={savingRecord}
         />
       )}
-      {["articles", "announcements", "memos", "media"].includes(section) && (
+      {["articles", "announcements", "media"].includes(section) && (
         <ContentCreateForm
           section={section}
           onSaved={() =>
@@ -3082,7 +2932,6 @@ function DataDirectory({ section }: { section: DashboardSection }) {
                   "assignments",
                   "articles",
                   "announcements",
-                  "memos",
                   "media",
                   "messages",
                   "fees",
@@ -3136,7 +2985,6 @@ function DataDirectory({ section }: { section: DashboardSection }) {
                       "assignments",
                       "articles",
                       "announcements",
-                      "memos",
                       "media",
                       "messages",
                       "fees",
@@ -3147,9 +2995,7 @@ function DataDirectory({ section }: { section: DashboardSection }) {
                             typeof row["file_path"] === "string" && (
                               <AdminCourseFile path={row["file_path"]} />
                             )}
-                          {(section === "articles" ||
-                            section === "announcements" ||
-                            section === "memos") &&
+                          {(section === "articles" || section === "announcements") &&
                             typeof row["attachment_url"] === "string" && (
                               <ContentAttachmentDownload
                                 url={row["attachment_url"]}
@@ -3160,9 +3006,7 @@ function DataDirectory({ section }: { section: DashboardSection }) {
                                 }
                               />
                             )}
-                          {(section === "articles" ||
-                            section === "announcements" ||
-                            section === "memos") && (
+                          {(section === "articles" || section === "announcements") && (
                             <>
                               <Button
                                 size="sm"
@@ -3256,9 +3100,7 @@ function DataDirectory({ section }: { section: DashboardSection }) {
                     )}
                   </tr>
                   {editingContentId === String(row["id"]) &&
-                    (section === "articles" ||
-                      section === "announcements" ||
-                      section === "memos") && (
+                    (section === "articles" || section === "announcements") && (
                       <tr>
                         <td colSpan={getRowEntries(row).length + 1} className="bg-muted/20 p-3">
                           <ContentEditForm
@@ -3728,7 +3570,7 @@ function ContentCreateForm({
     file: null as File | null,
     starts_at: "",
     ends_at: "",
-    show_to_students: section === "memos",
+    show_to_students: false,
     cta_label: "",
     cta_url: "",
     published: false,
@@ -3736,7 +3578,6 @@ function ContentCreateForm({
   const labels = {
     articles: "Write article",
     announcements: "Create announcement",
-    memos: "Add memo",
     media: "Add media item",
   };
 
@@ -3746,10 +3587,6 @@ function ContentCreateForm({
     const endsAt = dateTimeIsoOrNull(values.ends_at);
     if (startsAt && endsAt && new Date(endsAt) < new Date(startsAt)) {
       toast.error("The announcement end date must be after its start date.");
-      return;
-    }
-    if (section === "memos" && !values.file) {
-      toast.error("Attach a memo document before saving.");
       return;
     }
     if (section === "announcements") {
@@ -3814,11 +3651,10 @@ function ContentCreateForm({
         status: "draft",
       });
       error = result.error;
-    } else if (section === "announcements" || section === "memos") {
+    } else if (section === "announcements") {
       const result = await supabase.from("announcements").insert({
         title: values.title.trim(),
         body: values.content.trim(),
-        category: section === "memos" ? "memo" : "general",
         created_by: user?.id ?? null,
         attachment_url: uploadedUrl,
         attachment_type: contentType ? contentKind(contentType) : null,
@@ -3858,9 +3694,7 @@ function ContentCreateForm({
       toast.success(
         section === "announcements" && values.published
           ? "Announcement published"
-          : section === "memos" && values.published
-            ? "Memo published"
-            : "Content saved as a draft",
+          : "Content saved as a draft",
       );
       setValues({
         title: "",
@@ -3873,7 +3707,7 @@ function ContentCreateForm({
         file: null,
         starts_at: "",
         ends_at: "",
-        show_to_students: section === "memos",
+        show_to_students: false,
         cta_label: "",
         cta_url: "",
         published: false,
@@ -3920,13 +3754,7 @@ function ContentCreateForm({
           <>
             <Input
               required
-              placeholder={
-                section === "articles"
-                  ? "Article title"
-                  : section === "memos"
-                    ? "Memo title"
-                    : "Announcement title"
-              }
+              placeholder={section === "articles" ? "Article title" : "Announcement title"}
               value={values.title}
               onChange={(e) => setValues({ ...values, title: e.target.value })}
             />
@@ -3944,7 +3772,7 @@ function ContentCreateForm({
               value={values.content}
               onChange={(content) => setValues({ ...values, content })}
             />
-            {(section === "announcements" || section === "memos") && (
+            {section === "announcements" && (
               <>
                 <label className="flex items-center gap-2 text-sm font-medium">
                   <input
@@ -3952,7 +3780,7 @@ function ContentCreateForm({
                     checked={values.published}
                     onChange={(event) => setValues({ ...values, published: event.target.checked })}
                   />
-                  {section === "memos" ? "Publish memo" : "Publish announcement"}
+                  Publish announcement
                 </label>
                 <label className="flex items-center gap-2 text-sm font-medium">
                   <input
@@ -3964,23 +3792,19 @@ function ContentCreateForm({
                   />
                   Show in student portal
                 </label>
-                {section === "announcements" && (
-                  <>
-                    <Input
-                      aria-label="Announcement call-to-action label"
-                      placeholder="Button label (optional)"
-                      value={values.cta_label}
-                      onChange={(event) => setValues({ ...values, cta_label: event.target.value })}
-                    />
-                    <Input
-                      type="url"
-                      aria-label="Announcement call-to-action URL"
-                      placeholder="Button link, e.g. https://example.com (optional)"
-                      value={values.cta_url}
-                      onChange={(event) => setValues({ ...values, cta_url: event.target.value })}
-                    />
-                  </>
-                )}
+                <Input
+                  aria-label="Announcement call-to-action label"
+                  placeholder="Button label (optional)"
+                  value={values.cta_label}
+                  onChange={(event) => setValues({ ...values, cta_label: event.target.value })}
+                />
+                <Input
+                  type="url"
+                  aria-label="Announcement call-to-action URL"
+                  placeholder="Button link, e.g. https://example.com (optional)"
+                  value={values.cta_url}
+                  onChange={(event) => setValues({ ...values, cta_url: event.target.value })}
+                />
                 <label className="grid gap-1 text-sm font-medium sm:grid-cols-2">
                   Starts at
                   <Input
@@ -4004,17 +3828,12 @@ function ContentCreateForm({
               onFile={(file) => setValues({ ...values, file })}
               className="sm:col-span-2"
             />
-            {section === "memos" && (
-              <p className="text-xs text-muted-foreground">
-                Attach a memo document; students can download it directly from their portal.
-              </p>
-            )}
           </>
         )}
         <Button disabled={saving}>
           {saving
             ? "Saving…"
-            : (section === "announcements" || section === "memos") && values.published
+            : section === "announcements" && values.published
               ? "Publish"
               : "Save draft"}
         </Button>
@@ -4120,7 +3939,7 @@ function ContentEditForm({
   onCancel,
   onSaved,
 }: {
-  section: "articles" | "announcements" | "memos";
+  section: "articles" | "announcements";
   record: Record<string, unknown>;
   onCancel: () => void;
   onSaved: () => Promise<void>;
@@ -4164,14 +3983,6 @@ function ContentEditForm({
         toast.error("Enter a valid HTTP or HTTPS link for the announcement button.");
         return;
       }
-    }
-    if (
-      section === "memos" &&
-      !file &&
-      (removeAttachment || typeof record["attachment_url"] !== "string")
-    ) {
-      toast.error("A downloadable file is required for every memo.");
-      return;
     }
     const contentType = file ? supportedContentType(file) : null;
     if (file && (!contentType || file.size > MAX_CONTENT_UPLOAD_SIZE)) {
@@ -4248,8 +4059,8 @@ function ContentEditForm({
               ends_at: endsAt,
               published: values.published,
               show_to_students: values.show_to_students,
-              cta_label: section === "announcements" ? values.cta_label.trim() || null : null,
-              cta_url: section === "announcements" ? values.cta_url.trim() || null : null,
+              cta_label: values.cta_label.trim() || null,
+              cta_url: values.cta_url.trim() || null,
               show_public: true,
               show_on_homepage: true,
               attachment_url: attachmentUrl,
@@ -4296,7 +4107,7 @@ function ContentEditForm({
         value={values.content}
         onChange={(content) => setValues({ ...values, content })}
       />
-      {(section === "announcements" || section === "memos") && (
+      {section === "announcements" && (
         <>
           <label className="flex items-center gap-2 text-sm font-medium">
             <input
@@ -4304,7 +4115,7 @@ function ContentEditForm({
               checked={values.published}
               onChange={(event) => setValues({ ...values, published: event.target.checked })}
             />
-            {section === "memos" ? "Publish memo" : "Publish announcement"}
+            Publish announcement
           </label>
           <label className="flex items-center gap-2 text-sm font-medium">
             <input
@@ -4314,23 +4125,19 @@ function ContentEditForm({
             />
             Show in student portal
           </label>
-          {section === "announcements" && (
-            <>
-              <Input
-                aria-label="Announcement call-to-action label"
-                placeholder="Button label (optional)"
-                value={values.cta_label}
-                onChange={(event) => setValues({ ...values, cta_label: event.target.value })}
-              />
-              <Input
-                type="url"
-                aria-label="Announcement call-to-action URL"
-                placeholder="Button link, e.g. https://example.com (optional)"
-                value={values.cta_url}
-                onChange={(event) => setValues({ ...values, cta_url: event.target.value })}
-              />
-            </>
-          )}
+          <Input
+            aria-label="Announcement call-to-action label"
+            placeholder="Button label (optional)"
+            value={values.cta_label}
+            onChange={(event) => setValues({ ...values, cta_label: event.target.value })}
+          />
+          <Input
+            type="url"
+            aria-label="Announcement call-to-action URL"
+            placeholder="Button link, e.g. https://example.com (optional)"
+            value={values.cta_url}
+            onChange={(event) => setValues({ ...values, cta_url: event.target.value })}
+          />
           <label className="grid gap-1 text-sm font-medium">
             Starts at
             <Input
