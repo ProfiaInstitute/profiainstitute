@@ -452,15 +452,33 @@ export function Partners() {
       <div className="container-site">
         <SectionTitle center title="Our Partners" />
         <div className="flex flex-wrap items-center justify-center gap-x-10 gap-y-6">
-          {data.map((p) => (
-            <img
-              key={p.id}
-              src={p.url}
-              alt={p.alt ?? p.caption ?? "Partner"}
-              loading="lazy"
-              className="h-14 w-auto max-w-[150px] object-contain grayscale transition hover:grayscale-0 sm:h-16"
-            />
-          ))}
+          {data.map((p) =>
+            p.link_url ? (
+              <a
+                key={p.id}
+                href={p.link_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={`Visit ${p.caption ?? p.alt ?? "partner"} website`}
+                className="rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-4"
+              >
+                <img
+                  src={p.url}
+                  alt={p.alt ?? p.caption ?? "Partner"}
+                  loading="lazy"
+                  className="h-14 w-auto max-w-[150px] object-contain sm:h-16"
+                />
+              </a>
+            ) : (
+              <img
+                key={p.id}
+                src={p.url}
+                alt={p.alt ?? p.caption ?? "Partner"}
+                loading="lazy"
+                className="h-14 w-auto max-w-[150px] object-contain sm:h-16"
+              />
+            ),
+          )}
         </div>
       </div>
     </section>

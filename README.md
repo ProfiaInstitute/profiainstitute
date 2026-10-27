@@ -2653,6 +2653,13 @@ whether each published announcement appears in the student portal and can
 optionally attach a button label and an HTTP(S) destination link. Announcements
 are displayed while their configured start/end dates are active.
 
+### Partner website links
+
+Apply `drizzle/migrations/0028_partner_media_links.sql` after migration
+`0027_announcement_student_portal_cta.sql`. Admins can optionally add an
+HTTP(S) destination to each partner image; visitors open it by selecting the
+image.
+
 ### Student progression email follow-ups
 
 Apply `0003_student_progression_followups.sql` after migrations `0000` through

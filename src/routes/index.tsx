@@ -12,8 +12,6 @@ import {
   Pause,
   Phone,
   Play,
-  Wallet,
-  MapPin,
   UserRound,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -38,17 +36,6 @@ export const Route = createFileRoute("/")({
 });
 
 function Home() {
-  type CbcSettings = {
-    enabled: boolean;
-    badge?: string;
-    title?: string;
-    items: string[];
-    cta?: string;
-    phone?: string;
-    price?: string;
-    schedule?: string;
-    location?: string;
-  };
   type WebSettings = {
     enabled: boolean;
     badge?: string;
@@ -78,7 +65,6 @@ function Home() {
   ]
     .filter(Boolean)
     .join(" · ");
-  const cbc = useSetting<CbcSettings>("content.cbc", { enabled: true, items: [] });
   const web = useSetting<WebSettings>("content.webdev", { enabled: true });
   const stats = useSetting<{ items: { value: string; label: string }[] }>("stats", { items: [] });
   const slides = heroMedia.data?.length
@@ -119,7 +105,7 @@ function Home() {
     <>
       {/* HERO */}
       <section
-        className="relative isolate min-h-[34rem] overflow-hidden bg-brand text-brand-foreground sm:min-h-[39rem]"
+        className="relative isolate min-h-[32rem] overflow-hidden bg-brand text-brand-foreground sm:min-h-[36rem]"
         onMouseEnter={() => setCarouselHovered(true)}
         onMouseLeave={() => setCarouselHovered(false)}
         role="region"
@@ -134,8 +120,41 @@ function Home() {
           fetchPriority="high"
         />
         <div className="absolute inset-0 -z-10 bg-hero-overlay" />
-        <div className="container-site grid min-h-[34rem] items-center gap-10 py-14 sm:min-h-[39rem] sm:py-20 lg:grid-cols-[1fr_20rem] lg:py-24">
-          <div className="max-w-3xl animate-fade-up">
+        <div className="container-site grid min-h-[32rem] items-center gap-6 py-12 sm:min-h-[36rem] sm:py-16 lg:grid-cols-[10rem_minmax(0,1fr)] lg:gap-12 lg:py-20">
+          <aside className="absolute left-4 top-1/2 z-10 hidden w-40 min-w-0 -translate-y-1/2 rounded-2xl border border-white/20 bg-white/95 p-3 text-foreground shadow-lift backdrop-blur-sm lg:left-6 lg:block">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-primary">
+              Your next step
+            </p>
+            <h2 className="mt-1.5 text-base font-bold leading-tight text-brand">
+              Find your place at Profia
+            </h2>
+            <div className="mt-2 divide-y">
+              <Link
+                to="/admission"
+                search={{}}
+                className="group flex items-center justify-between gap-1.5 py-2.5 text-[11px] font-semibold text-brand transition-colors hover:text-primary"
+              >
+                Apply for admission
+                <ArrowRight className="h-3.5 w-3.5 shrink-0 transition-transform group-hover:translate-x-1" />
+              </Link>
+              <Link
+                to="/academics"
+                className="group flex items-center justify-between gap-1.5 py-2.5 text-[11px] font-semibold text-brand transition-colors hover:text-primary"
+              >
+                Explore our schools
+                <ArrowRight className="h-3.5 w-3.5 shrink-0 transition-transform group-hover:translate-x-1" />
+              </Link>
+              <Link
+                to="/student"
+                search={{ course: undefined }}
+                className="group flex items-center justify-between gap-1.5 py-2.5 text-[11px] font-semibold text-brand transition-colors hover:text-primary"
+              >
+                Open student portal
+                <ArrowRight className="h-3.5 w-3.5 shrink-0 transition-transform group-hover:translate-x-1" />
+              </Link>
+            </div>
+          </aside>
+          <div className="max-w-3xl animate-fade-up lg:col-start-2">
             <p className="inline-flex items-center gap-2 rounded-full border border-white/25 bg-black/15 px-4 py-2 text-xs font-bold uppercase tracking-[0.18em] text-white/95 backdrop-blur-sm">
               <span className="h-2 w-2 rounded-full bg-primary" />
               Profia Institute of Professionals · Homa Bay
@@ -158,16 +177,16 @@ function Home() {
             {intakeDetails && (
               <p className="mt-3 text-sm font-medium text-brand-foreground/90">{intakeDetails}</p>
             )}
-            <h1 className="mt-5 max-w-3xl text-4xl font-extrabold leading-[1.08] tracking-tight sm:text-6xl lg:text-7xl">
+            <h1 className="mt-5 max-w-3xl text-xl font-extrabold leading-[1.15] tracking-tight sm:text-2xl lg:text-3xl">
               <span aria-live="polite" aria-atomic="true">
                 {currentSlide.caption || hero.title}
               </span>
             </h1>
-            <p className="mt-5 max-w-2xl text-base leading-7 text-white/85 sm:text-lg">
+            <p className="mt-4 max-w-2xl text-sm leading-6 text-white/85 sm:text-base sm:leading-7">
               Build practical skills, earn recognised qualifications and take your next step with a
               learning community rooted in Homa Bay.
             </p>
-            <div className="mt-8 flex flex-wrap gap-3">
+            <div className="mt-6 flex flex-wrap gap-3">
               <Button asChild variant="hero" size="lg">
                 <Link to="/admission" search={{}}>
                   {hero.cta || "Apply now"}
@@ -178,54 +197,6 @@ function Home() {
               </Button>
             </div>
           </div>
-          <aside className="hidden rounded-2xl border border-white/20 bg-white/95 p-6 text-foreground shadow-lift backdrop-blur-sm lg:block">
-            <p className="eyebrow">Your next step starts here</p>
-            <h2 className="mt-2 text-2xl font-bold text-brand">Find your place at Profia</h2>
-            <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              Explore career-focused programmes and get the information you need to begin.
-            </p>
-            <div className="mt-6 divide-y">
-              <Link
-                to="/admission"
-                search={{}}
-                className="group flex items-center justify-between gap-3 py-4 font-semibold text-brand transition-colors hover:text-primary"
-              >
-                Apply for admission
-                <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
-              </Link>
-              <Link
-                to="/academics"
-                className="group flex items-center justify-between gap-3 py-4 font-semibold text-brand transition-colors hover:text-primary"
-              >
-                Explore our schools
-                <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
-              </Link>
-              <Link
-                to="/student"
-                search={{ course: undefined }}
-                className="group flex items-center justify-between gap-3 py-4 font-semibold text-brand transition-colors hover:text-primary"
-              >
-                Open student portal
-                <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
-              </Link>
-            </div>
-            {activeIntake.data && (
-              <div className="mt-2 rounded-xl bg-cream p-4">
-                <p className="text-xs font-bold uppercase tracking-wider text-primary">
-                  Current intake
-                </p>
-                <p className="mt-1 font-semibold text-brand">{activeIntake.data.name}</p>
-                {activeIntake.data.application_deadline && (
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Apply by{" "}
-                    {new Date(
-                      `${activeIntake.data.application_deadline}T00:00:00`,
-                    ).toLocaleDateString("en-KE", { dateStyle: "medium" })}
-                  </p>
-                )}
-              </div>
-            )}
-          </aside>
         </div>
         {slides.length > 1 && (
           <div className="container-site absolute inset-x-0 bottom-5 z-10 flex items-center justify-center gap-2 sm:bottom-7 lg:justify-start">
@@ -288,51 +259,8 @@ function Home() {
       )}
 
       <AcademicsGrid />
+      <Partners />
       <LatestNews />
-
-      {/* CBC */}
-      {cbc.enabled && (
-        <section className="bg-cream py-16 sm:py-20">
-          <div className="container-site grid items-center gap-10 lg:grid-cols-2">
-            <div>
-              <p className="eyebrow">💻 {cbc.badge}</p>
-              <h2 className="mt-2 text-3xl font-bold text-brand sm:text-4xl">{cbc.title}</h2>
-              <ul className="mt-6 space-y-3">
-                {(cbc.items ?? []).map((i: string) => (
-                  <li key={i} className="flex gap-3">
-                    <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
-                      <Check className="h-3.5 w-3.5" />
-                    </span>
-                    {i}
-                  </li>
-                ))}
-              </ul>
-              <div className="mt-8 flex flex-wrap gap-3">
-                <Button asChild variant="hero" size="lg">
-                  <Link to="/admission" search={{}}>
-                    {cbc.cta || "Register Now"} <ArrowRight />
-                  </Link>
-                </Button>
-              </div>
-            </div>
-            <div className="grid gap-3 rounded-2xl bg-background p-6 shadow-card">
-              {cbc.phone && (
-                <InfoRow
-                  icon={<Phone />}
-                  label="Call"
-                  value={cbc.phone}
-                  href={`tel:${cbc.phone.replace(/\s/g, "")}`}
-                />
-              )}
-              {cbc.price && <InfoRow icon={<Wallet />} label="Fee" value={cbc.price} />}
-              {cbc.schedule && (
-                <InfoRow icon={<Megaphone />} label="Schedule" value={cbc.schedule} />
-              )}
-              {cbc.location && <InfoRow icon={<MapPin />} label="Location" value={cbc.location} />}
-            </div>
-          </div>
-        </section>
-      )}
 
       {/* WEB DEV */}
       {web.enabled && (
@@ -362,34 +290,8 @@ function Home() {
       )}
 
       <HomepageMedia />
-      <Partners />
     </>
   );
-}
-
-function InfoRow({
-  icon,
-  label,
-  value,
-  href,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-  href?: string;
-}) {
-  const inner = (
-    <div className="flex items-center gap-4 rounded-lg border p-4">
-      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent text-primary [&_svg]:h-5 [&_svg]:w-5">
-        {icon}
-      </span>
-      <div>
-        <div className="text-xs uppercase tracking-wider text-muted-foreground">{label}</div>
-        <div className="font-semibold text-brand">{value}</div>
-      </div>
-    </div>
-  );
-  return href ? <a href={href}>{inner}</a> : inner;
 }
 
 function AnnouncementStrip() {

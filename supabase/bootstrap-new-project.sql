@@ -517,7 +517,8 @@ create trigger a1 after insert or update or delete on public.articles for each r
 
 create table public.media(
   id uuid primary key default gen_random_uuid(), url text not null, file_path text, category text not null default 'homepage',
-  slot text, caption text, alt text, sort_order int not null default 0, published boolean not null default true, uploaded_by uuid,
+  slot text, caption text, alt text, link_url text check (link_url is null or link_url ~ '^https?://[^[:space:]]+$'),
+  sort_order int not null default 0, published boolean not null default true, uploaded_by uuid,
   created_at timestamptz not null default now(), updated_at timestamptz not null default now());
 create index on public.media(category, sort_order);
 grant select on public.media to anon, authenticated; grant insert, update, delete on public.media to authenticated; grant all on public.media to service_role;
