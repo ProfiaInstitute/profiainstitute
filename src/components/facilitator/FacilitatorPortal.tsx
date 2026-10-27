@@ -31,6 +31,7 @@ import {
   supportedContentType,
 } from "@/lib/file-uploads";
 import { NotificationBell } from "@/components/site/NotificationBell";
+import { InstallAppButton } from "@/components/site/InstallAppButton";
 
 type Permission = {
   active: boolean;
@@ -582,6 +583,7 @@ function FacilitatorWorkspace({ userId, email }: { userId: string; email: string
           <h1 className="font-bold text-brand">Facilitator portal</h1>
         </div>
         <div className="flex items-center gap-3 text-sm">
+          <InstallAppButton label="Download portal" showLabelOnMobile />
           <NotificationBell
             userId={userId}
             onNavigate={(category) =>
