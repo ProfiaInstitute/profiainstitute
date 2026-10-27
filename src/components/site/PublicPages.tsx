@@ -570,9 +570,9 @@ export function AboutPage() {
         eyebrow={general.tagline ?? "Institute of Professionals"}
       />
       <section className="container-site grid gap-6 py-12 md:grid-cols-2">
-        {about.mission && <InfoCard title="Our mission" text={about.mission} />}
-        {about.vision && <InfoCard title="Our vision" text={about.vision} />}
-        {about.history && <InfoCard title="Our story" text={about.history} />}
+        {about.mission && <AboutCopyCard title="Our mission" text={about.mission} />}
+        {about.vision && <AboutCopyCard title="Our vision" text={about.vision} />}
+        {about.history && <AboutCopyCard title="Our story" text={about.history} />}
         {about.accreditation && <InfoCard title="Accreditation" text={about.accreditation} />}
         {!!about.core_values?.length && (
           <section className="rounded-xl border bg-card p-6 shadow-card md:col-span-2">
@@ -624,6 +624,23 @@ export function AboutPage() {
         </div>
       </section>
     </>
+  );
+}
+
+function AboutCopyCard({ title, text }: { title: string; text: string }) {
+  return (
+    <article
+      tabIndex={0}
+      className="group rounded-xl border bg-card p-5 shadow-card outline-none transition duration-300 hover:-translate-y-1 hover:border-primary/50 hover:shadow-lift focus-visible:-translate-y-1 focus-visible:border-primary/50 focus-visible:shadow-lift"
+    >
+      <h2 className="font-semibold text-brand">{title}</h2>
+      <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground transition-[max-height] duration-300 md:max-h-[4.5rem] md:overflow-hidden md:group-hover:max-h-[32rem] md:group-focus-within:max-h-[32rem]">
+        {text}
+      </p>
+      <span className="mt-2 block text-xs font-semibold text-primary md:group-hover:hidden md:group-focus-within:hidden">
+        Hover or focus to read more
+      </span>
+    </article>
   );
 }
 

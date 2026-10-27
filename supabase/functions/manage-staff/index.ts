@@ -6,7 +6,13 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const staffRoles = ["super_admin", "admissions_admin", "academic_admin", "content_admin"] as const;
+const staffRoles = [
+  "super_admin",
+  "admissions_admin",
+  "academic_admin",
+  "content_admin",
+  "facilitator",
+] as const;
 type StaffRole = (typeof staffRoles)[number];
 type Action = "list" | "suspend" | "reactivate" | "delete";
 
