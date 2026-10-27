@@ -6,7 +6,13 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const staffRoles = ["super_admin", "admissions_admin", "academic_admin", "content_admin"] as const;
+const staffRoles = [
+  "super_admin",
+  "admissions_admin",
+  "academic_admin",
+  "content_admin",
+  "facilitator",
+] as const;
 type StaffRole = (typeof staffRoles)[number];
 
 Deno.serve(async (request: Request) => {
@@ -62,7 +68,10 @@ Deno.serve(async (request: Request) => {
 
   let redirectTo: string;
   try {
-    redirectTo = new URL("/admin?setupPassword=1", publicSiteUrl).toString();
+    redirectTo = new URL(
+      role === "facilitator" ? "/facilitator?setupPassword=1" : "/admin?setupPassword=1",
+      publicSiteUrl,
+    ).toString();
   } catch {
     console.error("PUBLIC_SITE_URL is not a valid URL.");
     return json({ error: "The staff invitation redirect URL is not configured correctly." }, 500);
