@@ -185,7 +185,16 @@ function RootComponent() {
   const { queryClient } = Route.useRouteContext();
   const router = useRouter();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const isApp = pathname.startsWith("/admin") || pathname.startsWith("/student");
+  const isFacilitatorApp = pathname.startsWith("/facilitator");
+  const isApp =
+    pathname.startsWith("/admin") || pathname.startsWith("/student") || isFacilitatorApp;
+
+  useEffect(() => {
+    const manifestLink = document.querySelector<HTMLLinkElement>('link[rel="manifest"]');
+    if (manifestLink) {
+      manifestLink.href = isFacilitatorApp ? "/facilitator.webmanifest" : "/manifest.webmanifest";
+    }
+  }, [isFacilitatorApp]);
 
   useEffect(() => {
     if (!import.meta.env.PROD || !("serviceWorker" in navigator)) return;

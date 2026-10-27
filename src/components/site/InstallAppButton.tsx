@@ -74,7 +74,13 @@ export function PwaInstallProvider({ children }: { children: ReactNode }) {
   );
 }
 
-export function InstallAppButton() {
+export function InstallAppButton({
+  label = "Install app",
+  showLabelOnMobile = false,
+}: {
+  label?: string;
+  showLabelOnMobile?: boolean;
+}) {
   const installContext = useContext(InstallContext);
   if (!installContext) throw new Error("InstallAppButton must be used within PwaInstallProvider.");
   const { install, installed } = installContext;
@@ -87,10 +93,10 @@ export function InstallAppButton() {
       size="sm"
       variant="heroOutline"
       onClick={() => void install()}
-      aria-label="Install Profia app"
+      aria-label={label}
     >
       <Download />
-      <span className="hidden sm:inline">Install app</span>
+      <span className={showLabelOnMobile ? undefined : "hidden sm:inline"}>{label}</span>
     </Button>
   );
 }

@@ -1,0 +1,26 @@
+{
+  "id": "/facilitator",
+  "name": "Profia Facilitator Portal",
+  "short_name": "Profia Staff",
+  "description": "Profia Institute facilitator teaching portal.",
+  "start_url": "/facilitator",
+  "scope": "/facilitator",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#fffaf6",
+  "theme_color": "#680915",
+  "icons": [
+    {
+      "src": "/images/logo.png",
+      "sizes": "223x226",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/app-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
