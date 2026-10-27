@@ -500,7 +500,10 @@ export function HomepageMedia() {
         {data.map((item) => {
           const videoUrl = getYouTubeEmbedUrl(item.url);
           return (
-            <figure key={item.id} className="overflow-hidden rounded-xl border bg-card shadow-card">
+            <figure
+              key={item.id}
+              className="group overflow-hidden rounded-xl border bg-card shadow-card transition duration-300 hover:-translate-y-1 hover:shadow-lift"
+            >
               {videoUrl ? (
                 <iframe
                   src={videoUrl}
@@ -511,12 +514,20 @@ export function HomepageMedia() {
                   allowFullScreen
                 />
               ) : (
-                <img
-                  src={item.url}
-                  alt={item.alt ?? item.caption ?? "Profia Institute"}
-                  loading="lazy"
-                  className="aspect-[4/3] w-full object-cover"
-                />
+                <a
+                  href={item.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label={`Open ${item.caption ?? item.alt ?? "Profia Institute gallery image"}`}
+                  className="block overflow-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
+                >
+                  <img
+                    src={item.url}
+                    alt={item.alt ?? item.caption ?? "Profia Institute"}
+                    loading="lazy"
+                    className="aspect-[4/3] w-full object-cover transition-transform duration-500 ease-out group-hover:scale-105 group-focus-within:scale-105"
+                  />
+                </a>
               )}
               {item.caption && <figcaption className="p-3 text-sm">{item.caption}</figcaption>}
             </figure>

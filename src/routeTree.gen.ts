@@ -20,6 +20,7 @@ import { Route as BusinessRouteImport } from './routes/business'
 import { Route as ContactRouteImport } from './routes/contact'
 import { Route as CosmetologyRouteImport } from './routes/cosmetology'
 import { Route as EngineeringRouteImport } from './routes/engineering'
+import { Route as FacilitatorRouteImport } from './routes/facilitator'
 import { Route as HospitalityRouteImport } from './routes/hospitality'
 import { Route as IctRouteImport } from './routes/ict'
 import { Route as OnlineCoursesRouteImport } from './routes/online-courses'
@@ -83,6 +84,11 @@ const EngineeringRoute = EngineeringRouteImport.update({
   path: '/engineering',
   getParentRoute: () => rootRouteImport,
 } as any)
+const FacilitatorRoute = FacilitatorRouteImport.update({
+  id: '/facilitator',
+  path: '/facilitator',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const HospitalityRoute = HospitalityRouteImport.update({
   id: '/hospitality',
   path: '/hospitality',
@@ -131,6 +137,7 @@ export interface FileRoutesByFullPath {
   '/contact': typeof ContactRoute
   '/cosmetology': typeof CosmetologyRoute
   '/engineering': typeof EngineeringRoute
+  '/facilitator': typeof FacilitatorRoute
   '/hospitality': typeof HospitalityRoute
   '/ict': typeof IctRoute
   '/online-courses': typeof OnlineCoursesRoute
@@ -151,6 +158,7 @@ export interface FileRoutesByTo {
   '/contact': typeof ContactRoute
   '/cosmetology': typeof CosmetologyRoute
   '/engineering': typeof EngineeringRoute
+  '/facilitator': typeof FacilitatorRoute
   '/hospitality': typeof HospitalityRoute
   '/ict': typeof IctRoute
   '/online-courses': typeof OnlineCoursesRoute
@@ -172,6 +180,7 @@ export interface FileRoutesById {
   '/contact': typeof ContactRoute
   '/cosmetology': typeof CosmetologyRoute
   '/engineering': typeof EngineeringRoute
+  '/facilitator': typeof FacilitatorRoute
   '/hospitality': typeof HospitalityRoute
   '/ict': typeof IctRoute
   '/online-courses': typeof OnlineCoursesRoute
@@ -194,6 +203,7 @@ export interface FileRouteTypes {
     | '/contact'
     | '/cosmetology'
     | '/engineering'
+    | '/facilitator'
     | '/hospitality'
     | '/ict'
     | '/online-courses'
@@ -214,6 +224,7 @@ export interface FileRouteTypes {
     | '/contact'
     | '/cosmetology'
     | '/engineering'
+    | '/facilitator'
     | '/hospitality'
     | '/ict'
     | '/online-courses'
@@ -234,6 +245,7 @@ export interface FileRouteTypes {
     | '/contact'
     | '/cosmetology'
     | '/engineering'
+    | '/facilitator'
     | '/hospitality'
     | '/ict'
     | '/online-courses'
@@ -255,6 +267,7 @@ export interface RootRouteChildren {
   ContactRoute: typeof ContactRoute
   CosmetologyRoute: typeof CosmetologyRoute
   EngineeringRoute: typeof EngineeringRoute
+  FacilitatorRoute: typeof FacilitatorRoute
   HospitalityRoute: typeof HospitalityRoute
   IctRoute: typeof IctRoute
   OnlineCoursesRoute: typeof OnlineCoursesRoute
@@ -343,6 +356,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof EngineeringRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/facilitator': {
+      id: '/facilitator'
+      path: '/facilitator'
+      fullPath: '/facilitator'
+      preLoaderRoute: typeof FacilitatorRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/hospitality': {
       id: '/hospitality'
       path: '/hospitality'
@@ -407,6 +427,7 @@ const rootRouteChildren: RootRouteChildren = {
   ContactRoute: ContactRoute,
   CosmetologyRoute: CosmetologyRoute,
   EngineeringRoute: EngineeringRoute,
+  FacilitatorRoute: FacilitatorRoute,
   HospitalityRoute: HospitalityRoute,
   IctRoute: IctRoute,
   OnlineCoursesRoute: OnlineCoursesRoute,

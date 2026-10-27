@@ -255,7 +255,9 @@
   white-space: nowrap;
 }
 .announcement-strip:hover .announcement-marquee-track,
-.announcement-strip:focus-within .announcement-marquee-track {
+.announcement-strip:focus-within .announcement-marquee-track,
+.student-announcement-strip:hover .announcement-marquee-track,
+.student-announcement-strip:focus-within .announcement-marquee-track {
   animation-play-state: paused;
 }
 @keyframes announcement-marquee-scroll {
