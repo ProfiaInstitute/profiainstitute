@@ -56,6 +56,7 @@ export type Database = {
           show_on_homepage: boolean;
           show_public: boolean;
           show_to_students: boolean;
+          show_to_facilitators: boolean;
           starts_at: string | null;
           title: string;
           updated_at: string;
@@ -76,6 +77,7 @@ export type Database = {
           show_on_homepage?: boolean;
           show_public?: boolean;
           show_to_students?: boolean;
+          show_to_facilitators?: boolean;
           starts_at?: string | null;
           title: string;
           updated_at?: string;
@@ -96,6 +98,7 @@ export type Database = {
           show_on_homepage?: boolean;
           show_public?: boolean;
           show_to_students?: boolean;
+          show_to_facilitators?: boolean;
           starts_at?: string | null;
           title?: string;
           updated_at?: string;
@@ -2072,6 +2075,14 @@ export type Database = {
       facilitator_unit_permission: {
         Args: { _permission?: string | null; _unit_id: string; _user_id: string };
         Returns: boolean;
+      };
+      facilitator_can_message_student: {
+        Args: { _student_id: string };
+        Returns: boolean;
+      };
+      get_or_create_facilitator_conversation: {
+        Args: { _student_id: string };
+        Returns: string;
       };
       get_or_create_student_conversation: { Args: never; Returns: string };
       list_cat_assessments: { Args: never; Returns: Json };

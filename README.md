@@ -2682,6 +2682,13 @@ Set `PUBLIC_SITE_URL` for `invite-staff` and verify Supabase Auth email delivery
 and redirect URLs include `/facilitator`. The admin facilitator screen reports
 an actionable database setup error if the migration has not been applied.
 
+Apply `drizzle/migrations/0030_facilitator_portal_experience.sql` after migration
+`0029_student_facilitator_portal.sql` to enable facilitator/student conversations
+and facilitator-targeted memos. Facilitators can update their profile photo and
+password, download assigned learning files and class rosters, and access these
+tools from the responsive facilitator portal navigation. Admins choose
+**Show in facilitator portal** when publishing or editing a memo.
+
 ### Student progression email follow-ups
 
 Apply `0003_student_progression_followups.sql` after migrations `0000` through
