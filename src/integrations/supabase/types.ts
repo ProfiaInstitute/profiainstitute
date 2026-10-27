@@ -1134,6 +1134,7 @@ export type Database = {
           created_at: string;
           file_path: string | null;
           id: string;
+          link_url: string | null;
           published: boolean;
           slot: string | null;
           sort_order: number;
@@ -1148,6 +1149,7 @@ export type Database = {
           created_at?: string;
           file_path?: string | null;
           id?: string;
+          link_url?: string | null;
           published?: boolean;
           slot?: string | null;
           sort_order?: number;
@@ -1162,6 +1164,7 @@ export type Database = {
           created_at?: string;
           file_path?: string | null;
           id?: string;
+          link_url?: string | null;
           published?: boolean;
           slot?: string | null;
           sort_order?: number;

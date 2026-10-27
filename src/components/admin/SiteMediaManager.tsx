@@ -45,6 +45,7 @@ export function SiteMediaManager() {
   const [slot, setSlot] = useState("/");
   const [caption, setCaption] = useState("");
   const [alt, setAlt] = useState("");
+  const [linkUrl, setLinkUrl] = useState("");
   const [url, setUrl] = useState("");
   const [sortOrder, setSortOrder] = useState("0");
   const [file, setFile] = useState<File | null>(null);
@@ -80,6 +81,7 @@ export function SiteMediaManager() {
     setSlot("/");
     setCaption("");
     setAlt("");
+    setLinkUrl("");
     setUrl("");
     setSortOrder("0");
     setFile(null);
@@ -95,6 +97,7 @@ export function SiteMediaManager() {
     setSlot(item.slot || "/");
     setCaption(item.caption ?? "");
     setAlt(item.alt ?? "");
+    setLinkUrl(item.link_url ?? "");
     setUrl(item.url);
     setSortOrder(String(item.sort_order));
     setFile(null);
@@ -137,6 +140,10 @@ export function SiteMediaManager() {
       toast.error("Choose an image file or enter an image URL.");
       return;
     }
+    if (category === "partners" && linkUrl.trim() && !isHttpUrl(linkUrl.trim())) {
+      toast.error("Enter a valid HTTP or HTTPS website link for the partner.");
+      return;
+    }
 
     setSaving(true);
     let uploadedPath: string | null = null;
@@ -162,6 +169,7 @@ export function SiteMediaManager() {
         slot: category === "page-banner" ? slot : null,
         caption: caption.trim() || null,
         alt: alt.trim() || null,
+        link_url: category === "partners" ? linkUrl.trim() || null : null,
         sort_order: order,
         ...(editing ? {} : { uploaded_by: user?.id ?? null, published: true }),
       };
@@ -341,6 +349,20 @@ export function SiteMediaManager() {
               placeholder="Describe what the image shows"
             />
           </label>
+          {category === "partners" && (
+            <label className="grid gap-1.5 text-sm font-medium sm:col-span-2">
+              Partner website link (optional)
+              <Input
+                type="url"
+                placeholder="https://partner.example"
+                value={linkUrl}
+                onChange={(event) => setLinkUrl(event.target.value)}
+              />
+              <span className="text-xs font-normal text-muted-foreground">
+                Visitors will open this link by clicking the partner image.
+              </span>
+            </label>
+          )}
           {category === "page-banner" && (
             <label className="grid gap-1.5 text-sm font-medium">
               Display order
@@ -473,6 +495,15 @@ function categoryFor(value: string): MediaCategory {
 
 function pageLabel(path: string) {
   return pageOptions.find(([option]) => option === path)?.[1] ?? path;
+}
+
+function isHttpUrl(value: string) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" || url.protocol === "http:";
+  } catch {
+    return false;
+  }
 }
 
 const fieldClass =

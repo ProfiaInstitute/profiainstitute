@@ -149,7 +149,7 @@ export function useMedia(category: string) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("media")
-        .select("id,url,caption,alt,slot,sort_order")
+        .select("id,url,caption,alt,link_url,slot,sort_order")
         .eq("category", category)
         .eq("published", true)
         .order("sort_order");
