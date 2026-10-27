@@ -4,12 +4,7 @@ import type { User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 
 export type AppRole =
-  | "super_admin"
-  | "admissions_admin"
-  | "academic_admin"
-  | "content_admin"
-  | "student"
-  | "facilitator";
+  "super_admin" | "admissions_admin" | "academic_admin" | "content_admin" | "student";
 
 export const ROLE_LABELS: Record<AppRole, string> = {
   super_admin: "Super Admin",
@@ -17,7 +12,6 @@ export const ROLE_LABELS: Record<AppRole, string> = {
   academic_admin: "Academic Admin",
   content_admin: "Content Admin",
   student: "Student",
-  facilitator: "Facilitator",
 };
 
 export function useUser() {

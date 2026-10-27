@@ -9,11 +9,9 @@ import {
   Download,
   Ellipsis,
   Eye,
-  EyeOff,
   FileText,
   GraduationCap,
   LogOut,
-  Mail,
   Printer,
   RefreshCw,
   UserRound,
@@ -28,14 +26,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 import { useUser } from "@/lib/auth";
 import { isAssignmentOpenForSubmission } from "@/lib/assignments";
-import { downloadContentAttachment } from "@/lib/content-download";
 import { StudentCatsSection } from "@/components/student/StudentCatsSection";
 import { formatKES } from "@/lib/site";
 import { useScrollReveal } from "@/lib/motion";
 import type { Database, Tables } from "@/integrations/supabase/types";
 import { InstallAppButton } from "@/components/site/InstallAppButton";
-import { NotificationBell } from "@/components/site/NotificationBell";
-import { PasswordResetPage } from "@/components/auth/PasswordResetPage";
 import {
   Sheet,
   SheetContent,
@@ -52,40 +47,13 @@ import {
 } from "@/lib/profile-photos";
 
 type PortalSection =
-  | "overview"
-  | "online"
-  | "learning"
-  | "assignments"
-  | "cats"
-  | "results"
-  | "fees"
-  | "progression"
-  | "feedback"
-  | "messages"
-  | "profile";
+  "overview" | "online" | "learning" | "assignments" | "cats" | "results" | "fees" | "profile";
 type Student = Tables<"students">;
 
 export function StudentPortal({ selectedCourseId }: { selectedCourseId: string | null }) {
   const { user, loading, error: sessionError } = useUser();
   const [section, setSection] = useState<PortalSection>("overview");
   const [enrollmentPhone, setEnrollmentPhone] = useState("");
-  const [passwordReset, setPasswordReset] = useState(
-    () =>
-      typeof window !== "undefined" &&
-      new URLSearchParams(window.location.search).get("resetPassword") === "1",
-  );
-
-  if (passwordReset) {
-    return (
-      <PasswordResetPage
-        destination="/student"
-        onComplete={() => {
-          window.history.replaceState({}, "", "/student");
-          setPasswordReset(false);
-        }}
-      />
-    );
-  }
 
   if (loading) return <PortalMessage title="Loading student portal…" />;
   if (sessionError)
@@ -121,15 +89,13 @@ function StudentAnnouncements({ studentId }: { studentId: string }) {
       const now = new Date().toISOString();
       const { data, error } = await supabase
         .from("announcements")
-        .select(
-          "id, title, category, starts_at, ends_at, attachment_url, attachment_file_name, cta_label, cta_url",
-        )
+        .select("id, title, body, starts_at, ends_at, cta_label, cta_url")
         .eq("published", true)
         .eq("show_to_students", true)
         .or(`starts_at.is.null,starts_at.lte.${now}`)
         .or(`ends_at.is.null,ends_at.gt.${now}`)
         .order("created_at", { ascending: false })
-        .limit(10);
+        .limit(5);
       if (error) throw error;
       return data ?? [];
     },
@@ -145,86 +111,53 @@ function StudentAnnouncements({ studentId }: { studentId: string }) {
 
   return (
     <section
-      className="student-announcement-strip flex h-11 items-center gap-3 overflow-hidden border-b bg-brand-deep px-4 text-brand-foreground sm:px-6"
-      aria-label="Student notices and memos"
+      className="mx-auto mt-4 grid w-full max-w-7xl gap-3 px-4 sm:px-6 lg:px-8"
+      aria-label="Student announcements"
     >
       {announcementsQuery.error ? (
-        <div className="flex min-w-0 items-center gap-3 text-xs" role="alert">
-          <strong className="shrink-0 uppercase tracking-wide text-primary">Notices</strong>
-          <span>Student notices could not be loaded.</span>
+        <div
+          className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm"
+          role="alert"
+        >
+          <p>Student announcements could not be loaded.</p>
           <button
             type="button"
-            className="shrink-0 font-semibold underline"
+            className="mt-1 font-semibold underline"
             onClick={() => void announcementsQuery.refetch()}
           >
             Try again
           </button>
         </div>
       ) : (
-        <>
-          <strong className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-primary sm:text-xs">
-            Notices & memos
-          </strong>
-          <div
-            className="announcement-marquee min-w-0 flex-1"
-            role="region"
-            aria-label="Student notices"
-            tabIndex={0}
+        announcementsQuery.data?.map((announcement) => (
+          <article
+            key={announcement.id}
+            className="rounded-xl border border-primary/20 bg-primary/5 p-4 sm:p-5"
           >
-            <div className="announcement-marquee-track">
-              {[0, 1].map((copy) => (
-                <div
-                  key={copy}
-                  className="announcement-marquee-content gap-6 pr-6 text-xs sm:text-sm"
-                  aria-hidden={copy === 1 ? true : undefined}
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-semibold uppercase tracking-wide text-primary">Notice</p>
+                <h2 className="mt-1 font-bold text-brand">{announcement.title}</h2>
+                {announcement.body && (
+                  <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-foreground/80">
+                    {announcement.body}
+                  </p>
+                )}
+              </div>
+              {announcement.cta_label && announcement.cta_url && (
+                <a
+                  href={announcement.cta_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex shrink-0 items-center rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
                 >
-                  {announcementsQuery.data?.map((item) => (
-                    <span key={`${copy}-${item.id}`} className="flex shrink-0 items-center gap-2">
-                      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
-                      {item.category === "memo" && (
-                        <strong className="uppercase text-primary">Memo:</strong>
-                      )}
-                      <span>{item.title}</span>
-                      {item.category === "memo" && item.attachment_url && (
-                        <button
-                          type="button"
-                          className="inline-flex items-center gap-1 font-semibold text-primary underline underline-offset-2"
-                          tabIndex={copy === 1 ? -1 : undefined}
-                          onClick={async () => {
-                            try {
-                              await downloadContentAttachment(
-                                item.attachment_url!,
-                                item.attachment_file_name || item.title,
-                              );
-                            } catch (error) {
-                              toast.error("Could not download memo", {
-                                description: error instanceof Error ? error.message : undefined,
-                              });
-                            }
-                          }}
-                        >
-                          <Download className="h-3.5 w-3.5" />
-                          Download
-                        </button>
-                      )}
-                      {item.category !== "memo" && item.cta_label && item.cta_url && (
-                        <a
-                          href={item.cta_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          tabIndex={copy === 1 ? -1 : undefined}
-                          className="font-semibold text-primary underline underline-offset-2"
-                        >
-                          {item.cta_label}
-                        </a>
-                      )}
-                    </span>
-                  ))}
-                </div>
-              ))}
+                  {announcement.cta_label}
+                  <span className="sr-only"> (opens in a new tab)</span>
+                </a>
+              )}
             </div>
-          </div>
-        </>
+          </article>
+        ))
       )}
     </section>
   );
@@ -240,30 +173,10 @@ function StudentSignIn({
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [recoveryBusy, setRecoveryBusy] = useState(false);
-
-  async function sendPasswordReset() {
-    if (!email.trim()) {
-      setError("Enter your email address first.");
-      return;
-    }
-    setRecoveryBusy(true);
-    setError("");
-    const { error: resetError } = await supabase.auth.resetPasswordForEmail(email.trim(), {
-      redirectTo: `${window.location.origin}/student?resetPassword=1`,
-    });
-    setRecoveryBusy(false);
-    if (resetError) setError(resetError.message);
-    else
-      toast.success("Password reset email sent", {
-        description: "Check your inbox for the reset link.",
-      });
-  }
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -379,36 +292,15 @@ function StudentSignIn({
           </label>
           <label className="block space-y-1.5 text-sm font-medium">
             Password
-            <span className="relative block">
-              <Input
-                type={showPassword ? "text" : "password"}
-                required
-                minLength={8}
-                autoComplete={mode === "signin" ? "current-password" : "new-password"}
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                className="pr-11"
-              />
-              <button
-                type="button"
-                className="absolute inset-y-0 right-0 grid w-11 place-items-center text-muted-foreground"
-                aria-label={showPassword ? "Hide password" : "Show password"}
-                onClick={() => setShowPassword(!showPassword)}
-              >
-                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-              </button>
-            </span>
+            <Input
+              type="password"
+              required
+              minLength={8}
+              autoComplete={mode === "signin" ? "current-password" : "new-password"}
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+            />
           </label>
-          {mode === "signin" && (
-            <button
-              type="button"
-              className="text-sm font-semibold text-primary underline"
-              disabled={recoveryBusy}
-              onClick={() => void sendPasswordReset()}
-            >
-              {recoveryBusy ? "Sending reset link…" : "Forgot password?"}
-            </button>
-          )}
           {error && (
             <p
               role="alert"
@@ -508,9 +400,7 @@ function StudentWorkspace({
   useEffect(() => {
     if (
       studentQuery.data?.study_mode === "online" &&
-      !["overview", "online", "fees", "progression", "feedback", "messages", "profile"].includes(
-        section,
-      )
+      !["overview", "online", "fees", "profile"].includes(section)
     ) {
       onSection("overview");
     }
@@ -605,9 +495,6 @@ function StudentWorkspace({
     cats: "CATs",
     results: "My results",
     fees: "Fees & payments",
-    progression: "Course levels",
-    feedback: "Course feedback",
-    messages: "Messages",
     profile: "My profile",
   };
   const links: { id: PortalSection; title: string; icon: typeof BookOpen }[] = [
@@ -618,31 +505,16 @@ function StudentWorkspace({
     { id: "cats", title: "CATs", icon: ClipboardCheck },
     { id: "results", title: "Results", icon: FileText },
     { id: "fees", title: "Fees", icon: Wallet },
-    { id: "progression", title: "Levels & units", icon: GraduationCap },
-    { id: "feedback", title: "Feedback", icon: ClipboardCheck },
-    { id: "messages", title: "Messages", icon: Mail },
     { id: "profile", title: "My profile", icon: UserRound },
   ];
   const onlineOnly = student.study_mode === "online";
   const visibleLinks = links.filter(
-    ({ id }) =>
-      !onlineOnly ||
-      ["overview", "online", "fees", "progression", "feedback", "messages", "profile"].includes(id),
+    ({ id }) => !onlineOnly || ["overview", "online", "fees", "profile"].includes(id),
   );
   const linkGroups: { title: string; ids: PortalSection[] }[] = [
     {
       title: onlineOnly ? "Online learning" : "Learning",
-      ids: [
-        "overview",
-        "online",
-        "learning",
-        "assignments",
-        "cats",
-        "results",
-        "progression",
-        "feedback",
-        "messages",
-      ],
+      ids: ["overview", "online", "learning", "assignments", "cats", "results"],
     },
     { title: "Account", ids: ["fees", "profile"] },
   ];
@@ -686,24 +558,6 @@ function StudentWorkspace({
           </span>
         </div>
         <div className="flex items-center gap-3">
-          <NotificationBell
-            userId={userId}
-            onNavigate={(category) =>
-              onSection(
-                category === "messages"
-                  ? "messages"
-                  : category === "student_feedback"
-                    ? "feedback"
-                    : category === "academics"
-                      ? "progression"
-                      : category === "fees"
-                        ? "fees"
-                        : category === "results"
-                          ? "results"
-                          : "overview",
-              )
-            }
-          />
           <span
             className={`hidden items-center gap-1.5 text-xs sm:inline-flex ${isOnline ? "text-muted-foreground" : "text-orange-700"}`}
             role="status"
@@ -815,11 +669,6 @@ function StudentWorkspace({
                 studentNumber={student.student_number}
                 userId={userId}
               />
-            )}
-            {section === "progression" && <StudentProgressionSection student={student} />}
-            {section === "feedback" && <StudentFeedbackSection studentId={student.id} />}
-            {section === "messages" && (
-              <StudentMessagesSection studentId={student.id} userId={userId} />
             )}
             {section === "profile" && (
               <ProfileSection
@@ -2173,469 +2022,6 @@ function showReceiptPopup(windowRef: Window, ready: boolean) {
     : `<main role="status" aria-live="polite"><div class="icon printer"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 14h12v8H6z"/></svg></div><h1>Preparing your receipt</h1><p>Creating your secure, school-branded PDF…</p><div class="paper" aria-hidden="true"></div></main>`;
 }
 
-function StudentProgressionSection({ student }: { student: Student }) {
-  const queryClient = useQueryClient();
-  const [levelId, setLevelId] = useState("");
-  const [message, setMessage] = useState("");
-  const courseId = student.course_id;
-  const levelsQuery = useQuery({
-    queryKey: ["student", "course-levels", courseId],
-    enabled: Boolean(courseId),
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("course_levels")
-        .select("id,name,description,total_fee,sort_order")
-        .eq("course_id", courseId!)
-        .eq("published", true)
-        .order("sort_order");
-      if (error) throw error;
-      return data;
-    },
-  });
-  const unitsQuery = useQuery({
-    queryKey: ["student", "course-level-units", courseId],
-    enabled: Boolean(courseId),
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("course_units")
-        .select("id,level_id,title,code,semester")
-        .eq("course_id", courseId!)
-        .order("sort_order");
-      if (error) throw error;
-      return data;
-    },
-  });
-  const applicationsQuery = useQuery({
-    queryKey: ["student", "level-applications", student.id],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("student_level_applications")
-        .select("id,level_id,status,student_message,admin_message,created_at")
-        .eq("student_id", student.id)
-        .order("created_at", { ascending: false });
-      if (error) throw error;
-      return data;
-    },
-  });
-  const applyMutation = useMutation({
-    mutationFn: async () => {
-      if (!levelId) throw new Error("Choose the level you want to apply for.");
-      const { error } = await supabase.rpc("submit_student_level_application", {
-        _level_id: levelId,
-        _message: message.trim() || null,
-      });
-      if (error) throw error;
-    },
-    onSuccess: async () => {
-      toast.success("Level application sent", {
-        description:
-          "The administration has been notified. Your current units remain active until approval.",
-      });
-      setLevelId("");
-      setMessage("");
-      await queryClient.invalidateQueries({
-        queryKey: ["student", "level-applications", student.id],
-      });
-    },
-    onError: (error) =>
-      toast.error("Could not submit level application", { description: error.message }),
-  });
-  if (!courseId)
-    return (
-      <PortalMessage title="Course not assigned" detail="Contact the administration for help." />
-    );
-  if (levelsQuery.isLoading || unitsQuery.isLoading || applicationsQuery.isLoading)
-    return <Loading />;
-  if (levelsQuery.error || unitsQuery.error || applicationsQuery.error)
-    return (
-      <ErrorCard
-        error={
-          levelsQuery.error?.message ??
-          unitsQuery.error?.message ??
-          applicationsQuery.error?.message ??
-          "Could not load course levels."
-        }
-        retry={() => {
-          void levelsQuery.refetch();
-          void unitsQuery.refetch();
-          void applicationsQuery.refetch();
-        }}
-      />
-    );
-  const levels = levelsQuery.data ?? [];
-  const currentLevel = levels.find((level) => level.id === student.level_id) ?? levels[0];
-  const nextLevels = levels.filter((level) => level.sort_order > (currentLevel?.sort_order ?? 0));
-  const names = new Map(levels.map((level) => [level.id, level.name]));
-  const hasPending = applicationsQuery.data?.some(
-    (application) => application.status === "pending",
-  );
-  return (
-    <div className="space-y-5">
-      <section className="rounded-xl border bg-card p-5 shadow-card">
-        <h2 className="font-semibold text-brand">Course curriculum by level</h2>
-        <div className="mt-4 space-y-3">
-          {levels.map((level) => {
-            const units = (unitsQuery.data ?? []).filter((unit) => unit.level_id === level.id);
-            return (
-              <details
-                key={level.id}
-                className="rounded-lg border p-4"
-                open={level.id === student.level_id}
-              >
-                <summary className="cursor-pointer font-semibold">
-                  {level.name}
-                  {level.id === student.level_id ? " · Current level" : ""}
-                  {level.total_fee > 0 ? ` · ${formatKES(level.total_fee)}` : ""}
-                </summary>
-                {level.description && (
-                  <p className="mt-2 text-sm text-muted-foreground">{level.description}</p>
-                )}
-                {units.length ? (
-                  <ul className="mt-3 divide-y">
-                    {units.map((unit) => (
-                      <li
-                        key={unit.id}
-                        className="flex flex-wrap justify-between gap-2 py-2 text-sm"
-                      >
-                        <span>{unit.title}</span>
-                        <span className="text-muted-foreground">
-                          {[unit.code, unit.semester].filter(Boolean).join(" · ")}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="mt-3 text-sm text-muted-foreground">Units are being updated.</p>
-                )}
-              </details>
-            );
-          })}
-        </div>
-      </section>
-      <section className="rounded-xl border bg-card p-5 shadow-card">
-        <h2 className="font-semibold text-brand">Apply to progress to another level</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Review the curriculum above before applying. Administration approval is required before
-          your student record and units are moved to the new level.
-        </p>
-        {hasPending ? (
-          <p className="mt-4 rounded-lg bg-muted p-3 text-sm" role="status">
-            Your level application is awaiting review.
-          </p>
-        ) : nextLevels.length ? (
-          <form
-            className="mt-4 grid gap-3"
-            onSubmit={(event) => {
-              event.preventDefault();
-              applyMutation.mutate();
-            }}
-          >
-            <label className="grid gap-1.5 text-sm font-medium">
-              Requested level
-              <select
-                className="h-10 rounded-md border bg-background px-3"
-                required
-                value={levelId}
-                onChange={(event) => setLevelId(event.target.value)}
-              >
-                <option value="">Select a higher level</option>
-                {nextLevels.map((level) => (
-                  <option key={level.id} value={level.id}>
-                    {level.name} ·{" "}
-                    {(unitsQuery.data ?? []).filter((unit) => unit.level_id === level.id).length}{" "}
-                    units
-                  </option>
-                ))}
-              </select>
-            </label>
-            {levelId && (
-              <div className="rounded-lg bg-muted/50 p-3 text-sm">
-                <p className="font-semibold">Units in {names.get(levelId)}:</p>
-                <ul className="mt-2 list-inside list-disc">
-                  {(unitsQuery.data ?? [])
-                    .filter((unit) => unit.level_id === levelId)
-                    .map((unit) => (
-                      <li key={unit.id}>{unit.title}</li>
-                    ))}
-                </ul>
-              </div>
-            )}
-            <Textarea
-              rows={3}
-              maxLength={1000}
-              placeholder="Optional message for the administration"
-              value={message}
-              onChange={(event) => setMessage(event.target.value)}
-            />
-            <Button disabled={applyMutation.isPending || !levelId}>
-              {applyMutation.isPending ? "Submitting…" : "Submit level application"}
-            </Button>
-          </form>
-        ) : (
-          <p className="mt-4 text-sm text-muted-foreground">
-            No higher published level is currently available for your course.
-          </p>
-        )}
-        {!!applicationsQuery.data?.length && (
-          <div className="mt-5 border-t pt-4">
-            <h3 className="font-semibold text-brand">Application history</h3>
-            <ul className="mt-2 divide-y">
-              {applicationsQuery.data.map((application) => (
-                <li key={application.id} className="py-3 text-sm">
-                  <p className="font-medium">
-                    {names.get(application.level_id) ?? "Course level"} · {application.status}
-                  </p>
-                  {application.admin_message && (
-                    <p className="mt-1 text-muted-foreground">{application.admin_message}</p>
-                  )}
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {new Date(application.created_at).toLocaleDateString("en-KE")}
-                  </p>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </section>
-    </div>
-  );
-}
-
-function StudentFeedbackSection({ studentId }: { studentId: string }) {
-  const queryClient = useQueryClient();
-  const [category, setCategory] = useState("course");
-  const [subject, setSubject] = useState("");
-  const [body, setBody] = useState("");
-  const feedbackQuery = useQuery({
-    queryKey: ["student", "course-feedback", studentId],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("student_course_feedback")
-        .select("id,category,subject,body,status,admin_reply,created_at")
-        .eq("student_id", studentId)
-        .order("created_at", { ascending: false });
-      if (error) throw error;
-      return data;
-    },
-  });
-  const submitMutation = useMutation({
-    mutationFn: async () => {
-      const { error } = await supabase.from("student_course_feedback").insert({
-        student_id: studentId,
-        category,
-        subject: subject.trim(),
-        body: body.trim(),
-      });
-      if (error) throw error;
-    },
-    onSuccess: async () => {
-      toast.success("Feedback sent to the administration");
-      setSubject("");
-      setBody("");
-      await queryClient.invalidateQueries({ queryKey: ["student", "course-feedback", studentId] });
-    },
-    onError: (error) => toast.error("Could not submit feedback", { description: error.message }),
-  });
-  if (feedbackQuery.isLoading) return <Loading />;
-  if (feedbackQuery.error)
-    return <ErrorCard error={feedbackQuery.error.message} retry={() => feedbackQuery.refetch()} />;
-  return (
-    <div className="space-y-5">
-      <form
-        className="grid gap-3 rounded-xl border bg-card p-5 shadow-card"
-        onSubmit={(event) => {
-          event.preventDefault();
-          submitMutation.mutate();
-        }}
-      >
-        <div>
-          <h2 className="font-semibold text-brand">Share feedback or report an issue</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Tell the administration about your course, progress, curriculum, or learning experience.
-          </p>
-        </div>
-        <select
-          className="h-10 rounded-md border bg-background px-3"
-          value={category}
-          onChange={(event) => setCategory(event.target.value)}
-        >
-          <option value="course">Course experience</option>
-          <option value="progress">Progress and support</option>
-          <option value="curriculum">Curriculum or units</option>
-          <option value="other">Other report</option>
-        </select>
-        <Input
-          required
-          maxLength={160}
-          placeholder="Subject"
-          value={subject}
-          onChange={(event) => setSubject(event.target.value)}
-        />
-        <Textarea
-          required
-          minLength={1}
-          maxLength={5000}
-          rows={5}
-          placeholder="Describe your feedback or report"
-          value={body}
-          onChange={(event) => setBody(event.target.value)}
-        />
-        <Button disabled={submitMutation.isPending}>
-          {submitMutation.isPending ? "Sending…" : "Send feedback"}
-        </Button>
-      </form>
-      {!!feedbackQuery.data?.length && (
-        <section className="rounded-xl border bg-card p-5 shadow-card">
-          <h2 className="font-semibold text-brand">Previous feedback</h2>
-          <ul className="mt-3 divide-y">
-            {feedbackQuery.data.map((item) => (
-              <li key={item.id} className="py-3">
-                <p className="font-medium">{item.subject}</p>
-                <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">
-                  {item.body}
-                </p>
-                <p className="mt-1 text-xs capitalize text-muted-foreground">
-                  {item.category} · {item.status}
-                </p>
-                {item.admin_reply && (
-                  <p className="mt-2 rounded-md bg-muted p-3 text-sm">
-                    Admin response: {item.admin_reply}
-                  </p>
-                )}
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-    </div>
-  );
-}
-
-function StudentMessagesSection({ studentId, userId }: { studentId: string; userId: string }) {
-  const queryClient = useQueryClient();
-  const [body, setBody] = useState("");
-  const conversationQuery = useQuery({
-    queryKey: ["portal-conversation", studentId],
-    queryFn: async () => {
-      const { data, error } = await supabase.rpc("get_or_create_student_conversation");
-      if (error) throw error;
-      return data;
-    },
-  });
-  const messagesQuery = useQuery({
-    queryKey: ["portal-messages", conversationQuery.data],
-    enabled: Boolean(conversationQuery.data),
-    refetchInterval: 10_000,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("portal_messages")
-        .select("id,sender_id,body,read_at,created_at")
-        .eq("conversation_id", conversationQuery.data!)
-        .order("created_at");
-      if (error) throw error;
-      return data;
-    },
-  });
-  useEffect(() => {
-    const unread =
-      messagesQuery.data?.filter((message) => message.sender_id !== userId && !message.read_at) ??
-      [];
-    if (!unread.length) return;
-    void supabase
-      .from("portal_messages")
-      .update({ read_at: new Date().toISOString() })
-      .in(
-        "id",
-        unread.map((message) => message.id),
-      )
-      .then(({ error }) => {
-        if (error) toast.error("Could not mark messages as read", { description: error.message });
-        else
-          void queryClient.invalidateQueries({
-            queryKey: ["portal-messages", conversationQuery.data],
-          });
-      });
-  }, [conversationQuery.data, messagesQuery.data, queryClient, userId]);
-  const sendMutation = useMutation({
-    mutationFn: async () => {
-      if (!conversationQuery.data) throw new Error("Your message thread is not ready.");
-      const { error } = await supabase.from("portal_messages").insert({
-        conversation_id: conversationQuery.data,
-        sender_id: userId,
-        body: body.trim(),
-      });
-      if (error) throw error;
-    },
-    onSuccess: async () => {
-      setBody("");
-      await queryClient.invalidateQueries({
-        queryKey: ["portal-messages", conversationQuery.data],
-      });
-    },
-    onError: (error) => toast.error("Could not send message", { description: error.message }),
-  });
-  if (conversationQuery.error)
-    return (
-      <ErrorCard
-        error={conversationQuery.error.message}
-        retry={() => conversationQuery.refetch()}
-      />
-    );
-  if (messagesQuery.error)
-    return <ErrorCard error={messagesQuery.error.message} retry={() => messagesQuery.refetch()} />;
-  return (
-    <section className="rounded-xl border bg-card p-5 shadow-card">
-      <h2 className="font-semibold text-brand">Message the administration</h2>
-      <p className="mt-1 text-sm text-muted-foreground">
-        Send a private message and receive replies here. New messages trigger in-app notifications.
-      </p>
-      {messagesQuery.isLoading ? (
-        <Loading />
-      ) : (
-        <ol className="mt-4 max-h-[28rem] space-y-3 overflow-y-auto rounded-lg bg-muted/40 p-3">
-          {messagesQuery.data?.length ? (
-            messagesQuery.data.map((message) => (
-              <li
-                key={message.id}
-                className={`max-w-[85%] rounded-lg p-3 text-sm ${message.sender_id === userId ? "ml-auto bg-primary text-primary-foreground" : "bg-background shadow-sm"}`}
-              >
-                <p className="whitespace-pre-wrap">{message.body}</p>
-                <time className="mt-2 block text-[10px] opacity-70">
-                  {new Date(message.created_at).toLocaleString("en-KE")}
-                </time>
-              </li>
-            ))
-          ) : (
-            <li className="py-8 text-center text-sm text-muted-foreground">
-              Start a conversation with the administration.
-            </li>
-          )}
-        </ol>
-      )}
-      <form
-        className="mt-4 grid gap-2"
-        onSubmit={(event) => {
-          event.preventDefault();
-          sendMutation.mutate();
-        }}
-      >
-        <Textarea
-          required
-          maxLength={5000}
-          rows={3}
-          placeholder="Write your message"
-          value={body}
-          onChange={(event) => setBody(event.target.value)}
-        />
-        <Button className="justify-self-end" disabled={sendMutation.isPending || !body.trim()}>
-          <Mail className="mr-2 h-4 w-4" />
-          {sendMutation.isPending ? "Sending…" : "Send message"}
-        </Button>
-      </form>
-    </section>
-  );
-}
-
 function FeesSection({
   studentId,
   studentNumber,
@@ -2851,49 +2237,19 @@ function FeesSection({
   const balanceLabel = hasCredit ? "Credit" : "Balance";
   const balanceAmount = Math.abs(billed - paid);
   const outstanding = Math.max(0, billed - paid);
-  const ledger = [
-    ...(query.data?.fees ?? []).map((fee) => ({
-      id: `fee-${fee.id}`,
-      date: fee.created_at,
-      description: `${fee.description}${fee.due_date ? ` · Due ${fee.due_date}` : ""}`,
-      debit: Number(fee.amount),
-      credit: 0,
-      order: 0,
-    })),
-    ...(query.data?.payments ?? []).map((payment) => ({
-      id: `payment-${payment.id}`,
-      date: payment.paid_at,
-      description: `${payment.provider === "payhero" ? "M-Pesa" : payment.method}${payment.reference ? ` · ${payment.reference}` : ""}`,
-      debit: 0,
-      credit: Number(payment.amount),
-      order: 1,
-    })),
-  ]
-    .sort((left, right) => {
-      const byDate = new Date(left.date).getTime() - new Date(right.date).getTime();
-      return byDate || left.order - right.order || left.id.localeCompare(right.id);
-    })
-    .reduce<
-      Array<{
-        id: string;
-        date: string;
-        description: string;
-        debit: number;
-        credit: number;
-        balance: number;
-      }>
-    >((rows, item) => {
-      const previousBalance = rows.at(-1)?.balance ?? 0;
-      rows.push({ ...item, balance: previousBalance + item.debit - item.credit });
-      return rows;
-    }, []);
   return (
     <div className="space-y-4">
-      <section className="rounded-xl border bg-card p-4 shadow-card">
-        <p className="text-sm text-muted-foreground">
-          Current running {balanceLabel.toLowerCase()}
-        </p>
-        <p className="mt-1 text-2xl font-bold text-brand">{formatKES(balanceAmount)}</p>
+      <section className="grid gap-3 sm:grid-cols-3">
+        {[
+          ["Total charges", billed],
+          ["Payments", paid],
+          [balanceLabel, balanceAmount],
+        ].map(([label, amount]) => (
+          <div key={String(label)} className="rounded-xl border bg-card p-4 shadow-card">
+            <p className="text-sm text-muted-foreground">{label}</p>
+            <p className="mt-2 text-xl font-bold text-brand">{formatKES(Number(amount))}</p>
+          </div>
+        ))}
       </section>
       <section data-scroll-reveal className="rounded-xl border bg-card p-5 shadow-card">
         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -2954,44 +2310,21 @@ function FeesSection({
         </p>
       </section>
       <section data-scroll-reveal className="rounded-xl border bg-card p-5 shadow-card">
-        <h2 className="font-semibold text-brand">Fee statement · {studentNumber}</h2>
-        {ledger.length ? (
-          <div className="mt-3 overflow-x-auto">
-            <table className="w-full min-w-[640px] border-collapse text-left text-sm">
-              <thead>
-                <tr className="border-b text-xs uppercase text-muted-foreground">
-                  <th className="px-3 py-2">Date</th>
-                  <th className="px-3 py-2">Description</th>
-                  <th className="px-3 py-2 text-right">Fees (KES)</th>
-                  <th className="px-3 py-2 text-right">Paid (KES)</th>
-                  <th className="px-3 py-2 text-right">Running balance (KES)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {ledger.map((entry) => (
-                  <tr key={entry.id} className="border-b last:border-0">
-                    <td className="whitespace-nowrap px-3 py-3">
-                      {new Date(entry.date).toLocaleDateString("en-KE")}
-                    </td>
-                    <td className="px-3 py-3">{entry.description}</td>
-                    <td className="px-3 py-3 text-right">
-                      {entry.debit ? formatKES(entry.debit) : "—"}
-                    </td>
-                    <td className="px-3 py-3 text-right">
-                      {entry.credit ? formatKES(entry.credit) : "—"}
-                    </td>
-                    <td className="px-3 py-3 text-right font-semibold">
-                      {formatKES(entry.balance)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        <h2 className="font-semibold text-brand">Billed charges · {studentNumber}</h2>
+        {query.data?.fees.length ? (
+          <div className="mt-3 divide-y">
+            {query.data.fees.map((fee) => (
+              <div key={fee.id} className="flex justify-between gap-3 py-3 text-sm">
+                <span>
+                  {fee.description}
+                  {fee.due_date ? ` · Due ${fee.due_date}` : ""}
+                </span>
+                <span className="font-semibold">{formatKES(fee.amount)}</span>
+              </div>
+            ))}
           </div>
         ) : (
-          <p className="mt-3 text-sm text-muted-foreground">
-            No fee charges or confirmed payments have been recorded.
-          </p>
+          <p className="mt-3 text-sm text-muted-foreground">No fee charges have been recorded.</p>
         )}
       </section>
       <section data-scroll-reveal className="rounded-xl border bg-card p-5 shadow-card">
