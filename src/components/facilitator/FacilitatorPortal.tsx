@@ -11,9 +11,11 @@ import {
   ImagePlus,
   LogOut,
   MessageCircle,
+  MoreHorizontal,
   Plus,
   UserRound,
   Video,
+  type LucideIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 import { PasswordResetPage } from "@/components/auth/PasswordResetPage";
@@ -32,6 +34,13 @@ import {
 } from "@/lib/file-uploads";
 import { NotificationBell } from "@/components/site/NotificationBell";
 import { InstallAppButton } from "@/components/site/InstallAppButton";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 
 type Permission = {
   active: boolean;
@@ -219,7 +228,8 @@ function FacilitatorWorkspace({ userId, email }: { userId: string; email: string
   const queryClient = useQueryClient();
   const [selectedId, setSelectedId] = useState("");
   const [studentId, setStudentId] = useState("");
-  const [navigationOpen, setNavigationOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [activeSection, setActiveSection] = useState("dashboard");
   const profileQuery = useQuery({
     queryKey: ["facilitator", "profile", userId],
     queryFn: async () => {
@@ -573,29 +583,80 @@ function FacilitatorWorkspace({ userId, email }: { userId: string; email: string
     return <PortalMessage error="The assigned course unit is no longer available." />;
   const permissions: Permission = activeUnit!;
   const studentById = new Map((studentsQuery.data ?? []).map((student) => [student.id, student]));
+  const navigationItems = [
+    { id: "dashboard", title: "Dashboard", icon: BookOpen },
+    { id: "facilitator-students", title: "Students", icon: GraduationCap },
+    ...(permissions.can_manage_assignments
+      ? [{ id: "facilitator-assignments", title: "Assignments", icon: ClipboardList }]
+      : []),
+    ...(permissions.can_manage_cats
+      ? [{ id: "facilitator-cats", title: "CATs", icon: FileText }]
+      : []),
+    ...(permissions.can_manage_materials
+      ? [{ id: "facilitator-materials", title: "Materials", icon: Video }]
+      : []),
+    ...(permissions.can_manage_results
+      ? [{ id: "facilitator-results", title: "Results", icon: GraduationCap }]
+      : []),
+    { id: "facilitator-inbox", title: "Student inbox", icon: MessageCircle },
+    { id: "facilitator-memos", title: "Memos", icon: FileText },
+    { id: "facilitator-profile", title: "My profile", icon: UserRound },
+  ];
+  const mobileNavigationItems = [
+    "dashboard",
+    "facilitator-students",
+    "facilitator-assignments",
+    "facilitator-inbox",
+    "facilitator-materials",
+  ]
+    .map((id) => navigationItems.find((item) => item.id === id))
+    .filter((item): item is (typeof navigationItems)[number] => Boolean(item))
+    .slice(0, 4);
+  const moreNavigationItems = navigationItems.filter(
+    (item) => !mobileNavigationItems.some((mobileItem) => mobileItem.id === item.id),
+  );
+  const selectSection = (id: string) => {
+    setActiveSection(id);
+    setMoreOpen(false);
+  };
+  const activeSectionTitle =
+    navigationItems.find((item) => item.id === activeSection)?.title ?? "Dashboard";
   return (
-    <div className="min-h-screen bg-muted/40">
-      <header className="sticky top-0 z-30 flex flex-wrap items-center justify-between gap-3 border-b bg-background px-4 py-3 shadow-sm sm:px-6">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-primary">
-            Profia Institute
-          </p>
-          <h1 className="font-bold text-brand">Facilitator portal</h1>
+    <div className="student-app-shell student-workspace min-h-screen bg-muted/40">
+      <header className="student-app-header sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-border/70 bg-background/95 px-4 py-3 text-foreground shadow-sm backdrop-blur sm:px-6">
+        <div className="flex min-w-0 items-center gap-3">
+          <a
+            href="/facilitator"
+            className="flex shrink-0 items-center gap-2.5"
+            aria-label="Profia Institute facilitator portal"
+          >
+            <img src="/images/logo.png" alt="" className="h-10 w-auto" />
+            <span className="hidden sm:inline">
+              <span className="block text-sm font-extrabold leading-tight text-brand">PROFIA</span>
+              <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                Facilitator services
+              </span>
+            </span>
+          </a>
+          <span aria-hidden="true" className="text-border">
+            /
+          </span>
+          <span className="truncate text-sm font-semibold text-foreground">
+            {activeSectionTitle}
+          </span>
         </div>
-        <div className="flex items-center gap-3 text-sm">
-          <InstallAppButton label="Download portal" showLabelOnMobile />
+        <div className="flex shrink-0 items-center gap-1.5 sm:gap-3">
+          <InstallAppButton label="Download app" />
           <NotificationBell
             userId={userId}
             onNavigate={(category) =>
-              document
-                .getElementById(
-                  category === "messages"
-                    ? "facilitator-inbox"
-                    : category === "memos"
-                      ? "facilitator-memos"
-                      : "facilitator-students",
-                )
-                ?.scrollIntoView({ behavior: "smooth", block: "start" })
+              selectSection(
+                category === "messages"
+                  ? "facilitator-inbox"
+                  : category === "memos"
+                    ? "facilitator-memos"
+                    : "facilitator-students",
+              )
             }
           />
           {profileQuery.data?.photoUrl ? (
@@ -609,97 +670,141 @@ function FacilitatorWorkspace({ userId, email }: { userId: string; email: string
               <UserRound className="h-4 w-4" />
             </span>
           )}
-          <span className="hidden max-w-48 truncate text-muted-foreground sm:inline">
+          <span className="hidden max-w-48 truncate text-xs text-muted-foreground md:inline">
             {profileQuery.data?.fullName || email}
           </span>
           <Button size="sm" variant="outline" onClick={() => void signOut()}>
-            <LogOut className="mr-2 h-4 w-4" />
-            Sign out
+            <LogOut className="h-4 w-4 sm:mr-2" />
+            <span className="hidden sm:inline">Sign out</span>
           </Button>
         </div>
       </header>
-      <main className="mx-auto max-w-[90rem] px-4 py-6 sm:px-6">
-        <div className="grid gap-5 lg:grid-cols-[15rem_minmax(0,1fr)]">
-          <aside className="h-fit rounded-xl border bg-card p-3 shadow-card lg:sticky lg:top-24">
-            <button
-              type="button"
-              className="mb-2 flex w-full items-center justify-between px-2 py-2 text-sm font-semibold text-brand lg:hidden"
-              aria-expanded={navigationOpen}
-              onClick={() => setNavigationOpen(!navigationOpen)}
-            >
-              Teaching workspace
-              <BookOpen className="h-4 w-4" />
-            </button>
-            <nav
-              aria-label="Facilitator portal"
-              className={`${navigationOpen ? "flex" : "hidden"} gap-1 overflow-x-auto lg:flex lg:flex-col`}
-            >
-              <PortalNavLink href="#facilitator-students" onSelect={() => setNavigationOpen(false)}>
-                <GraduationCap className="h-4 w-4" /> Students
-              </PortalNavLink>
-              {permissions.can_manage_assignments && (
-                <PortalNavLink
-                  href="#facilitator-assignments"
-                  onSelect={() => setNavigationOpen(false)}
-                >
-                  <ClipboardList className="h-4 w-4" /> Assignments
-                </PortalNavLink>
-              )}
-              {permissions.can_manage_cats && (
-                <PortalNavLink href="#facilitator-cats" onSelect={() => setNavigationOpen(false)}>
-                  <FileText className="h-4 w-4" /> CATs
-                </PortalNavLink>
-              )}
-              {permissions.can_manage_materials && (
-                <PortalNavLink
-                  href="#facilitator-materials"
-                  onSelect={() => setNavigationOpen(false)}
-                >
-                  <Video className="h-4 w-4" /> Materials
-                </PortalNavLink>
-              )}
-              {permissions.can_manage_results && (
-                <PortalNavLink
-                  href="#facilitator-results"
-                  onSelect={() => setNavigationOpen(false)}
-                >
-                  <GraduationCap className="h-4 w-4" /> Results
-                </PortalNavLink>
-              )}
-              <PortalNavLink href="#facilitator-inbox" onSelect={() => setNavigationOpen(false)}>
-                <MessageCircle className="h-4 w-4" /> Student inbox
-              </PortalNavLink>
-              <PortalNavLink href="#facilitator-memos" onSelect={() => setNavigationOpen(false)}>
-                <FileText className="h-4 w-4" /> Memos
-              </PortalNavLink>
-              <PortalNavLink href="#facilitator-profile" onSelect={() => setNavigationOpen(false)}>
-                <UserRound className="h-4 w-4" /> My profile
-              </PortalNavLink>
-            </nav>
-          </aside>
-          <div className="min-w-0 space-y-5">
-            <label className="grid max-w-xl gap-1.5 text-sm font-medium">
-              Assigned teaching unit
-              <select
-                className="h-10 rounded-md border bg-background px-3"
-                value={activeUnit.id}
-                onChange={(event) => {
-                  setSelectedId(event.target.value);
-                  setStudentId("");
-                }}
+      <div className="mx-auto flex max-w-[90rem] flex-col lg:flex-row">
+        <aside className="hidden border-b bg-card p-4 lg:sticky lg:top-[65px] lg:block lg:h-[calc(100vh-65px)] lg:w-64 lg:shrink-0 lg:border-b-0 lg:border-r">
+          <div className="rounded-xl border bg-cream p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-primary">Teaching</p>
+            {profileQuery.data?.photoUrl ? (
+              <img
+                src={profileQuery.data.photoUrl}
+                alt=""
+                className="mt-4 h-12 w-12 rounded-xl border object-cover"
+              />
+            ) : (
+              <span className="mt-4 grid h-12 w-12 place-items-center rounded-xl border bg-muted text-brand">
+                <UserRound className="h-5 w-5" />
+              </span>
+            )}
+            <p className="mt-3 truncate font-semibold text-brand">
+              {profileQuery.data?.fullName || email}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">{activeUnit.course.title}</p>
+          </div>
+          <nav className="mt-5 flex flex-col gap-1" aria-label="Facilitator portal">
+            {navigationItems.map(({ id, title, icon: Icon }) => (
+              <PortalNavLink
+                key={id}
+                href="#"
+                isActive={activeSection === id}
+                onSelect={() => selectSection(id)}
               >
-                {unitsQuery.data.map((unit) => (
-                  <option key={unit.id} value={unit.id}>
-                    {unit.course.title} · {unit.unit.title}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
-              <div className="space-y-5">
+                <Icon className="h-4 w-4" /> {title}
+              </PortalNavLink>
+            ))}
+          </nav>
+        </aside>
+        <main className="student-app-content min-w-0 flex-1 p-4 pb-8 sm:p-6 lg:p-8">
+          <div className="mx-auto w-full max-w-5xl space-y-5">
+            <p className="eyebrow">Facilitator services / {activeUnit.course.title}</p>
+            <h1 className="text-2xl font-bold text-brand sm:text-3xl">
+              {activeSection === "dashboard" ? "Teaching workspace" : activeSectionTitle}
+            </h1>
+            {activeSection === "dashboard" && (
+              <>
+                <label className="grid w-full max-w-xl gap-1.5 text-sm font-medium">
+                  Assigned teaching unit
+                  <select
+                    className="h-10 w-full min-w-0 rounded-md border bg-background px-3"
+                    value={activeUnit.id}
+                    onChange={(event) => {
+                      setSelectedId(event.target.value);
+                      setStudentId("");
+                      setActiveSection("dashboard");
+                    }}
+                  >
+                    {unitsQuery.data.map((unit) => (
+                      <option key={unit.id} value={unit.id}>
+                        {unit.course.title} · {unit.unit.title}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  <DashboardSummaryCard
+                    label="Enrolled students"
+                    value={studentsQuery.data?.length ?? 0}
+                    icon={GraduationCap}
+                  />
+                  <DashboardSummaryCard
+                    label="Assigned units"
+                    value={unitsQuery.data?.length ?? 0}
+                    icon={BookOpen}
+                  />
+                  {permissions.can_manage_assignments && (
+                    <DashboardSummaryCard
+                      label="Assignments"
+                      value={assignmentsQuery.data?.length ?? 0}
+                      icon={ClipboardList}
+                    />
+                  )}
+                  {permissions.can_manage_results && (
+                    <DashboardSummaryCard
+                      label="Results posted"
+                      value={resultQuery.data?.length ?? 0}
+                      icon={GraduationCap}
+                    />
+                  )}
+                </section>
+                <section className="rounded-xl border bg-card p-5 shadow-card">
+                  <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div>
+                      <h2 className="font-semibold text-brand">Your teaching unit</h2>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        {activeUnit.course.title} · {activeUnit.unit.title}
+                      </p>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        {activeUnit.unit.semester || "Assigned course unit"}
+                      </p>
+                    </div>
+                    <Button onClick={() => selectSection("facilitator-students")}>
+                      View students
+                    </Button>
+                  </div>
+                </section>
+                <section className="rounded-xl border bg-card p-5 shadow-card">
+                  <h2 className="font-semibold text-brand">Quick access</h2>
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                    {navigationItems
+                      .filter((item) => item.id !== "dashboard")
+                      .map(({ id, title, icon: Icon }) => (
+                        <button
+                          key={id}
+                          type="button"
+                          onClick={() => selectSection(id)}
+                          className="flex min-h-14 items-center gap-3 rounded-xl border p-3 text-left text-sm font-medium transition hover:border-primary/40 hover:bg-muted"
+                        >
+                          <Icon className="h-5 w-5 shrink-0 text-primary" />
+                          {title}
+                        </button>
+                      ))}
+                  </div>
+                </section>
+              </>
+            )}
+            {activeSection === "facilitator-students" && (
+              <>
                 <section
                   id="facilitator-students"
-                  className="scroll-mt-24 rounded-xl border bg-card p-5 shadow-card"
+                  className="rounded-xl border bg-card p-5 shadow-card"
                 >
                   <div className="flex flex-wrap justify-between gap-3">
                     <div>
@@ -784,468 +889,501 @@ function FacilitatorWorkspace({ userId, email }: { userId: string; email: string
                     unitId={activeUnit.unit_id}
                   />
                 )}
-                {permissions.can_manage_assignments && (
-                  <section
-                    id="facilitator-assignments"
-                    className="scroll-mt-24 rounded-xl border bg-card p-5 shadow-card"
-                  >
-                    <h2 className="font-semibold text-brand">Assignments and marking</h2>
-                    <form
-                      className="mt-3 grid gap-3"
-                      onSubmit={(event) => void createAssignment(event)}
+              </>
+            )}
+            {permissions.can_manage_assignments && activeSection === "facilitator-assignments" && (
+              <section
+                id="facilitator-assignments"
+                className="rounded-xl border bg-card p-5 shadow-card"
+              >
+                <h2 className="font-semibold text-brand">Assignments and marking</h2>
+                <form
+                  className="mt-3 grid gap-3"
+                  onSubmit={(event) => void createAssignment(event)}
+                >
+                  <Input
+                    required
+                    maxLength={160}
+                    placeholder="Assignment title"
+                    value={assignmentDraft.title}
+                    onChange={(event) =>
+                      setAssignmentDraft({ ...assignmentDraft, title: event.target.value })
+                    }
+                  />
+                  <Textarea
+                    rows={3}
+                    placeholder="Instructions"
+                    value={assignmentDraft.instructions}
+                    onChange={(event) =>
+                      setAssignmentDraft({
+                        ...assignmentDraft,
+                        instructions: event.target.value,
+                      })
+                    }
+                  />
+                  <label className="grid max-w-sm gap-1 text-sm font-medium">
+                    Due date
+                    <Input
+                      type="datetime-local"
+                      value={assignmentDraft.dueDate}
+                      onChange={(event) =>
+                        setAssignmentDraft({ ...assignmentDraft, dueDate: event.target.value })
+                      }
+                    />
+                  </label>
+                  <Button className="justify-self-start" disabled={busy}>
+                    {busy ? "Publishing…" : "Publish assignment"}
+                  </Button>
+                </form>
+                <ul className="mt-4 divide-y">
+                  {(assignmentsQuery.data ?? []).map((assignment) => (
+                    <li
+                      key={assignment.id}
+                      className="flex flex-wrap justify-between gap-2 py-3 text-sm"
                     >
-                      <Input
-                        required
-                        maxLength={160}
-                        placeholder="Assignment title"
-                        value={assignmentDraft.title}
-                        onChange={(event) =>
-                          setAssignmentDraft({ ...assignmentDraft, title: event.target.value })
-                        }
-                      />
-                      <Textarea
-                        rows={3}
-                        placeholder="Instructions"
-                        value={assignmentDraft.instructions}
-                        onChange={(event) =>
-                          setAssignmentDraft({
-                            ...assignmentDraft,
-                            instructions: event.target.value,
-                          })
-                        }
-                      />
-                      <label className="grid max-w-sm gap-1 text-sm font-medium">
-                        Due date
-                        <Input
-                          type="datetime-local"
-                          value={assignmentDraft.dueDate}
-                          onChange={(event) =>
-                            setAssignmentDraft({ ...assignmentDraft, dueDate: event.target.value })
-                          }
-                        />
-                      </label>
-                      <Button className="justify-self-start" disabled={busy}>
-                        {busy ? "Publishing…" : "Publish assignment"}
-                      </Button>
-                    </form>
-                    <ul className="mt-4 divide-y">
-                      {(assignmentsQuery.data ?? []).map((assignment) => (
-                        <li
-                          key={assignment.id}
-                          className="flex flex-wrap justify-between gap-2 py-3 text-sm"
-                        >
-                          <span className="font-medium">
-                            {assignment.title}
-                            <span className="ml-2 text-xs text-muted-foreground">
-                              {assignment.due_date
-                                ? new Date(assignment.due_date).toLocaleString("en-KE")
-                                : "No due date"}
-                            </span>
-                          </span>
-                          <span>{assignment.published ? "Published" : "Draft"}</span>
-                        </li>
-                      ))}
-                    </ul>
-                    {assignmentsQuery.error && (
-                      <p role="alert" className="mt-2 text-sm text-destructive">
-                        {assignmentsQuery.error.message}
-                      </p>
-                    )}
-                    <SubmissionsList assignments={assignmentsQuery.data ?? []} />
-                  </section>
+                      <span className="font-medium">
+                        {assignment.title}
+                        <span className="ml-2 text-xs text-muted-foreground">
+                          {assignment.due_date
+                            ? new Date(assignment.due_date).toLocaleString("en-KE")
+                            : "No due date"}
+                        </span>
+                      </span>
+                      <span>{assignment.published ? "Published" : "Draft"}</span>
+                    </li>
+                  ))}
+                </ul>
+                {assignmentsQuery.error && (
+                  <p role="alert" className="mt-2 text-sm text-destructive">
+                    {assignmentsQuery.error.message}
+                  </p>
                 )}
-                {permissions.can_manage_cats && (
-                  <section
-                    id="facilitator-cats"
-                    className="scroll-mt-24 rounded-xl border bg-card p-5 shadow-card"
-                  >
-                    <h2 className="font-semibold text-brand">Create a CAT</h2>
-                    <form className="mt-3 space-y-3" onSubmit={(event) => void createCat(event)}>
+                <SubmissionsList assignments={assignmentsQuery.data ?? []} />
+              </section>
+            )}
+            {permissions.can_manage_cats && activeSection === "facilitator-cats" && (
+              <section id="facilitator-cats" className="rounded-xl border bg-card p-5 shadow-card">
+                <h2 className="font-semibold text-brand">Create a CAT</h2>
+                <form className="mt-3 space-y-3" onSubmit={(event) => void createCat(event)}>
+                  <Input
+                    required
+                    maxLength={160}
+                    placeholder="CAT title"
+                    value={catDraft.title}
+                    onChange={(event) => setCatDraft({ ...catDraft, title: event.target.value })}
+                  />
+                  <Textarea
+                    rows={2}
+                    placeholder="Instructions"
+                    value={catDraft.instructions}
+                    onChange={(event) =>
+                      setCatDraft({ ...catDraft, instructions: event.target.value })
+                    }
+                  />
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <label className="grid gap-1 text-sm">
+                      Duration (minutes)
                       <Input
+                        type="number"
+                        min="1"
+                        max="360"
                         required
-                        maxLength={160}
-                        placeholder="CAT title"
-                        value={catDraft.title}
+                        value={catDraft.duration}
                         onChange={(event) =>
-                          setCatDraft({ ...catDraft, title: event.target.value })
+                          setCatDraft({ ...catDraft, duration: event.target.value })
                         }
                       />
+                    </label>
+                    <label className="grid gap-1 text-sm">
+                      Opens at
+                      <Input
+                        type="datetime-local"
+                        required
+                        value={catDraft.opensAt}
+                        onChange={(event) =>
+                          setCatDraft({ ...catDraft, opensAt: event.target.value })
+                        }
+                      />
+                    </label>
+                    <label className="grid gap-1 text-sm">
+                      Closes at
+                      <Input
+                        type="datetime-local"
+                        required
+                        value={catDraft.closesAt}
+                        onChange={(event) =>
+                          setCatDraft({ ...catDraft, closesAt: event.target.value })
+                        }
+                      />
+                    </label>
+                  </div>
+                  {questions.map((question, index) => (
+                    <fieldset key={index} className="grid gap-2 rounded-lg border p-3">
+                      <legend className="px-1 text-sm font-semibold">Question {index + 1}</legend>
                       <Textarea
-                        rows={2}
-                        placeholder="Instructions"
-                        value={catDraft.instructions}
+                        required
+                        placeholder="Question prompt"
+                        value={question.prompt}
                         onChange={(event) =>
-                          setCatDraft({ ...catDraft, instructions: event.target.value })
+                          setQuestions(
+                            questions.map((item, i) =>
+                              i === index ? { ...item, prompt: event.target.value } : item,
+                            ),
+                          )
                         }
                       />
-                      <div className="grid gap-3 sm:grid-cols-3">
-                        <label className="grid gap-1 text-sm">
-                          Duration (minutes)
-                          <Input
-                            type="number"
-                            min="1"
-                            max="360"
-                            required
-                            value={catDraft.duration}
-                            onChange={(event) =>
-                              setCatDraft({ ...catDraft, duration: event.target.value })
-                            }
-                          />
-                        </label>
-                        <label className="grid gap-1 text-sm">
-                          Opens at
-                          <Input
-                            type="datetime-local"
-                            required
-                            value={catDraft.opensAt}
-                            onChange={(event) =>
-                              setCatDraft({ ...catDraft, opensAt: event.target.value })
-                            }
-                          />
-                        </label>
-                        <label className="grid gap-1 text-sm">
-                          Closes at
-                          <Input
-                            type="datetime-local"
-                            required
-                            value={catDraft.closesAt}
-                            onChange={(event) =>
-                              setCatDraft({ ...catDraft, closesAt: event.target.value })
-                            }
-                          />
-                        </label>
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {(["option_a", "option_b", "option_c", "option_d"] as const).map(
+                          (field) => (
+                            <Input
+                              key={field}
+                              required
+                              placeholder={`Option ${field.slice(-1).toUpperCase()}`}
+                              value={question[field]}
+                              onChange={(event) =>
+                                setQuestions(
+                                  questions.map((item, i) =>
+                                    i === index ? { ...item, [field]: event.target.value } : item,
+                                  ),
+                                )
+                              }
+                            />
+                          ),
+                        )}
                       </div>
-                      {questions.map((question, index) => (
-                        <fieldset key={index} className="grid gap-2 rounded-lg border p-3">
-                          <legend className="px-1 text-sm font-semibold">
-                            Question {index + 1}
-                          </legend>
-                          <Textarea
-                            required
-                            placeholder="Question prompt"
-                            value={question.prompt}
+                      <div className="flex flex-wrap items-end gap-3">
+                        <label className="grid gap-1 text-xs">
+                          Correct option
+                          <select
+                            className="h-9 rounded-md border bg-background px-2"
+                            value={question.correct_option}
                             onChange={(event) =>
                               setQuestions(
                                 questions.map((item, i) =>
-                                  i === index ? { ...item, prompt: event.target.value } : item,
+                                  i === index
+                                    ? { ...item, correct_option: event.target.value }
+                                    : item,
+                                ),
+                              )
+                            }
+                          >
+                            <option>A</option>
+                            <option>B</option>
+                            <option>C</option>
+                            <option>D</option>
+                          </select>
+                        </label>
+                        <label className="grid gap-1 text-xs">
+                          Points
+                          <Input
+                            type="number"
+                            min="1"
+                            max="100"
+                            className="w-24"
+                            value={question.points}
+                            onChange={(event) =>
+                              setQuestions(
+                                questions.map((item, i) =>
+                                  i === index
+                                    ? { ...item, points: Number(event.target.value) }
+                                    : item,
                                 ),
                               )
                             }
                           />
-                          <div className="grid gap-2 sm:grid-cols-2">
-                            {(["option_a", "option_b", "option_c", "option_d"] as const).map(
-                              (field) => (
-                                <Input
-                                  key={field}
-                                  required
-                                  placeholder={`Option ${field.slice(-1).toUpperCase()}`}
-                                  value={question[field]}
-                                  onChange={(event) =>
-                                    setQuestions(
-                                      questions.map((item, i) =>
-                                        i === index
-                                          ? { ...item, [field]: event.target.value }
-                                          : item,
-                                      ),
-                                    )
-                                  }
-                                />
-                              ),
-                            )}
-                          </div>
-                          <div className="flex flex-wrap items-end gap-3">
-                            <label className="grid gap-1 text-xs">
-                              Correct option
-                              <select
-                                className="h-9 rounded-md border bg-background px-2"
-                                value={question.correct_option}
-                                onChange={(event) =>
-                                  setQuestions(
-                                    questions.map((item, i) =>
-                                      i === index
-                                        ? { ...item, correct_option: event.target.value }
-                                        : item,
-                                    ),
-                                  )
-                                }
-                              >
-                                <option>A</option>
-                                <option>B</option>
-                                <option>C</option>
-                                <option>D</option>
-                              </select>
-                            </label>
-                            <label className="grid gap-1 text-xs">
-                              Points
-                              <Input
-                                type="number"
-                                min="1"
-                                max="100"
-                                className="w-24"
-                                value={question.points}
-                                onChange={(event) =>
-                                  setQuestions(
-                                    questions.map((item, i) =>
-                                      i === index
-                                        ? { ...item, points: Number(event.target.value) }
-                                        : item,
-                                    ),
-                                  )
-                                }
-                              />
-                            </label>
-                            {questions.length > 1 && (
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="outline"
-                                onClick={() =>
-                                  setQuestions(questions.filter((_, i) => i !== index))
-                                }
-                              >
-                                Remove question
-                              </Button>
-                            )}
-                          </div>
-                        </fieldset>
-                      ))}
-                      <div className="flex flex-wrap gap-2">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={() => setQuestions([...questions, initialQuestion()])}
-                        >
-                          <Plus className="mr-1 h-4 w-4" />
-                          Add question
-                        </Button>
-                        <Button disabled={busy}>{busy ? "Creating…" : "Schedule CAT"}</Button>
+                        </label>
+                        {questions.length > 1 && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setQuestions(questions.filter((_, i) => i !== index))}
+                          >
+                            Remove question
+                          </Button>
+                        )}
                       </div>
-                    </form>
-                  </section>
-                )}
-              </div>
-              <aside className="space-y-5">
-                {permissions.can_manage_materials && (
-                  <section
-                    id="facilitator-materials"
-                    className="scroll-mt-24 rounded-xl border bg-card p-5 shadow-card"
-                  >
-                    <h2 className="font-semibold text-brand">Learning materials & videos</h2>
-                    <form
-                      className="mt-3 grid gap-2"
-                      onSubmit={(event) => void createMaterial(event)}
+                    </fieldset>
+                  ))}
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setQuestions([...questions, initialQuestion()])}
                     >
-                      <Input
-                        required
-                        maxLength={160}
-                        placeholder="Material title"
-                        value={materialDraft.title}
-                        onChange={(event) =>
-                          setMaterialDraft({ ...materialDraft, title: event.target.value })
-                        }
-                      />
-                      <Input
-                        placeholder="Video or resource URL (optional)"
-                        type="url"
-                        value={materialDraft.videoUrl}
-                        onChange={(event) =>
-                          setMaterialDraft({ ...materialDraft, videoUrl: event.target.value })
-                        }
-                      />
-                      <input
-                        type="file"
-                        onChange={(event) =>
-                          setMaterialDraft({
-                            ...materialDraft,
-                            file: event.target.files?.[0] ?? null,
-                          })
-                        }
-                      />
-                      <Textarea
-                        rows={2}
-                        placeholder="Description"
-                        value={materialDraft.description}
-                        onChange={(event) =>
-                          setMaterialDraft({ ...materialDraft, description: event.target.value })
-                        }
-                      />
-                      <Button disabled={busy}>{busy ? "Uploading…" : "Publish material"}</Button>
-                    </form>
-                    <ul className="mt-4 divide-y">
-                      {(materialsQuery.data ?? []).map((material) => (
-                        <li key={material.id} className="flex items-start gap-2 py-3 text-sm">
-                          {material.material_type === "video" ? (
-                            <Video className="mt-0.5 h-4 w-4 text-primary" />
-                          ) : (
-                            <FileText className="mt-0.5 h-4 w-4 text-primary" />
-                          )}
-                          <span>
-                            {material.title}
-                            <span className="block text-xs text-muted-foreground">
-                              {material.description}
-                            </span>
-                          </span>
-                          {material.external_url && (
-                            <a
-                              className="ml-auto shrink-0 font-semibold text-primary underline"
-                              href={material.external_url}
-                              target="_blank"
-                              rel="noreferrer"
-                            >
-                              Open
-                            </a>
-                          )}
-                          {material.file_path && (
-                            <MaterialDownload path={material.file_path} filename={material.title} />
-                          )}
-                        </li>
-                      ))}
-                    </ul>
-                  </section>
-                )}
-                {permissions.can_manage_results && (
-                  <section
-                    id="facilitator-results"
-                    className="scroll-mt-24 rounded-xl border bg-card p-5 shadow-card"
-                  >
-                    <h2 className="font-semibold text-brand">Post results</h2>
-                    <form
-                      className="mt-3 grid gap-2"
-                      onSubmit={(event) => void createResult(event)}
-                    >
-                      <select
-                        className="h-10 rounded-md border bg-background px-3"
-                        required
-                        value={resultDraft.studentId}
-                        onChange={(event) =>
-                          setResultDraft({ ...resultDraft, studentId: event.target.value })
-                        }
-                      >
-                        <option value="">Select student</option>
-                        {(studentsQuery.data ?? []).map((student) => (
-                          <option key={student.id} value={student.id}>
-                            {student.student_number} · {student.first_name} {student.last_name}
-                          </option>
-                        ))}
-                      </select>
-                      <Input
-                        type="number"
-                        min="0"
-                        max="100"
-                        step="0.01"
-                        required
-                        placeholder="Score (0-100)"
-                        value={resultDraft.score}
-                        onChange={(event) =>
-                          setResultDraft({ ...resultDraft, score: event.target.value })
-                        }
-                      />
-                      <Input
-                        placeholder="Grade (optional)"
-                        value={resultDraft.grade}
-                        onChange={(event) =>
-                          setResultDraft({ ...resultDraft, grade: event.target.value })
-                        }
-                      />
-                      <Input
-                        placeholder="Academic year (optional)"
-                        value={resultDraft.academicYear}
-                        onChange={(event) =>
-                          setResultDraft({ ...resultDraft, academicYear: event.target.value })
-                        }
-                      />
-                      <Button disabled={busy || !studentsQuery.data?.length}>
-                        {busy ? "Publishing…" : "Publish result"}
-                      </Button>
-                    </form>
-                    <div className="mt-4 space-y-2">
-                      {(resultQuery.data ?? []).map((result) => (
-                        <p key={result.id} className="text-sm">
-                          {studentById.get(result.student_id)?.student_number ?? "Student"} ·{" "}
-                          {result.unit_name} · {result.score ?? "—"}{" "}
-                          {result.grade ? `(${result.grade})` : ""}
-                        </p>
-                      ))}
-                    </div>
-                    {resultQuery.error && (
-                      <p role="alert" className="mt-2 text-sm text-destructive">
-                        {resultQuery.error.message}
-                      </p>
-                    )}
-                  </section>
-                )}
-                {!permissions.can_manage_materials &&
-                  !permissions.can_manage_assignments &&
-                  !permissions.can_manage_cats &&
-                  !permissions.can_manage_results && (
-                    <p className="rounded-xl border bg-card p-5 text-sm text-muted-foreground">
-                      Teaching actions are currently disabled by the administration for this unit.
-                    </p>
-                  )}
-              </aside>
-            </section>
-            <FacilitatorInboxSection
-              userId={userId}
-              students={studentsQuery.data ?? []}
-              activeUnitName={activeUnit.unit.title}
-            />
-            <section
-              id="facilitator-memos"
-              className="scroll-mt-24 rounded-xl border bg-card p-5 shadow-card"
-            >
-              <div className="flex items-start gap-3">
-                <FileText className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
-                <div>
-                  <h2 className="font-semibold text-brand">Institute memos</h2>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    Notices shared by administration for facilitators.
-                  </p>
-                </div>
-              </div>
-              {memosQuery.error ? (
-                <p role="alert" className="mt-3 text-sm text-destructive">
-                  Could not load memos: {memosQuery.error.message}
-                </p>
-              ) : memosQuery.isLoading ? (
-                <p className="mt-3 text-sm text-muted-foreground">Loading memos…</p>
-              ) : memosQuery.data?.length ? (
+                      <Plus className="mr-1 h-4 w-4" />
+                      Add question
+                    </Button>
+                    <Button disabled={busy}>{busy ? "Creating…" : "Schedule CAT"}</Button>
+                  </div>
+                </form>
+              </section>
+            )}
+            {permissions.can_manage_materials && activeSection === "facilitator-materials" && (
+              <section
+                id="facilitator-materials"
+                className="rounded-xl border bg-card p-5 shadow-card"
+              >
+                <h2 className="font-semibold text-brand">Learning materials & videos</h2>
+                <form
+                  className="mt-3 grid min-w-0 grid-cols-1 gap-2"
+                  onSubmit={(event) => void createMaterial(event)}
+                >
+                  <Input
+                    required
+                    maxLength={160}
+                    placeholder="Material title"
+                    value={materialDraft.title}
+                    onChange={(event) =>
+                      setMaterialDraft({ ...materialDraft, title: event.target.value })
+                    }
+                  />
+                  <Input
+                    placeholder="Video or resource URL (optional)"
+                    type="url"
+                    value={materialDraft.videoUrl}
+                    onChange={(event) =>
+                      setMaterialDraft({ ...materialDraft, videoUrl: event.target.value })
+                    }
+                  />
+                  <input
+                    type="file"
+                    className="w-full min-w-0 max-w-full text-xs"
+                    onChange={(event) =>
+                      setMaterialDraft({
+                        ...materialDraft,
+                        file: event.target.files?.[0] ?? null,
+                      })
+                    }
+                  />
+                  <Textarea
+                    rows={2}
+                    placeholder="Description"
+                    value={materialDraft.description}
+                    onChange={(event) =>
+                      setMaterialDraft({ ...materialDraft, description: event.target.value })
+                    }
+                  />
+                  <Button disabled={busy}>{busy ? "Uploading…" : "Publish material"}</Button>
+                </form>
                 <ul className="mt-4 divide-y">
-                  {memosQuery.data.map((memo) => (
-                    <li
-                      key={memo.id}
-                      className="flex flex-wrap items-start justify-between gap-3 py-3"
-                    >
-                      <div className="min-w-0">
-                        <h3 className="font-medium">{memo.title}</h3>
-                        <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">
-                          {memo.body
-                            .replace(/<[^>]*>/g, " ")
-                            .replace(/\s+/g, " ")
-                            .trim()}
-                        </p>
-                        <time className="mt-1 block text-xs text-muted-foreground">
-                          {new Date(memo.created_at).toLocaleDateString("en-KE")}
-                        </time>
-                      </div>
-                      {memo.attachment_url && (
-                        <MemoDownloadButton
-                          url={memo.attachment_url}
-                          filename={memo.attachment_file_name || memo.title}
-                        />
+                  {(materialsQuery.data ?? []).map((material) => (
+                    <li key={material.id} className="flex items-start gap-2 py-3 text-sm">
+                      {material.material_type === "video" ? (
+                        <Video className="mt-0.5 h-4 w-4 text-primary" />
+                      ) : (
+                        <FileText className="mt-0.5 h-4 w-4 text-primary" />
+                      )}
+                      <span>
+                        {material.title}
+                        <span className="block text-xs text-muted-foreground">
+                          {material.description}
+                        </span>
+                      </span>
+                      {material.external_url && (
+                        <a
+                          className="ml-auto shrink-0 font-semibold text-primary underline"
+                          href={material.external_url}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          Open
+                        </a>
+                      )}
+                      {material.file_path && (
+                        <MaterialDownload path={material.file_path} filename={material.title} />
                       )}
                     </li>
                   ))}
                 </ul>
-              ) : (
-                <p className="mt-4 rounded-lg bg-muted/50 p-4 text-sm text-muted-foreground">
-                  There are no memos published for facilitators.
-                </p>
-              )}
-            </section>
-            <FacilitatorProfileSection userId={userId} email={email} profile={profileQuery.data} />
+              </section>
+            )}
+            {permissions.can_manage_results && activeSection === "facilitator-results" && (
+              <section
+                id="facilitator-results"
+                className="rounded-xl border bg-card p-5 shadow-card"
+              >
+                <h2 className="font-semibold text-brand">Post results</h2>
+                <form className="mt-3 grid gap-2" onSubmit={(event) => void createResult(event)}>
+                  <select
+                    className="h-10 rounded-md border bg-background px-3"
+                    required
+                    value={resultDraft.studentId}
+                    onChange={(event) =>
+                      setResultDraft({ ...resultDraft, studentId: event.target.value })
+                    }
+                  >
+                    <option value="">Select student</option>
+                    {(studentsQuery.data ?? []).map((student) => (
+                      <option key={student.id} value={student.id}>
+                        {student.student_number} · {student.first_name} {student.last_name}
+                      </option>
+                    ))}
+                  </select>
+                  <Input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.01"
+                    required
+                    placeholder="Score (0-100)"
+                    value={resultDraft.score}
+                    onChange={(event) =>
+                      setResultDraft({ ...resultDraft, score: event.target.value })
+                    }
+                  />
+                  <Input
+                    placeholder="Grade (optional)"
+                    value={resultDraft.grade}
+                    onChange={(event) =>
+                      setResultDraft({ ...resultDraft, grade: event.target.value })
+                    }
+                  />
+                  <Input
+                    placeholder="Academic year (optional)"
+                    value={resultDraft.academicYear}
+                    onChange={(event) =>
+                      setResultDraft({ ...resultDraft, academicYear: event.target.value })
+                    }
+                  />
+                  <Button disabled={busy || !studentsQuery.data?.length}>
+                    {busy ? "Publishing…" : "Publish result"}
+                  </Button>
+                </form>
+                <div className="mt-4 space-y-2">
+                  {(resultQuery.data ?? []).map((result) => (
+                    <p key={result.id} className="text-sm">
+                      {studentById.get(result.student_id)?.student_number ?? "Student"} ·{" "}
+                      {result.unit_name} · {result.score ?? "—"}{" "}
+                      {result.grade ? `(${result.grade})` : ""}
+                    </p>
+                  ))}
+                </div>
+                {resultQuery.error && (
+                  <p role="alert" className="mt-2 text-sm text-destructive">
+                    {resultQuery.error.message}
+                  </p>
+                )}
+              </section>
+            )}
+            {activeSection === "facilitator-inbox" && (
+              <FacilitatorInboxSection
+                userId={userId}
+                students={studentsQuery.data ?? []}
+                activeUnitName={activeUnit.unit.title}
+              />
+            )}
+            {activeSection === "facilitator-memos" && (
+              <section id="facilitator-memos" className="rounded-xl border bg-card p-5 shadow-card">
+                <div className="flex items-start gap-3">
+                  <FileText className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+                  <div>
+                    <h2 className="font-semibold text-brand">Institute memos</h2>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Notices shared by administration for facilitators.
+                    </p>
+                  </div>
+                </div>
+                {memosQuery.error ? (
+                  <p role="alert" className="mt-3 text-sm text-destructive">
+                    Could not load memos: {memosQuery.error.message}
+                  </p>
+                ) : memosQuery.isLoading ? (
+                  <p className="mt-3 text-sm text-muted-foreground">Loading memos…</p>
+                ) : memosQuery.data?.length ? (
+                  <ul className="mt-4 divide-y">
+                    {memosQuery.data.map((memo) => (
+                      <li
+                        key={memo.id}
+                        className="flex flex-wrap items-start justify-between gap-3 py-3"
+                      >
+                        <div className="min-w-0">
+                          <h3 className="font-medium">{memo.title}</h3>
+                          <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">
+                            {memo.body
+                              .replace(/<[^>]*>/g, " ")
+                              .replace(/\s+/g, " ")
+                              .trim()}
+                          </p>
+                          <time className="mt-1 block text-xs text-muted-foreground">
+                            {new Date(memo.created_at).toLocaleDateString("en-KE")}
+                          </time>
+                        </div>
+                        {memo.attachment_url && (
+                          <MemoDownloadButton
+                            url={memo.attachment_url}
+                            filename={memo.attachment_file_name || memo.title}
+                          />
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="mt-4 rounded-lg bg-muted/50 p-4 text-sm text-muted-foreground">
+                    There are no memos published for facilitators.
+                  </p>
+                )}
+              </section>
+            )}
+            {activeSection === "facilitator-profile" && (
+              <FacilitatorProfileSection
+                userId={userId}
+                email={email}
+                profile={profileQuery.data}
+              />
+            )}
           </div>
-        </div>
-      </main>
+        </main>
+      </div>
+      <nav
+        className="student-mobile-nav fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t bg-background/95 px-2 pt-1 shadow-[0_-8px_24px_-16px_rgba(20,10,10,0.35)] backdrop-blur-lg lg:hidden"
+        aria-label="Facilitator app"
+      >
+        {mobileNavigationItems.map(({ id, title, icon: Icon }) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => selectSection(id)}
+            aria-current={activeSection === id ? "page" : undefined}
+            className={`flex min-w-0 flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-1 text-[10px] font-semibold ${activeSection === id ? "text-brand" : "text-muted-foreground hover:text-brand"}`}
+          >
+            <Icon className="h-5 w-5" />
+            <span className="max-w-full truncate">{title}</span>
+          </button>
+        ))}
+        <button
+          type="button"
+          onClick={() => setMoreOpen(true)}
+          aria-haspopup="dialog"
+          aria-expanded={moreOpen}
+          className="flex min-w-0 flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-1 text-[10px] font-semibold text-muted-foreground"
+        >
+          <MoreHorizontal className="h-5 w-5" />
+          <span>More</span>
+        </button>
+      </nav>
+      <Sheet open={moreOpen} onOpenChange={setMoreOpen}>
+        <SheetContent side="bottom" className="rounded-t-3xl pb-8">
+          <SheetHeader className="mb-5 pr-8 text-left">
+            <SheetTitle>More facilitator tools</SheetTitle>
+            <SheetDescription>Assessments, results, memos and account settings</SheetDescription>
+          </SheetHeader>
+          <div className="grid grid-cols-2 gap-3 pb-2">
+            {moreNavigationItems.map(({ id, title, icon: Icon }) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => selectSection(id)}
+                className="flex min-h-16 items-center gap-3 rounded-2xl border bg-card p-4 text-left text-sm font-semibold hover:bg-muted"
+              >
+                <Icon className="h-5 w-5 shrink-0" />
+                {title}
+              </button>
+            ))}
+          </div>
+          <p className="mt-5 truncate text-xs text-muted-foreground">{email}</p>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
@@ -1253,20 +1391,48 @@ function FacilitatorWorkspace({ userId, email }: { userId: string; email: string
 function PortalNavLink({
   href,
   onSelect,
+  isActive,
   children,
 }: {
   href: string;
   onSelect: () => void;
+  isActive: boolean;
   children: React.ReactNode;
 }) {
   return (
     <a
       href={href}
-      onClick={onSelect}
-      className="flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-sm text-muted-foreground transition hover:bg-muted hover:text-brand"
+      onClick={(event) => {
+        event.preventDefault();
+        onSelect();
+      }}
+      aria-current={isActive ? "location" : undefined}
+      className={`flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-sm transition ${isActive ? "bg-accent font-medium text-brand shadow-sm ring-1 ring-primary/15" : "text-muted-foreground hover:bg-muted hover:text-brand"}`}
     >
       {children}
     </a>
+  );
+}
+
+function DashboardSummaryCard({
+  label,
+  value,
+  icon: Icon,
+}: {
+  label: string;
+  value: number;
+  icon: LucideIcon;
+}) {
+  return (
+    <div className="rounded-xl border bg-card p-4 shadow-card">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm text-muted-foreground">{label}</p>
+        <span className="grid h-9 w-9 place-items-center rounded-lg bg-primary/10 text-primary">
+          <Icon className="h-4 w-4" />
+        </span>
+      </div>
+      <p className="mt-3 text-2xl font-bold text-brand">{value}</p>
+    </div>
   );
 }
 
