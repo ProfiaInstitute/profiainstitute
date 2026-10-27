@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { FunctionsHttpError } from "@supabase/supabase-js";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,6 +22,27 @@ const noPermissions: Permissions = {
   can_manage_cats: false,
   can_manage_results: false,
 };
+
+async function getInvitationErrorMessage(error: unknown): Promise<string> {
+  if (error instanceof FunctionsHttpError && error.context instanceof Response) {
+    try {
+      const payload: unknown = await error.context.clone().json();
+      if (
+        typeof payload === "object" &&
+        payload !== null &&
+        "error" in payload &&
+        typeof payload.error === "string"
+      ) {
+        return payload.error;
+      }
+    } catch {
+      return error.message;
+    }
+  }
+  return error instanceof Error
+    ? error.message
+    : "The invitation service returned no confirmation.";
+}
 
 export function FacilitatorManager() {
   const { user } = useUser();
@@ -100,7 +122,10 @@ export function FacilitatorManager() {
     if (error || !data?.success) {
       toast.error("Could not invite facilitator", {
         description:
-          data?.error ?? error?.message ?? "The invitation service returned no confirmation.",
+          data?.error ??
+          (error
+            ? await getInvitationErrorMessage(error)
+            : "The invitation service returned no confirmation."),
       });
       return;
     }

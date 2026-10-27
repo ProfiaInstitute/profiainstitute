@@ -2660,6 +2660,28 @@ Apply `drizzle/migrations/0028_partner_media_links.sql` after migration
 HTTP(S) destination to each partner image; visitors open it by selecting the
 image.
 
+### Student progression and facilitator portal
+
+Apply `drizzle/migrations/0029_student_facilitator_portal.sql` after
+`0028_partner_media_links.sql` before using student progression applications,
+feedback, portal messages, or facilitator accounts. This migration adds the
+`facilitator` role and the tables, policies, and database functions required by
+these features. Apply it in the Supabase SQL Editor or through the project's
+approved migration workflow; deploying the website alone does not apply
+database migrations.
+
+After applying the migration, deploy the updated staff Edge Functions so
+facilitator invitations and staff management accept the new role:
+
+```sh
+supabase functions deploy invite-staff --project-ref mnufqsnsaiaiqzhvpinf
+supabase functions deploy manage-staff --project-ref mnufqsnsaiaiqzhvpinf
+```
+
+Set `PUBLIC_SITE_URL` for `invite-staff` and verify Supabase Auth email delivery
+and redirect URLs include `/facilitator`. The admin facilitator screen reports
+an actionable database setup error if the migration has not been applied.
+
 ### Student progression email follow-ups
 
 Apply `0003_student_progression_followups.sql` after migrations `0000` through
