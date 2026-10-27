@@ -3729,6 +3729,7 @@ function ContentCreateForm({
     starts_at: "",
     ends_at: "",
     show_to_students: section === "memos",
+    show_to_facilitators: false,
     cta_label: "",
     cta_url: "",
     published: false,
@@ -3828,6 +3829,7 @@ function ContentCreateForm({
         show_public: true,
         show_on_homepage: true,
         show_to_students: values.show_to_students,
+        show_to_facilitators: section === "memos" && values.show_to_facilitators,
         cta_label: values.cta_label.trim() || null,
         cta_url: values.cta_url.trim() || null,
         published: values.published,
@@ -3874,6 +3876,7 @@ function ContentCreateForm({
         starts_at: "",
         ends_at: "",
         show_to_students: section === "memos",
+        show_to_facilitators: false,
         cta_label: "",
         cta_url: "",
         published: false,
@@ -3964,6 +3967,18 @@ function ContentCreateForm({
                   />
                   Show in student portal
                 </label>
+                {section === "memos" && (
+                  <label className="flex items-center gap-2 text-sm font-medium">
+                    <input
+                      type="checkbox"
+                      checked={values.show_to_facilitators}
+                      onChange={(event) =>
+                        setValues({ ...values, show_to_facilitators: event.target.checked })
+                      }
+                    />
+                    Show in facilitator portal
+                  </label>
+                )}
                 {section === "announcements" && (
                   <>
                     <Input
@@ -4006,7 +4021,8 @@ function ContentCreateForm({
             />
             {section === "memos" && (
               <p className="text-xs text-muted-foreground">
-                Attach a memo document; students can download it directly from their portal.
+                Attach a memo document; students and facilitators can download it from their portals
+                when enabled above.
               </p>
             )}
           </>
@@ -4136,6 +4152,7 @@ function ContentEditForm({
     starts_at: dateTimeLocalValue(record["starts_at"]),
     ends_at: dateTimeLocalValue(record["ends_at"]),
     show_to_students: record["show_to_students"] === true,
+    show_to_facilitators: record["show_to_facilitators"] === true,
     cta_label: String(record["cta_label"] ?? ""),
     cta_url: String(record["cta_url"] ?? ""),
   });
@@ -4248,6 +4265,7 @@ function ContentEditForm({
               ends_at: endsAt,
               published: values.published,
               show_to_students: values.show_to_students,
+              show_to_facilitators: section === "memos" && values.show_to_facilitators,
               cta_label: section === "announcements" ? values.cta_label.trim() || null : null,
               cta_url: section === "announcements" ? values.cta_url.trim() || null : null,
               show_public: true,
@@ -4314,6 +4332,18 @@ function ContentEditForm({
             />
             Show in student portal
           </label>
+          {section === "memos" && (
+            <label className="flex items-center gap-2 text-sm font-medium">
+              <input
+                type="checkbox"
+                checked={values.show_to_facilitators}
+                onChange={(event) =>
+                  setValues({ ...values, show_to_facilitators: event.target.checked })
+                }
+              />
+              Show in facilitator portal
+            </label>
+          )}
           {section === "announcements" && (
             <>
               <Input
