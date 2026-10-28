@@ -8,6 +8,9 @@ describe("CAT response parsing", () => {
       {
         id: "cat-1",
         title: "Unit CAT",
+        name: "CAT 1 Financial Accounting",
+        download_file_path: "course-1/cat-downloads/cat-file.pdf",
+        download_file_name: "cat-file.pdf",
         instructions: null,
         duration_minutes: 30,
         opens_at: "2026-10-25T08:00:00.000Z",
@@ -25,6 +28,9 @@ describe("CAT response parsing", () => {
     expect(parseStudentCats(value)).toEqual([
       expect.objectContaining({
         id: "cat-1",
+        name: "CAT 1 Financial Accounting",
+        downloadFilePath: "course-1/cat-downloads/cat-file.pdf",
+        downloadFileName: "cat-file.pdf",
         attemptId: "attempt-1",
         score: 4,
         maxScore: 5,
@@ -73,6 +79,10 @@ describe("CAT response parsing", () => {
         course_id: "course-1",
         course_title: "Course",
         title: "Unit CAT",
+        name: "CAT 1 Financial Accounting",
+        level_ids: ["level-1", "level-2"],
+        download_file_path: "course-1/cat-downloads/cat-file.pdf",
+        download_file_name: "cat-file.pdf",
         instructions: null,
         duration_minutes: 30,
         opens_at: "2026-10-25T08:00:00.000Z",
@@ -105,6 +115,9 @@ describe("CAT response parsing", () => {
     ];
 
     const [cat] = parseAdminCats(value);
+    expect(cat?.name).toBe("CAT 1 Financial Accounting");
+    expect(cat?.levelIds).toEqual(["level-1", "level-2"]);
+    expect(cat?.downloadFileName).toBe("cat-file.pdf");
     expect(cat?.questions[0]?.correctOption).toBe("C");
     expect(cat?.attempts[0]?.answers[0]?.selectedOption).toBe("A");
   });

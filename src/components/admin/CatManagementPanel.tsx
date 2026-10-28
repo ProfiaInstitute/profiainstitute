@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -6,7 +6,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { LevelTargetPicker } from "@/components/academics/LevelTargetPicker";
+import { CatDownloadButton } from "@/components/academics/CatDownloadButton";
 import { supabase } from "@/integrations/supabase/client";
+import { safeUploadFileName } from "@/lib/file-uploads";
 import { catDateTimeLabel, parseAdminCats, type AdminCat, type CatOptionKey } from "@/lib/cats";
 
 type QuestionDraft = {
@@ -38,7 +41,11 @@ function newQuestion(): QuestionDraft {
 export function CatManagementPanel() {
   const queryClient = useQueryClient();
   const [title, setTitle] = useState("");
+  const [name, setName] = useState("");
   const [courseId, setCourseId] = useState("");
+  const [levelIds, setLevelIds] = useState<string[]>([]);
+  const [downloadFile, setDownloadFile] = useState<File | null>(null);
+  const downloadFileInputRef = useRef<HTMLInputElement>(null);
   const [instructions, setInstructions] = useState("");
   const [durationMinutes, setDurationMinutes] = useState("30");
   const [opensAt, setOpensAt] = useState("");
@@ -75,29 +82,71 @@ export function CatManagementPanel() {
       if (!Number.isInteger(duration) || duration < 1 || duration > 360) {
         throw new Error("CAT duration must be from 1 to 360 minutes.");
       }
-      const { error } = await supabase.rpc("create_cat_assessment", {
-        _course_id: courseId,
-        _title: title.trim(),
-        _instructions: instructions.trim() || null,
-        _duration_minutes: duration,
-        _opens_at: openingTime.toISOString(),
-        _closes_at: closingTime.toISOString(),
-        _questions: questions.map((question) => ({
-          prompt: question.prompt.trim(),
-          option_a: question.optionA.trim(),
-          option_b: question.optionB.trim(),
-          option_c: question.optionC.trim(),
-          option_d: question.optionD.trim(),
-          correct_option: question.correctOption,
-          points: Number(question.points),
-        })),
-      });
-      if (error) throw error;
+      if (!name.trim() || !levelIds.length) {
+        throw new Error("Enter a CAT download name and select at least one course level.");
+      }
+      if (downloadFile && downloadFile.size > 50 * 1024 * 1024) {
+        throw new Error("CAT download files must be 50 MB or smaller.");
+      }
+
+      let downloadFilePath: string | null = null;
+      if (downloadFile) {
+        downloadFilePath = `${courseId}/cat-downloads/${crypto.randomUUID()}-${safeUploadFileName(downloadFile.name)}`;
+        const { error: uploadError } = await supabase.storage
+          .from("learning")
+          .upload(downloadFilePath, downloadFile, {
+            contentType: downloadFile.type || "application/octet-stream",
+            upsert: false,
+          });
+        if (uploadError) throw uploadError;
+      }
+
+      try {
+        const { error } = await supabase.rpc("create_cat_assessment", {
+          _course_id: courseId,
+          _title: title.trim(),
+          _name: name.trim(),
+          _level_ids: levelIds,
+          _instructions: instructions.trim() || null,
+          _duration_minutes: duration,
+          _opens_at: openingTime.toISOString(),
+          _closes_at: closingTime.toISOString(),
+          _questions: questions.map((question) => ({
+            prompt: question.prompt.trim(),
+            option_a: question.optionA.trim(),
+            option_b: question.optionB.trim(),
+            option_c: question.optionC.trim(),
+            option_d: question.optionD.trim(),
+            correct_option: question.correctOption,
+            points: Number(question.points),
+          })),
+          _download_file_path: downloadFilePath,
+          _download_file_name: downloadFile?.name ?? null,
+        });
+        if (error) throw error;
+      } catch (error) {
+        if (downloadFilePath) {
+          const { error: cleanupError } = await supabase.storage
+            .from("learning")
+            .remove([downloadFilePath]);
+          if (cleanupError) {
+            const message = error instanceof Error ? error.message : "The CAT could not be saved.";
+            throw new Error(
+              `${message} The uploaded CAT file could not be cleaned up: ${cleanupError.message}`,
+            );
+          }
+        }
+        throw error;
+      }
     },
     onSuccess: async () => {
       toast.success("CAT created and published");
       setTitle("");
+      setName("");
       setCourseId("");
+      setLevelIds([]);
+      setDownloadFile(null);
+      if (downloadFileInputRef.current) downloadFileInputRef.current.value = "";
       setInstructions("");
       setDurationMinutes("30");
       setOpensAt("");
@@ -139,11 +188,21 @@ export function CatManagementPanel() {
               value={title}
               onChange={(event) => setTitle(event.target.value)}
             />
+            <Input
+              required
+              maxLength={160}
+              placeholder="CAT download name (e.g. CAT 1 Financial Accounting)"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+            />
             <select
               required
               className={selectClass}
               value={courseId}
-              onChange={(event) => setCourseId(event.target.value)}
+              onChange={(event) => {
+                setCourseId(event.target.value);
+                setLevelIds([]);
+              }}
             >
               <option value="">Select course</option>
               {query.data?.courses.map((course) => (
@@ -152,6 +211,24 @@ export function CatManagementPanel() {
                 </option>
               ))}
             </select>
+            <LevelTargetPicker
+              courseId={courseId}
+              selectedLevelIds={levelIds}
+              onChange={setLevelIds}
+            />
+            <label className="grid gap-1 text-sm font-medium sm:col-span-2">
+              Optional downloadable CAT file
+              <input
+                ref={downloadFileInputRef}
+                type="file"
+                accept=".pdf,.doc,.docx,.odt,.rtf"
+                className="w-full min-w-0 max-w-full text-xs"
+                onChange={(event) => setDownloadFile(event.target.files?.[0] ?? null)}
+              />
+              <span className="text-xs text-muted-foreground">
+                Maximum file size: 50 MB. The timed online CAT remains available separately.
+              </span>
+            </label>
             <Input
               required
               type="number"
@@ -347,6 +424,7 @@ function CatResultCard({ cat }: { cat: AdminCat }) {
         <div>
           <h3 className="font-semibold text-brand">{cat.title}</h3>
           <p className="mt-1 text-sm text-muted-foreground">{cat.courseTitle}</p>
+          <p className="mt-1 text-sm">Student download name: {cat.name}</p>
         </div>
         <Badge variant={state === "Open" ? "default" : "secondary"}>{state}</Badge>
       </div>
@@ -357,6 +435,13 @@ function CatResultCard({ cat }: { cat: AdminCat }) {
         <span>Closes {catDateTimeLabel(cat.closesAt)}</span>
       </div>
       {cat.instructions && <p className="whitespace-pre-wrap text-sm">{cat.instructions}</p>}
+      {cat.downloadFilePath && cat.downloadFileName && (
+        <CatDownloadButton
+          path={cat.downloadFilePath}
+          filename={cat.downloadFileName}
+          name={cat.name}
+        />
+      )}
       {cat.attempts.length ? (
         <div className="space-y-2 border-t pt-3">
           <h4 className="text-sm font-semibold">Student attempts · {cat.attempts.length}</h4>

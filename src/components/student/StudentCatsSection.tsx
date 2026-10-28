@@ -4,6 +4,7 @@ import { Clock3 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { CatDownloadButton } from "@/components/academics/CatDownloadButton";
 import { supabase } from "@/integrations/supabase/client";
 import {
   catDateTimeLabel,
@@ -282,7 +283,10 @@ export function StudentCatsSection({ courseId }: { courseId: string | null }) {
       ))}
     </div>
   ) : (
-    <EmptyCats title="No CATs yet" detail="CATs published for your course will appear here." />
+    <EmptyCats
+      title="No CATs yet"
+      detail="CATs published for your course level will appear here."
+    />
   );
 }
 
@@ -313,6 +317,7 @@ function CatStudentCard({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="font-semibold text-brand">{cat.title}</h2>
+          <p className="mt-1 text-sm font-medium">CAT download name: {cat.name}</p>
           <p className="mt-1 text-sm text-muted-foreground">
             {cat.durationMinutes} minute time limit · Opens {catDateTimeLabel(cat.opensAt)} · Closes{" "}
             {catDateTimeLabel(cat.closesAt)}
@@ -324,6 +329,15 @@ function CatStudentCard({
       </div>
       {cat.instructions && (
         <p className="mt-3 whitespace-pre-wrap text-sm text-muted-foreground">{cat.instructions}</p>
+      )}
+      {cat.downloadFilePath && cat.downloadFileName && (
+        <div className="mt-4">
+          <CatDownloadButton
+            path={cat.downloadFilePath}
+            filename={cat.downloadFileName}
+            name={cat.name}
+          />
+        </div>
       )}
       {submitted ? (
         <p className="mt-4 rounded-lg bg-accent p-3 text-sm font-semibold">

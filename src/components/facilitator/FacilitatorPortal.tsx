@@ -19,6 +19,8 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { PasswordResetPage } from "@/components/auth/PasswordResetPage";
+import { LevelTargetPicker } from "@/components/academics/LevelTargetPicker";
+import { SubmissionFileDownloads } from "@/components/academics/SubmissionFileDownloads";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -26,6 +28,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { downloadContentAttachment } from "@/lib/content-download";
 import { PROFILE_PHOTO_MAX_BYTES, PROFILE_PHOTO_TYPES } from "@/lib/profile-photos";
 import { useRoles, useUser } from "@/lib/auth";
+import { submissionFilePaths } from "@/lib/assignments";
 import {
   contentKind,
   MAX_CONTENT_UPLOAD_SIZE,
@@ -369,6 +372,7 @@ function FacilitatorWorkspace({ userId, email }: { userId: string; email: string
     title: "",
     instructions: "",
     dueDate: "",
+    levelIds: [] as string[],
   });
   const [materialDraft, setMaterialDraft] = useState({
     title: "",
@@ -384,21 +388,41 @@ function FacilitatorWorkspace({ userId, email }: { userId: string; email: string
   });
   const [catDraft, setCatDraft] = useState({
     title: "",
+    name: "",
     instructions: "",
     duration: "30",
     opensAt: "",
     closesAt: "",
+    levelIds: [] as string[],
+    downloadFile: null as File | null,
   });
   const [questions, setQuestions] = useState([initialQuestion()]);
   const [busy, setBusy] = useState(false);
+  const catDownloadInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setAssignmentDraft((draft) => ({
+      ...draft,
+      levelIds: activeUnit?.unit.level_id ? [activeUnit.unit.level_id] : [],
+    }));
+    setCatDraft((draft) => ({
+      ...draft,
+      levelIds: activeUnit?.unit.level_id ? [activeUnit.unit.level_id] : [],
+    }));
+  }, [activeUnit?.unit_id, activeUnit?.unit.level_id]);
 
   async function createAssignment(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!activeUnit) return;
+    if (!assignmentDraft.levelIds.length) {
+      toast.error("Select at least one course level for this assignment.");
+      return;
+    }
     setBusy(true);
     const { error } = await supabase.from("assignments").insert({
       course_id: activeUnit.unit.course_id,
       unit_id: activeUnit.unit_id,
+      level_ids: assignmentDraft.levelIds,
       title: assignmentDraft.title.trim(),
       instructions: assignmentDraft.instructions.trim() || null,
       due_date: assignmentDraft.dueDate ? new Date(assignmentDraft.dueDate).toISOString() : null,
@@ -411,7 +435,12 @@ function FacilitatorWorkspace({ userId, email }: { userId: string; email: string
       return;
     }
     toast.success("Assignment published to the class");
-    setAssignmentDraft({ title: "", instructions: "", dueDate: "" });
+    setAssignmentDraft({
+      title: "",
+      instructions: "",
+      dueDate: "",
+      levelIds: activeUnit.unit.level_id ? [activeUnit.unit.level_id] : [],
+    });
     await queryClient.invalidateQueries({
       queryKey: ["facilitator", "assignments", activeUnit.unit_id],
     });
@@ -510,6 +539,14 @@ function FacilitatorWorkspace({ userId, email }: { userId: string; email: string
   async function createCat(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!activeUnit) return;
+    if (!catDraft.name.trim()) {
+      toast.error("Enter the name students should see on the CAT download.");
+      return;
+    }
+    if (!catDraft.levelIds.length) {
+      toast.error("Select at least one course level for this CAT.");
+      return;
+    }
     const opensAt = new Date(catDraft.opensAt);
     const closesAt = new Date(catDraft.closesAt);
     if (
@@ -518,6 +555,10 @@ function FacilitatorWorkspace({ userId, email }: { userId: string; email: string
       closesAt <= opensAt
     ) {
       toast.error("Choose valid CAT opening and closing times.");
+      return;
+    }
+    if (catDraft.downloadFile && catDraft.downloadFile.size > 50 * 1024 * 1024) {
+      toast.error("CAT download files must be 50 MB or smaller.");
       return;
     }
     if (
@@ -534,22 +575,70 @@ function FacilitatorWorkspace({ userId, email }: { userId: string; email: string
       return;
     }
     setBusy(true);
-    const { error } = await supabase.rpc("create_facilitator_cat", {
-      _unit_id: activeUnit.unit_id,
-      _title: catDraft.title.trim(),
-      _instructions: catDraft.instructions.trim() || null,
-      _duration_minutes: Number(catDraft.duration),
-      _opens_at: opensAt.toISOString(),
-      _closes_at: closesAt.toISOString(),
-      _questions: questions,
-    });
+    let downloadPath: string | null = null;
+    if (catDraft.downloadFile) {
+      downloadPath = `${activeUnit.unit.course_id}/${activeUnit.unit_id}/cat-downloads/${crypto.randomUUID()}-${safeUploadFileName(catDraft.downloadFile.name)}`;
+      try {
+        const { error: uploadError } = await supabase.storage
+          .from("learning")
+          .upload(downloadPath, catDraft.downloadFile, {
+            contentType: catDraft.downloadFile.type || "application/octet-stream",
+            upsert: false,
+          });
+        if (uploadError) throw uploadError;
+      } catch (error) {
+        setBusy(false);
+        toast.error("Could not upload CAT download", {
+          description: error instanceof Error ? error.message : "The file could not be uploaded.",
+        });
+        return;
+      }
+    }
+    let createError: Error | null = null;
+    try {
+      const { error } = await supabase.rpc("create_facilitator_cat", {
+        _unit_id: activeUnit.unit_id,
+        _title: catDraft.title.trim(),
+        _name: catDraft.name.trim(),
+        _level_ids: catDraft.levelIds,
+        _instructions: catDraft.instructions.trim() || null,
+        _duration_minutes: Number(catDraft.duration),
+        _opens_at: opensAt.toISOString(),
+        _closes_at: closesAt.toISOString(),
+        _questions: questions,
+        _download_file_path: downloadPath,
+        _download_file_name: catDraft.downloadFile?.name ?? null,
+      });
+      if (error) createError = error;
+    } catch (error) {
+      createError = error instanceof Error ? error : new Error("The CAT could not be created.");
+    }
     setBusy(false);
-    if (error) {
-      toast.error("Could not create CAT", { description: error.message });
+    if (createError) {
+      let description = createError.message;
+      if (downloadPath) {
+        const { error: cleanupError } = await supabase.storage
+          .from("learning")
+          .remove([downloadPath]);
+        if (cleanupError) {
+          description += ` The uploaded CAT file could not be cleaned up: ${cleanupError.message}`;
+        }
+      }
+      toast.error("Could not create CAT", { description });
       return;
     }
     toast.success("CAT scheduled for the assigned unit");
-    setCatDraft({ title: "", instructions: "", duration: "30", opensAt: "", closesAt: "" });
+    setCatDraft({
+      title: "",
+      name: "",
+      instructions: "",
+      duration: "30",
+      opensAt: "",
+      closesAt: "",
+      levelIds: activeUnit.unit.level_id ? [activeUnit.unit.level_id] : [],
+      downloadFile: null,
+    });
+    if (catDownloadInputRef.current) catDownloadInputRef.current.value = "";
     setQuestions([initialQuestion()]);
   }
 
@@ -910,6 +999,12 @@ function FacilitatorWorkspace({ userId, email }: { userId: string; email: string
                       setAssignmentDraft({ ...assignmentDraft, title: event.target.value })
                     }
                   />
+                  <LevelTargetPicker
+                    courseId={activeUnit.unit.course_id}
+                    selectedLevelIds={assignmentDraft.levelIds}
+                    onChange={(levelIds) => setAssignmentDraft({ ...assignmentDraft, levelIds })}
+                    allowedLevelId={activeUnit.unit.level_id}
+                  />
                   <Textarea
                     rows={3}
                     placeholder="Instructions"
@@ -972,6 +1067,37 @@ function FacilitatorWorkspace({ userId, email }: { userId: string; email: string
                     value={catDraft.title}
                     onChange={(event) => setCatDraft({ ...catDraft, title: event.target.value })}
                   />
+                  <Input
+                    required
+                    maxLength={160}
+                    placeholder="CAT download name (e.g. CAT 1 Financial Accounting)"
+                    value={catDraft.name}
+                    onChange={(event) => setCatDraft({ ...catDraft, name: event.target.value })}
+                  />
+                  <LevelTargetPicker
+                    courseId={activeUnit.unit.course_id}
+                    selectedLevelIds={catDraft.levelIds}
+                    onChange={(levelIds) => setCatDraft({ ...catDraft, levelIds })}
+                    allowedLevelId={activeUnit.unit.level_id}
+                  />
+                  <label className="grid gap-1 text-sm font-medium">
+                    Optional CAT download file
+                    <input
+                      ref={catDownloadInputRef}
+                      type="file"
+                      accept=".pdf,.doc,.docx,.odt,.rtf"
+                      className="w-full min-w-0 max-w-full text-xs"
+                      onChange={(event) =>
+                        setCatDraft({
+                          ...catDraft,
+                          downloadFile: event.target.files?.[0] ?? null,
+                        })
+                      }
+                    />
+                    <span className="text-xs text-muted-foreground">
+                      Maximum file size: 50 MB. The timed online CAT remains available separately.
+                    </span>
+                  </label>
                   <Textarea
                     rows={2}
                     placeholder="Instructions"
@@ -1863,7 +1989,9 @@ function SubmissionsList({ assignments }: { assignments: Array<{ id: string; tit
     queryFn: async () => {
       const { data, error } = await supabase
         .from("submissions")
-        .select("id,assignment_id,student_id,status,grade,feedback,submitted_at")
+        .select(
+          "id,assignment_id,student_id,status,grade,feedback,submitted_at,file_path,file_paths",
+        )
         .in(
           "assignment_id",
           assignments.map((item) => item.id),
@@ -1929,6 +2057,8 @@ function SubmissionMarking({
     grade: string | null;
     feedback: string | null;
     submitted_at: string;
+    file_path: string | null;
+    file_paths: string[];
   };
   draft: { grade: string; feedback: string };
   onDraft: (draft: { grade: string; feedback: string }) => void;
@@ -1972,6 +2102,7 @@ function SubmissionMarking({
           value={draft.feedback}
           onChange={(event) => onDraft({ ...draft, feedback: event.target.value })}
         />
+        <SubmissionFileDownloads paths={submissionFilePaths(submission)} />
       </div>
       <div className="flex flex-col gap-2">
         <Input
