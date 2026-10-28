@@ -42,7 +42,7 @@ export function SiteMediaManager() {
   const { user } = useUser();
   const [editing, setEditing] = useState<SiteMedia | null>(null);
   const [category, setCategory] = useState<MediaCategory>("hero");
-  const [slot, setSlot] = useState("/");
+  const [slot, setSlot] = useState("");
   const [caption, setCaption] = useState("");
   const [alt, setAlt] = useState("");
   const [linkUrl, setLinkUrl] = useState("");
@@ -78,7 +78,7 @@ export function SiteMediaManager() {
   function resetForm() {
     setEditing(null);
     setCategory("hero");
-    setSlot("/");
+    setSlot("");
     setCaption("");
     setAlt("");
     setLinkUrl("");
@@ -94,7 +94,7 @@ export function SiteMediaManager() {
     }
     setEditing(item);
     setCategory(item.category);
-    setSlot(item.slot || "/");
+    setSlot(item.slot ?? "");
     setCaption(item.caption ?? "");
     setAlt(item.alt ?? "");
     setLinkUrl(item.link_url ?? "");
@@ -276,7 +276,16 @@ export function SiteMediaManager() {
             <select
               className={fieldClass}
               value={category}
-              onChange={(event) => setCategory(event.target.value as MediaCategory)}
+              onChange={(event) => {
+                const nextCategory = event.target.value as MediaCategory;
+                setCategory(nextCategory);
+                if (
+                  nextCategory === "page-banner" &&
+                  !pageOptions.some(([path]) => path === slot)
+                ) {
+                  setSlot("");
+                }
+              }}
             >
               {Object.entries(categoryLabels).map(([value, label]) => (
                 <option key={value} value={value}>
@@ -289,10 +298,14 @@ export function SiteMediaManager() {
             <label className="grid gap-1.5 text-sm font-medium">
               Page
               <select
+                required
                 className={fieldClass}
                 value={slot}
                 onChange={(event) => setSlot(event.target.value)}
               >
+                <option value="" disabled>
+                  Select a page
+                </option>
                 {pageOptions.map(([path, label]) => (
                   <option key={path} value={path}>
                     {label}
