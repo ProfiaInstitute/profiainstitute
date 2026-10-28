@@ -10,6 +10,7 @@ import {
   type ErrorComponentProps,
 } from "@tanstack/react-router";
 import { useEffect, type ReactNode } from "react";
+import { Analytics } from "@vercel/analytics/react";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
@@ -184,7 +185,12 @@ function RootShell({ children }: { children: ReactNode }) {
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
   const router = useRouter();
-  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const { pathname, route } = useRouterState({
+    select: (state) => ({
+      pathname: state.location.pathname,
+      route: state.matches[state.matches.length - 1]?.routeId ?? state.location.pathname,
+    }),
+  });
   const isFacilitatorApp = pathname.startsWith("/facilitator");
   const isStudentApp = pathname.startsWith("/student");
   const isApp =
@@ -224,6 +230,7 @@ function RootComponent() {
         {!isApp && <SiteFooter />}
         {!isApp && <WhatsAppFloat />}
         <Toaster richColors position="top-center" />
+        <Analytics route={route} path={pathname} />
       </PwaInstallProvider>
     </QueryClientProvider>
   );
