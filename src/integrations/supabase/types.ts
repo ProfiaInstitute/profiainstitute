@@ -1283,6 +1283,7 @@ export type Database = {
           created_at: string;
           exam_fee: number;
           id: string;
+          level_id: string | null;
           status: string;
           student_id: string;
           tuition_fee: number;
@@ -1293,6 +1294,7 @@ export type Database = {
           created_at?: string;
           exam_fee?: number;
           id?: string;
+          level_id?: string | null;
           status?: string;
           student_id: string;
           tuition_fee: number;
@@ -1303,6 +1305,7 @@ export type Database = {
           created_at?: string;
           exam_fee?: number;
           id?: string;
+          level_id?: string | null;
           status?: string;
           student_id?: string;
           tuition_fee?: number;
@@ -2151,13 +2154,31 @@ export type Database = {
         Args: { _student_id: string };
         Returns: boolean;
       };
+      facilitator_can_access_student_unit: {
+        Args: { _permission: string; _student_id: string; _unit_id: string };
+        Returns: boolean;
+      };
       get_or_create_facilitator_conversation: {
         Args: { _student_id: string };
         Returns: string;
       };
       get_or_create_student_conversation: { Args: never; Returns: string };
       list_cat_assessments: { Args: never; Returns: Json };
-      list_my_cats: { Args: never; Returns: Json };
+      list_my_cats: { Args: { _course_id?: string | null }; Returns: Json };
+      my_course_ids: { Args: never; Returns: string[] };
+      student_has_course_level: {
+        Args: { _course_id: string; _level_ids: string[] | null };
+        Returns: boolean;
+      };
+      admin_enroll_student_course: {
+        Args: {
+          _course_id: string;
+          _intake_id: string | null;
+          _level_id: string | null;
+          _student_id: string;
+        };
+        Returns: string;
+      };
       record_faq_search: {
         Args: { _bucket: number; _faq_id: string };
         Returns: undefined;
