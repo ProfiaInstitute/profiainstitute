@@ -113,13 +113,18 @@ function Home() {
         aria-roledescription={slides.length > 1 ? "carousel" : undefined}
       >
         <img
+          src={currentSlide.url}
+          alt=""
+          aria-hidden="true"
+          className="absolute inset-0 -z-20 h-full w-full scale-105 object-cover blur-2xl"
+        />
+        <img
           key={currentSlide.id}
           src={currentSlide.url}
           alt={currentSlide.alt || "Profia Institute"}
-          className="hero-slide-image absolute inset-0 -z-20 h-full w-full object-contain"
+          className="absolute inset-0 -z-10 h-full w-full object-contain"
           fetchPriority="high"
         />
-        <div className="absolute inset-0 -z-10 bg-hero-overlay" />
         <div className="container-site grid min-h-[32rem] items-center gap-6 py-12 sm:min-h-[36rem] sm:py-16 lg:grid-cols-[10rem_minmax(0,1fr)] lg:gap-12 lg:py-20">
           <aside className="absolute left-4 top-1/2 z-10 hidden w-40 min-w-0 -translate-y-1/2 rounded-2xl border border-white/20 bg-white/95 p-3 text-foreground shadow-lift backdrop-blur-sm lg:left-6 lg:block">
             <p className="text-[10px] font-semibold uppercase tracking-wide text-primary">
@@ -154,7 +159,7 @@ function Home() {
               </Link>
             </div>
           </aside>
-          <div className="max-w-3xl animate-fade-up lg:col-start-2">
+          <div className="hero-copy max-w-3xl animate-fade-up lg:col-start-2">
             <p className="inline-flex items-center gap-2 rounded-full border border-white/25 bg-black/15 px-4 py-2 text-xs font-bold uppercase tracking-[0.18em] text-white/95 backdrop-blur-sm">
               <span className="h-2 w-2 rounded-full bg-primary" />
               Profia Institute of Professionals · Homa Bay
