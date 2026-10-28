@@ -191,10 +191,10 @@ function RootComponent() {
       route: state.matches[state.matches.length - 1]?.routeId ?? state.location.pathname,
     }),
   });
-  const isFacilitatorApp = pathname.startsWith("/facilitator");
-  const isStudentApp = pathname.startsWith("/student");
-  const isApp =
-    pathname.startsWith("/admin") || pathname.startsWith("/student") || isFacilitatorApp;
+  const portalPath = pathname.toLowerCase();
+  const isFacilitatorApp = portalPath.startsWith("/facilitator");
+  const isStudentApp = portalPath.startsWith("/student");
+  const isApp = portalPath.startsWith("/admin") || isStudentApp || isFacilitatorApp;
   const manifestHref = isFacilitatorApp
     ? "/facilitator.webmanifest"
     : isStudentApp
