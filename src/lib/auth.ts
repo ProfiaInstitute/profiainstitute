@@ -82,3 +82,25 @@ export function can(roles: AppRole[] | undefined, allowed: AppRole[]) {
   if (!roles) return false;
   return roles.includes("super_admin") || roles.some((r) => allowed.includes(r));
 }
+
+export async function signOutWithAudit(): Promise<{ error: Error | null; signedOut: boolean }> {
+  const [auditResult, presenceResult] = await Promise.allSettled([
+    supabase.rpc("log_auth_event", { _event: "sign_out" }),
+    supabase.rpc("remove_my_presence"),
+  ]);
+  const { error: signOutError } = await supabase.auth.signOut();
+  if (signOutError) return { error: signOutError, signedOut: false };
+
+  const loggingErrors = [auditResult, presenceResult].flatMap((result) => {
+    if (result.status === "rejected") {
+      return [result.reason instanceof Error ? result.reason.message : String(result.reason)];
+    }
+    return result.value.error ? [result.value.error.message] : [];
+  });
+  return {
+    error: loggingErrors.length
+      ? new Error(`Could not fully record sign-out activity: ${loggingErrors.join("; ")}`)
+      : null,
+    signedOut: true,
+  };
+}

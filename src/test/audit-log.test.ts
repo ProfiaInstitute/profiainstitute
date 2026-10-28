@@ -2,6 +2,11 @@ import { describe, expect, it } from "vitest";
 import { formatAuditTime, summarizeAuditChange } from "@/lib/audit-log";
 
 describe("audit log summaries", () => {
+  it("labels authentication events without exposing actor identifiers", () => {
+    expect(summarizeAuditChange("auth_sign_in", "authentication", {})).toBe("Signed in");
+    expect(summarizeAuditChange("auth_sign_out", "authentication", {})).toBe("Signed out");
+  });
+
   it("shows changed field names without exposing before and after values", () => {
     expect(
       summarizeAuditChange("update", "students", {

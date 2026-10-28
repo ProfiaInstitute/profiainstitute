@@ -209,13 +209,71 @@ function RootComponent() {
   }, []);
 
   useEffect(() => {
-    const { data } = supabase.auth.onAuthStateChange((event) => {
+    let heartbeat: ReturnType<typeof setInterval> | undefined;
+    let mounted = true;
+    let updatingPresence = false;
+    const stopPresence = () => {
+      if (heartbeat !== undefined) clearInterval(heartbeat);
+      heartbeat = undefined;
+    };
+    const updatePresence = async () => {
+      if (updatingPresence) return;
+      updatingPresence = true;
+      try {
+        const { error } = await supabase.rpc("heartbeat_presence");
+        if (error) console.error("Could not update online presence:", error);
+      } catch (error) {
+        console.error("Could not update online presence:", error);
+      } finally {
+        updatingPresence = false;
+      }
+    };
+    const startPresence = () => {
+      if (heartbeat !== undefined) return;
+      void updatePresence();
+      heartbeat = setInterval(() => void updatePresence(), 25_000);
+    };
+
+    const { data } = supabase.auth.onAuthStateChange((event, session) => {
       if (event !== "SIGNED_IN" && event !== "SIGNED_OUT" && event !== "USER_UPDATED") return;
       if (event === "SIGNED_IN" || event === "SIGNED_OUT") queryClient.clear();
       router.invalidate();
       if (event === "USER_UPDATED") void queryClient.invalidateQueries();
+      if (event === "SIGNED_IN") {
+        window.setTimeout(() => {
+          void supabase.rpc("log_auth_event", { _event: "sign_in" }).then(
+            ({ error }) => {
+              if (error) console.error("Could not record sign-in activity:", error);
+            },
+            (error: unknown) => {
+              console.error("Could not record sign-in activity:", error);
+            },
+          );
+          if (session?.user) startPresence();
+        }, 0);
+      } else if (event === "SIGNED_OUT") {
+        stopPresence();
+      }
     });
-    return () => data.subscription.unsubscribe();
+
+    void supabase.auth.getSession().then(
+      ({ data: sessionData, error }) => {
+        if (error) {
+          console.error("Could not restore the session for online presence:", error);
+          return;
+        }
+        if (mounted && sessionData.session?.user) startPresence();
+      },
+      (error: unknown) => {
+        console.error("Could not restore the session for online presence:", error);
+      },
+    );
+
+    return () => {
+      mounted = false;
+      stopPresence();
+      data.subscription.unsubscribe();
+    };
   }, [router, queryClient]);
 
   return (

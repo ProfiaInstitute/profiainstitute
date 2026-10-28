@@ -2075,6 +2075,13 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
+      heartbeat_presence: { Args: never; Returns: undefined };
+      list_online_users: {
+        Args: never;
+        Returns: { last_seen_at: string; name: string; role: string }[];
+      };
+      log_auth_event: { Args: { _event: string }; Returns: undefined };
+      remove_my_presence: { Args: never; Returns: undefined };
       create_cat_assessment: {
         Args: {
           _closes_at: string;
