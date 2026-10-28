@@ -36,6 +36,7 @@ import type { Database, Tables } from "@/integrations/supabase/types";
 import { InstallAppButton } from "@/components/site/InstallAppButton";
 import { NotificationBell } from "@/components/site/NotificationBell";
 import { PasswordResetPage } from "@/components/auth/PasswordResetPage";
+import { FeeStructureActions } from "@/components/site/FeeStructureActions";
 import {
   Sheet,
   SheetContent,
@@ -914,7 +915,9 @@ function StudentOverview({
     queryFn: async () => {
       const { data, error } = await supabase
         .from("course_levels")
-        .select("id,name,code,total_fee,fee_structure_url")
+        .select(
+          "id,name,code,total_fee,fee_structure_url,fee_structure_path,fee_structure_file_name",
+        )
         .eq("id", student.level_id!)
         .maybeSingle();
       if (error) throw error;
@@ -1167,12 +1170,16 @@ function StudentOverview({
                 </p>
               )}
             </div>
-            {levelQuery.data?.fee_structure_url && (
-              <Button asChild variant="outline" size="sm">
-                <a href={levelQuery.data.fee_structure_url} target="_blank" rel="noreferrer">
-                  <Download /> Download fee structure
-                </a>
-              </Button>
+            {(levelQuery.data?.fee_structure_path || levelQuery.data?.fee_structure_url) && (
+              <FeeStructureActions
+                path={levelQuery.data.fee_structure_path}
+                url={levelQuery.data.fee_structure_url}
+                filename={
+                  levelQuery.data.fee_structure_file_name ??
+                  `${levelQuery.data.name}-fee-structure.pdf`
+                }
+                title={`${levelQuery.data.name} fee structure`}
+              />
             )}
           </div>
           {levelQuery.data && (
@@ -1245,7 +1252,7 @@ function OnlineStudentOverview({
     queryFn: async () => {
       const { data, error } = await supabase
         .from("course_levels")
-        .select("name,code,fee_structure_url,total_fee")
+        .select("name,code,fee_structure_url,fee_structure_path,fee_structure_file_name,total_fee")
         .eq("id", student.level_id!)
         .maybeSingle();
       if (error) throw error;
@@ -1350,12 +1357,16 @@ function OnlineStudentOverview({
               Level fee: {formatKES(selectedLevel.data.total_fee)}
             </p>
           </div>
-          {selectedLevel.data.fee_structure_url && (
-            <Button asChild variant="outline" size="sm">
-              <a href={selectedLevel.data.fee_structure_url} target="_blank" rel="noreferrer">
-                <Download /> Download fee structure
-              </a>
-            </Button>
+          {(selectedLevel.data.fee_structure_path || selectedLevel.data.fee_structure_url) && (
+            <FeeStructureActions
+              path={selectedLevel.data.fee_structure_path}
+              url={selectedLevel.data.fee_structure_url}
+              filename={
+                selectedLevel.data.fee_structure_file_name ??
+                `${selectedLevel.data.name}-fee-structure.pdf`
+              }
+              title={`${selectedLevel.data.name} fee structure`}
+            />
           )}
         </section>
       )}

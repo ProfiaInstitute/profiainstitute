@@ -2689,6 +2689,30 @@ password, download assigned learning files and class rosters, and access these
 tools from the responsive facilitator portal navigation. Admins choose
 **Show in facilitator portal** when publishing or editing a memo.
 
+### School fee structures
+
+Apply `drizzle/migrations/0031_school_fee_structures.sql` after migration
+`0030_facilitator_portal_experience.sql`. This adds the school fee-structure
+catalogue and makes the `course-fee-structures` bucket private, with reads
+restricted to published fee documents and the relevant student or academic
+staff accounts. Academic administrators can upload, publish, and replace PDF
+fee schedules from **Admin → School fee structures**. Published schedules are
+organized by school on the Academics page; course pricing remains in the
+application flow after a student selects a level. The website must be deployed
+after the migration is applied in Supabase.
+
+### RLS and session-cache hardening
+
+Apply `drizzle/migrations/0032_rls_cache_hardening.sql` after migration
+`0031_school_fee_structures.sql`. It prevents clients from probing role checks
+for other user IDs, limits cross-account profile and photo access to
+administrators and facilitators assigned to those students, and requires the
+short-lived application upload token for supporting-document uploads. It also
+limits notification writes to trusted database-side workflows and adds indexes
+for notification and inbox fetches. The frontend keeps React Query results in
+memory for reuse, clears its cache when accounts sign in or out, and does not
+persist private portal data to local or session storage.
+
 ### Student progression email follow-ups
 
 Apply `0003_student_progression_followups.sql` after migrations `0000` through

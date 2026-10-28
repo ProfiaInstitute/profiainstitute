@@ -133,6 +133,7 @@ export function CourseLevelsManager() {
         fee_items: feeItemsData as Json,
         fee_structure_url: draft.fee_structure_url.trim() || null,
         fee_structure_path: editingLevel?.fee_structure_path ?? null,
+        fee_structure_file_name: editingLevel?.fee_structure_file_name ?? null,
         published: draft.published,
         sort_order: editingLevel?.sort_order ?? (courseLevels.data?.length ?? 0) + 1,
       };
@@ -156,12 +157,13 @@ export function CourseLevelsManager() {
             `Level was saved, but the fee PDF could not be uploaded: ${uploadError.message}`,
           );
         }
-        const { data: publicUrl } = supabase.storage
-          .from("course-fee-structures")
-          .getPublicUrl(path);
         const { error: fileUpdateError } = await supabase
           .from("course_levels")
-          .update({ fee_structure_url: publicUrl.publicUrl, fee_structure_path: path })
+          .update({
+            fee_structure_url: null,
+            fee_structure_path: path,
+            fee_structure_file_name: feeFile.name,
+          })
           .eq("id", data.id);
         if (fileUpdateError) {
           const { error: cleanupError } = await supabase.storage
@@ -191,7 +193,7 @@ export function CourseLevelsManager() {
           toast.error("Old fee PDF could not be removed", { description: removeError.message });
         const { error: clearPathError } = await supabase
           .from("course_levels")
-          .update({ fee_structure_path: null })
+          .update({ fee_structure_path: null, fee_structure_file_name: null })
           .eq("id", data.id);
         if (clearPathError) throw clearPathError;
       }

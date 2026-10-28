@@ -1,8 +1,47 @@
 import { zipSync } from "fflate";
 
-const excludedColumns = new Set(["raw", "upload_token"]);
+const excludedColumns =
+  /^(?:id|raw|details|upload_token|created_by|updated_by|uploaded_by|recorded_by|actor_id|entity_id)$/i;
+const identifierColumn = /(?:^|_)id$/i;
+const camelCaseIdentifierColumn = /(?:Id|ID)$/;
+const sensitiveColumn = /(?:uuid|token|_path)$/i;
 const maxRows = 1_048_576;
 const maxColumns = 16_384;
+
+function shouldExcludeColumn(key: string) {
+  return (
+    excludedColumns.test(key) ||
+    identifierColumn.test(key) ||
+    camelCaseIdentifierColumn.test(key) ||
+    sensitiveColumn.test(key)
+  );
+}
+
+function safeExportValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(safeExportValue);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).flatMap(([key, nestedValue]) =>
+        shouldExcludeColumn(key) ? [] : [[key, safeExportValue(nestedValue)]],
+      ),
+    );
+  }
+  return value;
+}
+
+export function sanitizeExportRows(rows: readonly object[]) {
+  return rows.map((row) =>
+    Object.fromEntries(
+      Object.entries(row).flatMap(([key, value]) =>
+        shouldExcludeColumn(key) ? [] : [[key, safeExportValue(value)]],
+      ),
+    ),
+  );
+}
+
+export function exportColumnLabel(key: string) {
+  return key.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
 
 function xmlEscape(value: string) {
   const validXmlText = Array.from(value)
@@ -52,16 +91,7 @@ function cellXml(reference: string, value: unknown) {
 export function createExcelWorkbook(rows: readonly object[]) {
   if (!rows.length) throw new Error("There are no records to export.");
 
-  const records = rows.map((row) =>
-    Object.fromEntries(
-      Object.entries(row)
-        .filter(([key]) => !excludedColumns.has(key))
-        .map(([key, value]) => [
-          key,
-          typeof value === "object" && value !== null ? JSON.stringify(value) : value,
-        ]),
-    ),
-  );
+  const records = sanitizeExportRows(rows);
   const columns = [...new Set(records.flatMap((record) => Object.keys(record)))];
   if (records.length + 1 > maxRows || columns.length > maxColumns) {
     throw new Error("This export exceeds Excel worksheet row or column limits.");
@@ -69,7 +99,7 @@ export function createExcelWorkbook(rows: readonly object[]) {
   if (!columns.length) throw new Error("There are no columns to export.");
 
   const worksheetRows = [
-    columns,
+    columns.map(exportColumnLabel),
     ...records.map((record) => columns.map((column) => record[column])),
   ]
     .map(

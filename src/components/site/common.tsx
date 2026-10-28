@@ -24,7 +24,7 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
 import { getYouTubeEmbedUrl } from "@/lib/content-format";
-import { formatKES, useGeneral, useMedia, whatsappLink } from "@/lib/site";
+import { useGeneral, useMedia, whatsappLink } from "@/lib/site";
 import { cn } from "@/lib/utils";
 
 type FaqSearchItem = Pick<
@@ -181,16 +181,9 @@ export function CourseCard({ c }: { c: CourseLite }) {
       <div className="flex flex-1 flex-col p-5">
         <h3 className="text-lg font-bold text-brand">{c.title}</h3>
         {c.summary && <p className="mt-1.5 text-sm text-muted-foreground">{c.summary}</p>}
-        {(c.duration || c.fees !== null) && (
+        {c.duration && (
           <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold">
-            {c.duration && (
-              <span className="rounded-full bg-accent px-2.5 py-1 text-brand">{c.duration}</span>
-            )}
-            {c.fees !== null && (
-              <span className="rounded-full bg-accent px-2.5 py-1 text-primary">
-                Fees: {formatKES(c.fees)}
-              </span>
-            )}
+            <span className="rounded-full bg-accent px-2.5 py-1 text-brand">{c.duration}</span>
           </div>
         )}
         {more && (c.description || c.requirements) && (
