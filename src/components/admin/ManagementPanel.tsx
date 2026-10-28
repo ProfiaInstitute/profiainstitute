@@ -21,7 +21,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 import { CourseLevelsManager } from "@/components/admin/CourseLevelsManager";
 import { SchoolFeeStructuresManager } from "@/components/admin/SchoolFeeStructuresManager";
-import { can, useRoles, useUser } from "@/lib/auth";
+import { can, signOutWithAudit, useRoles, useUser } from "@/lib/auth";
 import type { Enums, Tables, TablesInsert, TablesUpdate } from "@/integrations/supabase/types";
 
 type Course = Tables<"courses">;
@@ -129,9 +129,15 @@ export function ManagementPanel() {
               variant="heroOutline"
               size="sm"
               onClick={async () => {
-                const { error } = await supabase.auth.signOut();
-                if (error) toast.error("Could not sign out", { description: error.message });
-                else toast.success("Signed out");
+                const result = await signOutWithAudit();
+                if (result.error) {
+                  toast.error(
+                    result.signedOut
+                      ? "Signed out, but activity recording was incomplete"
+                      : "Could not sign out",
+                    { description: result.error.message },
+                  );
+                } else toast.success("Signed out");
               }}
             >
               <LogOut /> <span className="hidden sm:inline">Sign out</span>

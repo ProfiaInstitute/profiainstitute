@@ -27,6 +27,7 @@ import {
   Trash2,
   UserPlus,
   Users,
+  UsersRound,
   Wallet,
   type LucideIcon,
 } from "lucide-react";
@@ -54,7 +55,7 @@ import { CourseFeedbackPanel } from "@/components/admin/CourseFeedbackPanel";
 import { FacilitatorManager } from "@/components/admin/FacilitatorManager";
 import { NotificationBell } from "@/components/site/NotificationBell";
 import { supabase } from "@/integrations/supabase/client";
-import { can, useRoles, useUser, type AppRole } from "@/lib/auth";
+import { can, signOutWithAudit, useRoles, useUser, type AppRole } from "@/lib/auth";
 import type { Json } from "@/integrations/supabase/types";
 import {
   contentKind,
@@ -95,6 +96,7 @@ type DashboardSection =
   | "course-feedback"
   | "facilitators"
   | "reports"
+  | "online-users"
   | "audit"
   | "staff"
   | "settings";
@@ -217,6 +219,7 @@ const navItems: { id: DashboardSection; title: string; icon: LucideIcon; roles: 
     icon: ChartNoAxesCombined,
     roles: ["super_admin", "admissions_admin", "academic_admin"],
   },
+  { id: "online-users", title: "Online users", icon: UsersRound, roles: ["super_admin"] },
   { id: "audit", title: "Audit Logs", icon: Activity, roles: ["super_admin"] },
   { id: "staff", title: "Staff", icon: Users, roles: ["super_admin"] },
   { id: "facilitators", title: "Facilitators", icon: Users, roles: ["super_admin"] },
@@ -253,7 +256,10 @@ const navGroups: { title: string; ids: DashboardSection[] }[] = [
     title: "Website content",
     ids: ["faqs", "articles", "announcements", "memos", "media", "site-copy"],
   },
-  { title: "Administration", ids: ["reports", "audit", "staff", "facilitators", "settings"] },
+  {
+    title: "Administration",
+    ids: ["reports", "online-users", "audit", "staff", "facilitators", "settings"],
+  },
 ];
 
 export function StaffDashboard() {
@@ -366,6 +372,8 @@ export function StaffDashboard() {
       <ManagementPanel />
     ) : section === "reports" ? (
       <ReportsPanel />
+    ) : section === "online-users" ? (
+      <OnlineUsersPanel />
     ) : section === "audit" ? (
       <AuditLogPanel />
     ) : section === "settings" ? (
@@ -436,8 +444,15 @@ export function StaffDashboard() {
             variant="outline"
             size="sm"
             onClick={async () => {
-              const { error } = await supabase.auth.signOut();
-              if (error) toast.error("Could not sign out", { description: error.message });
+              const result = await signOutWithAudit();
+              if (result.error) {
+                toast.error(
+                  result.signedOut
+                    ? "Signed out, but activity recording was incomplete"
+                    : "Could not sign out",
+                  { description: result.error.message },
+                );
+              }
             }}
           >
             <LogOut /> <span className="hidden sm:inline">Sign out</span>
@@ -582,8 +597,15 @@ function InitialAdminSetup({ userId, email }: { userId: string; email: string | 
         <Button
           variant="outline"
           onClick={async () => {
-            const { error } = await supabase.auth.signOut();
-            if (error) toast.error("Could not sign out", { description: error.message });
+            const result = await signOutWithAudit();
+            if (result.error) {
+              toast.error(
+                result.signedOut
+                  ? "Signed out, but activity recording was incomplete"
+                  : "Could not sign out",
+                { description: result.error.message },
+              );
+            }
           }}
         >
           <LogOut className="mr-2 h-4 w-4" />
@@ -2614,6 +2636,53 @@ function FeeManagementPanel() {
           </p>
         )}
       </div>
+    </section>
+  );
+}
+
+function OnlineUsersPanel() {
+  const query = useQuery({
+    queryKey: ["admin", "online-users"],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc("list_online_users");
+      if (error) throw error;
+      return data ?? [];
+    },
+    refetchInterval: 15_000,
+  });
+
+  if (query.isLoading) return <LoadingState />;
+  if (query.error) return <ErrorPanel error={query.error} retry={() => void query.refetch()} />;
+
+  return (
+    <section className="space-y-4 rounded-xl border bg-card p-5 shadow-card">
+      <div>
+        <h2 className="font-semibold text-brand">Online users</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {query.data?.length ?? 0} users currently online. This list refreshes automatically.
+        </p>
+      </div>
+      {query.data?.length ? (
+        <ul className="divide-y">
+          {query.data.map((onlineUser, index) => (
+            <li
+              key={`${onlineUser.name}-${onlineUser.role}-${index}`}
+              className="flex items-center justify-between gap-4 py-3"
+            >
+              <div className="min-w-0">
+                <p className="truncate font-medium">{onlineUser.name}</p>
+                <p className="text-sm text-muted-foreground">{onlineUser.role}</p>
+              </div>
+              <Badge variant="secondary" className="shrink-0 gap-1.5">
+                <span className="h-2 w-2 rounded-full bg-emerald-500" aria-hidden="true" />
+                Online
+              </Badge>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <EmptyPanel title="No users online" detail="Currently active users will appear here." />
+      )}
     </section>
   );
 }

@@ -27,7 +27,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 import { downloadContentAttachment } from "@/lib/content-download";
 import { PROFILE_PHOTO_MAX_BYTES, PROFILE_PHOTO_TYPES } from "@/lib/profile-photos";
-import { useRoles, useUser } from "@/lib/auth";
+import { signOutWithAudit, useRoles, useUser } from "@/lib/auth";
 import { submissionFilePaths } from "@/lib/assignments";
 import {
   contentKind,
@@ -643,8 +643,15 @@ function FacilitatorWorkspace({ userId, email }: { userId: string; email: string
   }
 
   async function signOut() {
-    const { error } = await supabase.auth.signOut();
-    if (error) toast.error("Could not sign out", { description: error.message });
+    const result = await signOutWithAudit();
+    if (result.error) {
+      toast.error(
+        result.signedOut
+          ? "Signed out, but activity recording was incomplete"
+          : "Could not sign out",
+        { description: result.error.message },
+      );
+    }
   }
 
   if (unitsQuery.isLoading) return <PortalMessage>Loading assigned course units…</PortalMessage>;

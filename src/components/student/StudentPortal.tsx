@@ -26,7 +26,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
-import { useUser } from "@/lib/auth";
+import { signOutWithAudit, useUser } from "@/lib/auth";
 import { isAssignmentOpenForSubmission, submissionFilePaths } from "@/lib/assignments";
 import { downloadContentAttachment } from "@/lib/content-download";
 import { StudentCatsSection } from "@/components/student/StudentCatsSection";
@@ -530,8 +530,15 @@ function StudentWorkspace({
   }
 
   async function signOut() {
-    const { error } = await supabase.auth.signOut();
-    if (error) toast.error("Could not sign out", { description: error.message });
+    const result = await signOutWithAudit();
+    if (result.error) {
+      toast.error(
+        result.signedOut
+          ? "Signed out, but activity recording was incomplete"
+          : "Could not sign out",
+        { description: result.error.message },
+      );
+    }
   }
 
   if (selectedCourseId && !enrollmentPhone) {
