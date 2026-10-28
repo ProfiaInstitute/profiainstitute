@@ -36,6 +36,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { LevelTargetPicker } from "@/components/academics/LevelTargetPicker";
 import { ProfilePhotoAvatar } from "@/components/profile/ProfilePhotoAvatar";
 import { ManagementPanel } from "@/components/admin/ManagementPanel";
 import { FaqManagementPanel } from "@/components/admin/FaqManagementPanel";
@@ -3355,6 +3356,7 @@ function DirectoryCreateForm({
     url: "",
     file: null as File | null,
   });
+  const [selectedLevelIds, setSelectedLevelIds] = useState<string[]>([]);
   const formTitle: Partial<Record<DashboardSection, string>> = {
     schools: "Add school",
     academics: "Add course unit",
@@ -3374,6 +3376,10 @@ function DirectoryCreateForm({
       const deadline = new Date(values.due_date);
       if (!values.due_date || !Number.isFinite(deadline.getTime())) {
         toast.error("Set a valid assignment submission deadline.");
+        return;
+      }
+      if (!selectedLevelIds.length) {
+        toast.error("Select at least one course level for this assignment.");
         return;
       }
     }
@@ -3476,6 +3482,7 @@ function DirectoryCreateForm({
           instructions: values.description.trim() || null,
           due_date: values.due_date ? new Date(values.due_date).toISOString() : null,
           file_path: uploadedPath,
+          level_ids: selectedLevelIds,
           created_by: user?.id ?? null,
           published: false,
         });
@@ -3513,6 +3520,7 @@ function DirectoryCreateForm({
         url: "",
         file: null,
       });
+      setSelectedLevelIds([]);
       onSaved();
     }
   }
@@ -3570,7 +3578,10 @@ function DirectoryCreateForm({
               required
               className={selectClass}
               value={values.course_id}
-              onChange={(e) => setValues({ ...values, course_id: e.target.value })}
+              onChange={(e) => {
+                setValues({ ...values, course_id: e.target.value });
+                setSelectedLevelIds([]);
+              }}
             >
               <option value="">Select course</option>
               {optionsQuery.data?.courses.map((course) => (
@@ -3664,7 +3675,10 @@ function DirectoryCreateForm({
               required
               className={selectClass}
               value={values.course_id}
-              onChange={(e) => setValues({ ...values, course_id: e.target.value })}
+              onChange={(e) => {
+                setValues({ ...values, course_id: e.target.value });
+                setSelectedLevelIds([]);
+              }}
             >
               <option value="">Select course</option>
               {optionsQuery.data?.courses.map((course) => (
@@ -3698,6 +3712,11 @@ function DirectoryCreateForm({
         )}
         {section === "assignments" && (
           <>
+            <LevelTargetPicker
+              courseId={values.course_id}
+              selectedLevelIds={selectedLevelIds}
+              onChange={setSelectedLevelIds}
+            />
             <label className="space-y-1 text-sm font-medium sm:col-span-2">
               Submission deadline (local date and time)
               <Input

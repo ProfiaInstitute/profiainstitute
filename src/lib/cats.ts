@@ -5,6 +5,9 @@ export type CatOptionKey = "A" | "B" | "C" | "D";
 export type StudentCat = {
   id: string;
   title: string;
+  name: string;
+  downloadFilePath: string | null;
+  downloadFileName: string | null;
   instructions: string | null;
   durationMinutes: number;
   opensAt: string;
@@ -64,6 +67,10 @@ export type AdminCat = {
   courseId: string;
   courseTitle: string;
   title: string;
+  name: string;
+  levelIds: string[];
+  downloadFilePath: string | null;
+  downloadFileName: string | null;
   instructions: string | null;
   durationMinutes: number;
   opensAt: string;
@@ -128,6 +135,12 @@ export function parseStudentCats(value: Json | null): StudentCat[] {
     return {
       id: stringValue(cat["id"], "CAT id"),
       title: stringValue(cat["title"], "CAT title"),
+      name:
+        cat["name"] === null || cat["name"] === undefined
+          ? stringValue(cat["title"], "CAT title")
+          : stringValue(cat["name"], "CAT name"),
+      downloadFilePath: nullableString(cat["download_file_path"]),
+      downloadFileName: nullableString(cat["download_file_name"]),
       instructions: nullableString(cat["instructions"]),
       durationMinutes: numberValue(cat["duration_minutes"], "CAT duration"),
       opensAt: stringValue(cat["opens_at"], "CAT opening time"),
@@ -224,6 +237,16 @@ export function parseAdminCats(value: Json | null): AdminCat[] {
       courseId: stringValue(cat["course_id"], "course id"),
       courseTitle: stringValue(cat["course_title"], "course name"),
       title: stringValue(cat["title"], "CAT title"),
+      name:
+        cat["name"] === null || cat["name"] === undefined
+          ? stringValue(cat["title"], "CAT title")
+          : stringValue(cat["name"], "CAT name"),
+      levelIds:
+        cat["level_ids"] === null || cat["level_ids"] === undefined
+          ? []
+          : arrayValue(cat["level_ids"]).map((levelId) => stringValue(levelId, "course level id")),
+      downloadFilePath: nullableString(cat["download_file_path"]),
+      downloadFileName: nullableString(cat["download_file_name"]),
       instructions: nullableString(cat["instructions"]),
       durationMinutes: numberValue(cat["duration_minutes"], "CAT duration"),
       opensAt: stringValue(cat["opens_at"], "CAT opening time"),

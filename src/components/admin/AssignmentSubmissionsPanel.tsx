@@ -5,7 +5,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { SubmissionFileDownloads } from "@/components/academics/SubmissionFileDownloads";
 import { supabase } from "@/integrations/supabase/client";
+import { submissionFilePaths } from "@/lib/assignments";
 import type { Tables } from "@/integrations/supabase/types";
 
 type AssignmentSubmission = Tables<"submissions"> & {
@@ -252,9 +254,7 @@ function AssignmentMarkingCard({
           {submission.comment}
         </p>
       )}
-      {submission.file_path && (
-        <AdminSubmissionFile path={submission.file_path} label="Download submission" />
-      )}
+      <SubmissionFileDownloads paths={submissionFilePaths(submission)} />
       <form
         className="mt-4 grid gap-3 border-t pt-4 sm:grid-cols-[minmax(120px,180px)_minmax(120px,180px)_1fr_auto]"
         onSubmit={submit}
@@ -293,37 +293,5 @@ function AssignmentMarkingCard({
         </p>
       )}
     </article>
-  );
-}
-
-function AdminSubmissionFile({ path, label }: { path: string; label: string }) {
-  const fileQuery = useQuery({
-    queryKey: ["admin", "submission-file-url", path],
-    queryFn: async () => {
-      const { data, error } = await supabase.storage.from("submissions").createSignedUrl(path, 300);
-      if (error) throw error;
-      return data.signedUrl;
-    },
-    staleTime: 4 * 60_000,
-  });
-
-  if (fileQuery.isLoading)
-    return <p className="mt-3 text-sm text-muted-foreground">Preparing submission file…</p>;
-  if (fileQuery.error)
-    return (
-      <p role="alert" className="mt-3 text-sm text-destructive">
-        Could not open submission: {fileQuery.error.message}
-      </p>
-    );
-  return (
-    <a
-      className="mt-3 inline-flex text-sm font-medium text-primary underline"
-      href={fileQuery.data}
-      target="_blank"
-      rel="noreferrer"
-      download
-    >
-      {label} ↗
-    </a>
   );
 }

@@ -454,6 +454,7 @@ export type Database = {
           file_path: string | null;
           id: string;
           instructions: string | null;
+          level_ids: string[] | null;
           published: boolean;
           title: string;
           unit_id: string | null;
@@ -467,6 +468,7 @@ export type Database = {
           file_path?: string | null;
           id?: string;
           instructions?: string | null;
+          level_ids?: string[] | null;
           published?: boolean;
           title: string;
           unit_id?: string | null;
@@ -480,6 +482,7 @@ export type Database = {
           file_path?: string | null;
           id?: string;
           instructions?: string | null;
+          level_ids?: string[] | null;
           published?: boolean;
           title?: string;
           unit_id?: string | null;
@@ -1993,6 +1996,7 @@ export type Database = {
           created_at: string;
           feedback: string | null;
           file_path: string | null;
+          file_paths: string[];
           grade: string | null;
           id: string;
           status: string;
@@ -2006,6 +2010,7 @@ export type Database = {
           created_at?: string;
           feedback?: string | null;
           file_path?: string | null;
+          file_paths?: string[];
           grade?: string | null;
           id?: string;
           status?: string;
@@ -2019,6 +2024,7 @@ export type Database = {
           created_at?: string;
           feedback?: string | null;
           file_path?: string | null;
+          file_paths?: string[];
           grade?: string | null;
           id?: string;
           status?: string;
@@ -2073,8 +2079,12 @@ export type Database = {
         Args: {
           _closes_at: string;
           _course_id: string;
+          _download_file_name: string | null;
+          _download_file_path: string | null;
           _duration_minutes: number;
           _instructions: string | null;
+          _level_ids: string[];
+          _name: string;
           _opens_at: string;
           _questions: Json;
           _title: string;
@@ -2113,8 +2123,12 @@ export type Database = {
       create_facilitator_cat: {
         Args: {
           _closes_at: string;
+          _download_file_name: string | null;
+          _download_file_path: string | null;
           _duration_minutes: number;
           _instructions: string | null;
+          _level_ids: string[];
+          _name: string;
           _opens_at: string;
           _questions: Json;
           _title: string;

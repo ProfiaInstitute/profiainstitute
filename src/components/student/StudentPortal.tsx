@@ -27,7 +27,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 import { useUser } from "@/lib/auth";
-import { isAssignmentOpenForSubmission } from "@/lib/assignments";
+import { isAssignmentOpenForSubmission, submissionFilePaths } from "@/lib/assignments";
 import { downloadContentAttachment } from "@/lib/content-download";
 import { StudentCatsSection } from "@/components/student/StudentCatsSection";
 import { formatKES } from "@/lib/site";
@@ -37,6 +37,7 @@ import { InstallAppButton } from "@/components/site/InstallAppButton";
 import { NotificationBell } from "@/components/site/NotificationBell";
 import { PasswordResetPage } from "@/components/auth/PasswordResetPage";
 import { FeeStructureActions } from "@/components/site/FeeStructureActions";
+import { SubmissionFileDownloads } from "@/components/academics/SubmissionFileDownloads";
 import {
   Sheet,
   SheetContent,
@@ -1954,12 +1955,12 @@ function AssignmentsSection({ student }: { student: Student }) {
               </p>
             ) : submissionsQuery.error ? null : submission ? (
               <div className="mt-4 space-y-2 border-t pt-4">
-                {submission.file_path && (
-                  <SubmissionFileLink path={submission.file_path} label="View submitted file" />
-                )}
+                <SubmissionFileDownloads paths={submissionFilePaths(submission)} />
                 <p className="text-sm text-muted-foreground">
-                  Submitted {new Date(submission.submitted_at).toLocaleString("en-KE")}. Only one
-                  submission is allowed; this assignment remains available for revision.
+                  Submitted {new Date(submission.submitted_at).toLocaleString("en-KE")}.
+                  {submissionFilePaths(submission).length > 1
+                    ? ` ${submissionFilePaths(submission).length} files attached.`
+                    : ""}
                 </p>
               </div>
             ) : deadlinePassed ? (
@@ -1980,7 +1981,7 @@ function AssignmentsSection({ student }: { student: Student }) {
   ) : (
     <Empty
       title="No assignments yet"
-      detail="Published assignments for your course will appear here."
+      detail="Published assignments for your course level will appear here."
     />
   );
 }
@@ -1995,7 +1996,7 @@ function SubmitAssignment({
   dueDate: string;
 }) {
   const queryClient = useQueryClient();
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [comment, setComment] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -2004,23 +2005,23 @@ function SubmitAssignment({
       toast.error("The submission deadline has passed.");
       return;
     }
-    if (!file && !comment.trim()) {
+    if (!files.length && !comment.trim()) {
       toast.error("Add a file or a submission comment.");
       return;
     }
     const maxFileSize = 50 * 1024 * 1024;
-    if (file && file.size > maxFileSize) {
+    if (files.some((file) => file.size > maxFileSize)) {
       toast.error("Submission file is too large", {
-        description: "Choose a file up to 50 MB.",
+        description: "Each submission file must be up to 50 MB.",
       });
       return;
     }
     setBusy(true);
-    let uploadedPath: string | null = null;
+    const uploadedPaths: string[] = [];
     try {
-      if (file) {
+      for (const file of files) {
         const safeFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-        const path = `${student.id}/${assignmentId}/${Date.now()}-${safeFileName}`;
+        const path = `${student.id}/${assignmentId}/${crypto.randomUUID()}-${safeFileName}`;
         const { error: uploadError } = await supabase.storage
           .from("submissions")
           .upload(path, file, {
@@ -2028,25 +2029,35 @@ function SubmitAssignment({
             upsert: false,
           });
         if (uploadError) {
-          toast.error("Could not upload submission", { description: uploadError.message });
+          let description = uploadError.message;
+          if (uploadedPaths.length) {
+            const { error: cleanupError } = await supabase.storage
+              .from("submissions")
+              .remove(uploadedPaths);
+            if (cleanupError) {
+              description += ` Earlier uploaded files could not be cleaned up: ${cleanupError.message}`;
+            }
+          }
+          toast.error("Could not upload submission files", { description });
           return;
         }
-        uploadedPath = path;
+        uploadedPaths.push(path);
       }
 
       const { error: saveError } = await supabase.from("submissions").insert({
         assignment_id: assignmentId,
         student_id: student.id,
-        file_path: uploadedPath,
+        file_path: uploadedPaths[0] ?? null,
+        file_paths: uploadedPaths,
         comment: comment.trim() || null,
       });
 
       if (saveError) {
         let description = saveError.message;
-        if (uploadedPath) {
+        if (uploadedPaths.length) {
           const { error: cleanupError } = await supabase.storage
             .from("submissions")
-            .remove([uploadedPath]);
+            .remove(uploadedPaths);
           if (cleanupError) {
             description += ` The uploaded file could not be cleaned up: ${cleanupError.message}`;
           }
@@ -2056,11 +2067,23 @@ function SubmitAssignment({
       }
 
       toast.success("Assignment submitted");
-      setFile(null);
+      setFiles([]);
       setComment("");
       await queryClient.invalidateQueries({
         queryKey: ["student", "assignment-submissions", student.id],
       });
+    } catch (error) {
+      let description =
+        error instanceof Error ? error.message : "The submission could not be saved.";
+      if (uploadedPaths.length) {
+        const { error: cleanupError } = await supabase.storage
+          .from("submissions")
+          .remove(uploadedPaths);
+        if (cleanupError) {
+          description += ` Uploaded files could not be cleaned up: ${cleanupError.message}`;
+        }
+      }
+      toast.error("Could not submit assignment", { description });
     } finally {
       setBusy(false);
     }
@@ -2072,46 +2095,22 @@ function SubmitAssignment({
         <Textarea rows={2} value={comment} onChange={(event) => setComment(event.target.value)} />
       </label>
       <label className="block text-sm font-medium">
-        Submission file
+        Submission files
         <input
           className="mt-1 block w-full text-sm"
           type="file"
+          multiple
           disabled={busy}
-          onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+          onChange={(event) => setFiles(Array.from(event.target.files ?? []))}
         />
+        <span className="mt-1 block text-xs text-muted-foreground">
+          You can attach multiple files. Each file must be 50 MB or smaller.
+        </span>
       </label>
       <Button className="mt-2" size="sm" disabled={busy} onClick={() => void submit()}>
         {busy ? "Submitting…" : "Submit assignment"}
       </Button>
     </div>
-  );
-}
-
-function SubmissionFileLink({ path, label }: { path: string; label: string }) {
-  const fileQuery = useQuery({
-    queryKey: ["student", "submission-file-url", path],
-    queryFn: async () => {
-      const { data, error } = await supabase.storage.from("submissions").createSignedUrl(path, 300);
-      if (error) throw error;
-      return data.signedUrl;
-    },
-    staleTime: 4 * 60_000,
-  });
-
-  if (fileQuery.isLoading)
-    return <p className="text-sm text-muted-foreground">Preparing submission download…</p>;
-  if (fileQuery.error)
-    return <ErrorCard error={fileQuery.error.message} retry={() => void fileQuery.refetch()} />;
-  return (
-    <a
-      className="inline-flex text-sm font-medium text-primary underline"
-      href={fileQuery.data}
-      target="_blank"
-      rel="noreferrer"
-      download
-    >
-      {label} ↗
-    </a>
   );
 }
 
