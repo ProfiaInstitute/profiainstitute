@@ -29,7 +29,7 @@ export function StudentCatsSection({ courseId }: { courseId: string | null }) {
     queryKey: ["student", "cats", courseId],
     enabled: Boolean(courseId),
     queryFn: async () => {
-      const { data, error } = await supabase.rpc("list_my_cats");
+      const { data, error } = await supabase.rpc("list_my_cats", { _course_id: courseId });
       if (error) throw error;
       return parseStudentCats(data);
     },

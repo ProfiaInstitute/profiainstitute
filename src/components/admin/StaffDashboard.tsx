@@ -56,14 +56,13 @@ import { FacilitatorManager } from "@/components/admin/FacilitatorManager";
 import { NotificationBell } from "@/components/site/NotificationBell";
 import { supabase } from "@/integrations/supabase/client";
 import { can, signOutWithAudit, useRoles, useUser, type AppRole } from "@/lib/auth";
-import type { Json } from "@/integrations/supabase/types";
+import type { Enums, Json, Tables } from "@/integrations/supabase/types";
 import {
   contentKind,
   MAX_CONTENT_UPLOAD_SIZE,
   safeUploadFileName,
   supportedContentType,
 } from "@/lib/file-uploads";
-import type { Enums, Tables } from "@/integrations/supabase/types";
 import { downloadContentAttachment } from "@/lib/content-download";
 import { formatKES } from "@/lib/site";
 import { useScrollReveal } from "@/lib/motion";
@@ -1426,10 +1425,14 @@ function StudentsPanel({
   });
   const catalogue = useQuery({
     queryKey: ["admin", "student-form-options"],
-    enabled: adding || !!editingStudentId,
+    enabled: canManage && (adding || !!editingStudentId || studentsQuery.data !== undefined),
     queryFn: async () => {
       const [courses, intakes] = await Promise.all([
-        supabase.from("courses").select("id,title").order("title"),
+        supabase
+          .from("courses")
+          .select("id,title,available_online")
+          .eq("published", true)
+          .order("title"),
         supabase.from("intakes").select("id,name").order("start_date", { ascending: false }),
       ]);
       if (courses.error) throw courses.error;
@@ -1737,6 +1740,30 @@ function StudentsPanel({
                   ) : (
                     <p className="mt-1 text-xs text-muted-foreground">No course enrolments.</p>
                   )}
+                  {catalogue.error && (
+                    <p role="alert" className="mt-2 text-xs text-destructive">
+                      Could not load courses for enrollment: {catalogue.error.message}
+                    </p>
+                  )}
+                  {canManage && (
+                    <StudentCourseEnrollmentManager
+                      student={student}
+                      courses={catalogue.data?.courses ?? []}
+                      intakes={catalogue.data?.intakes ?? []}
+                      enrolledCourseIds={(studentCourseQuery.data?.[student.id] ?? [])
+                        .filter((course) => course.statuses.includes("active"))
+                        .map((course) => course.course_id)}
+                      disabled={catalogue.isLoading}
+                      onEnrolled={async () => {
+                        await Promise.all([
+                          queryClient.invalidateQueries({
+                            queryKey: ["admin", "student-course-enrollments"],
+                          }),
+                          queryClient.invalidateQueries({ queryKey: ["admin", "students"] }),
+                        ]);
+                      }}
+                    />
+                  )}
                 </div>
               )}
               {canViewDocuments && (
@@ -1828,6 +1855,181 @@ function StudentsPanel({
         ))
       ) : (
         <EmptyPanel title="No students found" detail="Try another search term or add a student." />
+      )}
+    </div>
+  );
+}
+
+function StudentCourseEnrollmentManager({
+  student,
+  courses,
+  intakes,
+  enrolledCourseIds,
+  disabled,
+  onEnrolled,
+}: {
+  student: Pick<Tables<"students">, "id" | "study_mode">;
+  courses: Pick<Tables<"courses">, "id" | "title" | "available_online">[];
+  intakes: Pick<Tables<"intakes">, "id" | "name">[];
+  enrolledCourseIds: string[];
+  disabled: boolean;
+  onEnrolled: () => Promise<void>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [courseId, setCourseId] = useState("");
+  const [levelId, setLevelId] = useState("");
+  const [intakeId, setIntakeId] = useState("");
+  const [saving, setSaving] = useState(false);
+  const levelsQuery = useQuery({
+    queryKey: ["admin", "enrollment-course-levels", courseId],
+    enabled: open && !!courseId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("course_levels")
+        .select("id,name,sort_order")
+        .eq("course_id", courseId)
+        .eq("published", true)
+        .order("sort_order");
+      if (error) throw error;
+      return data;
+    },
+  });
+  const availableCourses = courses.filter(
+    (course) => student.study_mode !== "online" || course.available_online,
+  );
+  const remainingCourses = availableCourses.filter(
+    (course) => !enrolledCourseIds.includes(course.id),
+  );
+
+  async function enroll(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!courseId) return;
+    setSaving(true);
+    const { data, error } = await supabase.rpc("admin_enroll_student_course", {
+      _student_id: student.id,
+      _course_id: courseId,
+      _level_id: levelId || null,
+      _intake_id: intakeId || null,
+    });
+    setSaving(false);
+    if (error) {
+      toast.error("Could not enroll student", { description: error.message });
+      return;
+    }
+    if (data === "already_enrolled") {
+      toast.info("Student is already actively enrolled in this course.");
+      return;
+    }
+    toast.success("Student enrolled in course", {
+      description:
+        data === "online"
+          ? "Online course access will continue to follow its payment requirements."
+          : "Course materials, assignments, CATs, and assigned facilitators are now available.",
+    });
+    setOpen(false);
+    setCourseId("");
+    setLevelId("");
+    setIntakeId("");
+    await onEnrolled();
+  }
+
+  if (disabled) return null;
+
+  return (
+    <div className="mt-3">
+      {!open ? (
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={!remainingCourses.length}
+          onClick={() => setOpen(true)}
+        >
+          Enroll in another course
+        </Button>
+      ) : (
+        <form
+          className="grid gap-2 rounded-lg border bg-muted/30 p-3 sm:grid-cols-2"
+          onSubmit={(event) => void enroll(event)}
+        >
+          <label className="grid gap-1 text-xs font-medium sm:col-span-2">
+            Course
+            <select
+              required
+              className={selectClass}
+              value={courseId}
+              onChange={(event) => {
+                setCourseId(event.target.value);
+                setLevelId("");
+              }}
+            >
+              <option value="">Select a course</option>
+              {remainingCourses.map((course) => (
+                <option key={course.id} value={course.id}>
+                  {course.title}
+                </option>
+              ))}
+            </select>
+          </label>
+          {levelsQuery.data?.length ? (
+            <label className="grid gap-1 text-xs font-medium">
+              Course level
+              <select
+                required
+                className={selectClass}
+                value={levelId}
+                onChange={(event) => setLevelId(event.target.value)}
+              >
+                <option value="">Select a level</option>
+                {levelsQuery.data.map((level) => (
+                  <option key={level.id} value={level.id}>
+                    {level.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : levelsQuery.isLoading ? (
+            <p className="text-xs text-muted-foreground">Loading course levels…</p>
+          ) : null}
+          <label className="grid gap-1 text-xs font-medium">
+            Intake (optional)
+            <select
+              className={selectClass}
+              value={intakeId}
+              onChange={(event) => setIntakeId(event.target.value)}
+            >
+              <option value="">No intake selected</option>
+              {intakes.map((intake) => (
+                <option key={intake.id} value={intake.id}>
+                  {intake.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          {levelsQuery.error && (
+            <p role="alert" className="text-xs text-destructive sm:col-span-2">
+              Could not load course levels: {levelsQuery.error.message}
+            </p>
+          )}
+          <div className="flex flex-wrap gap-2 sm:col-span-2">
+            <Button
+              type="submit"
+              size="sm"
+              disabled={
+                saving ||
+                !courseId ||
+                levelsQuery.isLoading ||
+                !!levelsQuery.error ||
+                (!!levelsQuery.data?.length && !levelId)
+              }
+            >
+              {saving ? "Enrolling…" : "Enroll student"}
+            </Button>
+            <Button type="button" size="sm" variant="ghost" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+          </div>
+        </form>
       )}
     </div>
   );

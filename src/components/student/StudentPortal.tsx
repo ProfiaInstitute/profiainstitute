@@ -66,6 +66,77 @@ type PortalSection =
   | "messages"
   | "profile";
 type Student = Tables<"students">;
+const selectClass = "h-9 rounded-md border border-input bg-background px-3 text-sm";
+type StudentCourse = {
+  course_id: string;
+  title: string;
+  duration: string | null;
+  level_id: string | null;
+  modes: string[];
+  statuses: string[];
+};
+
+async function fetchStudentCourses(student: Student): Promise<StudentCourse[]> {
+  const [academic, online] = await Promise.all([
+    supabase.from("enrollments").select("course_id,level_id,status").eq("student_id", student.id),
+    supabase
+      .from("online_course_enrollments")
+      .select("course_id,level_id,status")
+      .eq("student_id", student.id),
+  ]);
+  if (academic.error) throw academic.error;
+  if (online.error) throw online.error;
+
+  const enrollments = new Map<
+    string,
+    { course_id: string; level_id: string | null; modes: Set<string>; statuses: Set<string> }
+  >();
+  const addEnrollment = (
+    courseId: string,
+    levelId: string | null,
+    mode: string,
+    status: string,
+  ) => {
+    const row = enrollments.get(courseId) ?? {
+      course_id: courseId,
+      level_id: null,
+      modes: new Set<string>(),
+      statuses: new Set<string>(),
+    };
+    if (status === "active" && levelId) row.level_id = levelId;
+    row.modes.add(mode);
+    row.statuses.add(status);
+    enrollments.set(courseId, row);
+  };
+  for (const enrollment of academic.data ?? [])
+    addEnrollment(enrollment.course_id, enrollment.level_id, "Academic", enrollment.status);
+  for (const enrollment of online.data ?? [])
+    addEnrollment(enrollment.course_id, enrollment.level_id, "Online", enrollment.status);
+  if (student.course_id && !enrollments.has(student.course_id)) {
+    enrollments.set(student.course_id, {
+      course_id: student.course_id,
+      level_id: student.level_id,
+      modes: new Set([student.study_mode === "online" ? "Online" : "Academic"]),
+      statuses: new Set(["assigned"]),
+    });
+  }
+
+  const courseIds = [...enrollments.keys()];
+  if (!courseIds.length) return [];
+  const { data: courses, error: coursesError } = await supabase
+    .from("courses")
+    .select("id,title,duration")
+    .in("id", courseIds);
+  if (coursesError) throw coursesError;
+  const courseById = new Map(courses.map((course) => [course.id, course]));
+  return [...enrollments.values()].map((enrollment) => ({
+    ...enrollment,
+    title: courseById.get(enrollment.course_id)?.title ?? "Course no longer available",
+    duration: courseById.get(enrollment.course_id)?.duration ?? null,
+    modes: [...enrollment.modes],
+    statuses: [...enrollment.statuses],
+  }));
+}
 
 export function StudentPortal({ selectedCourseId }: { selectedCourseId: string | null }) {
   const { user, loading, error: sessionError } = useUser();
@@ -459,6 +530,7 @@ function StudentWorkspace({
 }) {
   const queryClient = useQueryClient();
   const [phoneDraft, setPhoneDraft] = useState(enrollmentPhone);
+  const [activeCourseId, setActiveCourseId] = useState<string | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
   const [isOnline, setIsOnline] = useState(true);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -507,6 +579,30 @@ function StudentWorkspace({
       return data;
     },
   });
+  const studentCoursesQuery = useQuery({
+    queryKey: ["student", "course-enrollments", studentQuery.data?.id],
+    enabled: Boolean(studentQuery.data?.id),
+    queryFn: async () => {
+      if (!studentQuery.data) throw new Error("Student record is not available.");
+      return fetchStudentCourses(studentQuery.data);
+    },
+    staleTime: 20_000,
+    refetchInterval: 30_000,
+  });
+  const accessibleCourses = (studentCoursesQuery.data ?? []).filter(
+    (course) => course.statuses.includes("active") || course.statuses.includes("assigned"),
+  );
+  const activeCourse =
+    accessibleCourses.find((course) => course.course_id === activeCourseId) ??
+    accessibleCourses.find((course) => course.course_id === selectedCourseId) ??
+    accessibleCourses.find((course) => course.course_id === studentQuery.data?.course_id) ??
+    accessibleCourses[0] ??
+    null;
+  useEffect(() => {
+    if (activeCourse && activeCourse.course_id !== activeCourseId) {
+      setActiveCourseId(activeCourse.course_id);
+    }
+  }, [activeCourse, activeCourseId]);
   useEffect(() => {
     if (
       studentQuery.data?.study_mode === "online" &&
@@ -695,6 +791,23 @@ function StudentWorkspace({
           </span>
         </div>
         <div className="flex items-center gap-3">
+          {!onlineOnly && accessibleCourses.length > 1 && (
+            <label className="hidden items-center gap-2 text-xs font-medium sm:flex">
+              <span className="sr-only">Active course</span>
+              <select
+                aria-label="Active course"
+                className={`${selectClass} max-w-56`}
+                value={activeCourse?.course_id ?? ""}
+                onChange={(event) => setActiveCourseId(event.target.value)}
+              >
+                {accessibleCourses.map((course) => (
+                  <option key={course.course_id} value={course.course_id}>
+                    {course.title}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <NotificationBell
             userId={userId}
             onNavigate={(category) =>
@@ -751,6 +864,25 @@ function StudentWorkspace({
           role="status"
         >
           You're offline. Reconnect to refresh your student information.
+        </div>
+      )}
+      {!onlineOnly && accessibleCourses.length > 1 && (
+        <div className="border-b bg-card px-4 py-2 sm:hidden">
+          <label className="flex items-center gap-2 text-xs font-medium">
+            Course materials for
+            <select
+              aria-label="Course materials for"
+              className={`${selectClass} min-w-0 flex-1`}
+              value={activeCourse?.course_id ?? ""}
+              onChange={(event) => setActiveCourseId(event.target.value)}
+            >
+              {accessibleCourses.map((course) => (
+                <option key={course.course_id} value={course.course_id}>
+                  {course.title}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
       )}
       <StudentAnnouncements studentId={student.id} />
@@ -811,12 +943,23 @@ function StudentWorkspace({
               (onlineOnly ? (
                 <OnlineStudentOverview student={student} onNavigate={onSection} />
               ) : (
-                <StudentOverview student={student} onNavigate={onSection} />
+                <StudentOverview
+                  student={student}
+                  onNavigate={onSection}
+                  activeCourseId={activeCourse?.course_id ?? null}
+                  onCourseChange={setActiveCourseId}
+                />
               ))}
             {section === "online" && <OnlineCoursesSection student={student} />}
-            {section === "learning" && <LearningSection courseId={student.course_id} />}
-            {section === "assignments" && <AssignmentsSection student={student} />}
-            {section === "cats" && <StudentCatsSection courseId={student.course_id} />}
+            {section === "learning" && (
+              <LearningSection courseId={activeCourse?.course_id ?? null} />
+            )}
+            {section === "assignments" && (
+              <AssignmentsSection student={student} courseId={activeCourse?.course_id ?? null} />
+            )}
+            {section === "cats" && (
+              <StudentCatsSection courseId={activeCourse?.course_id ?? null} />
+            )}
             {section === "results" && <ResultsSection studentId={student.id} />}
             {section === "fees" && (
               <FeesSection
@@ -913,99 +1056,50 @@ function StudentWorkspace({
 function StudentOverview({
   student,
   onNavigate,
+  activeCourseId,
+  onCourseChange,
 }: {
   student: Student;
   onNavigate: (section: PortalSection) => void;
+  activeCourseId: string | null;
+  onCourseChange: (courseId: string) => void;
 }) {
+  const coursesQuery = useQuery({
+    queryKey: ["student", "course-enrollments", student.id],
+    queryFn: () => fetchStudentCourses(student),
+    staleTime: 20_000,
+    refetchInterval: 30_000,
+  });
+  const selectedCourse = coursesQuery.data?.find((course) => course.course_id === activeCourseId);
+  const selectedLevelId =
+    selectedCourse?.level_id ?? (activeCourseId === student.course_id ? student.level_id : null);
   const levelQuery = useQuery({
-    queryKey: ["student", "course-level", student.level_id],
-    enabled: Boolean(student.level_id),
+    queryKey: ["student", "course-level", selectedLevelId],
+    enabled: Boolean(selectedLevelId),
     queryFn: async () => {
       const { data, error } = await supabase
         .from("course_levels")
         .select(
           "id,name,code,total_fee,fee_structure_url,fee_structure_path,fee_structure_file_name",
         )
-        .eq("id", student.level_id!)
+        .eq("id", selectedLevelId!)
         .maybeSingle();
       if (error) throw error;
       return data;
     },
   });
   const levelUnits = useQuery({
-    queryKey: ["student", "course-level-units", student.level_id],
-    enabled: Boolean(student.level_id),
+    queryKey: ["student", "course-level-units", selectedLevelId],
+    enabled: Boolean(selectedLevelId),
     queryFn: async () => {
       const { data, error } = await supabase
         .from("course_units")
         .select("id,code,title,semester")
-        .eq("level_id", student.level_id!)
+        .eq("level_id", selectedLevelId!)
         .order("sort_order")
         .order("title");
       if (error) throw error;
       return data;
-    },
-  });
-  const coursesQuery = useQuery({
-    queryKey: ["student", "course-enrollments", student.id],
-    queryFn: async () => {
-      const [academic, online] = await Promise.all([
-        supabase.from("enrollments").select("course_id,status").eq("student_id", student.id),
-        supabase
-          .from("online_course_enrollments")
-          .select("course_id,status")
-          .eq("student_id", student.id),
-      ]);
-      if (academic.error) throw academic.error;
-      if (online.error) throw online.error;
-
-      const enrollments = new Map<
-        string,
-        { course_id: string; modes: Set<string>; statuses: Set<string> }
-      >();
-      for (const enrollment of academic.data ?? []) {
-        const row = enrollments.get(enrollment.course_id) ?? {
-          course_id: enrollment.course_id,
-          modes: new Set<string>(),
-          statuses: new Set<string>(),
-        };
-        row.modes.add("Academic");
-        row.statuses.add(enrollment.status);
-        enrollments.set(enrollment.course_id, row);
-      }
-      for (const enrollment of online.data ?? []) {
-        const row = enrollments.get(enrollment.course_id) ?? {
-          course_id: enrollment.course_id,
-          modes: new Set<string>(),
-          statuses: new Set<string>(),
-        };
-        row.modes.add("Online");
-        row.statuses.add(enrollment.status);
-        enrollments.set(enrollment.course_id, row);
-      }
-      if (student.course_id && !enrollments.has(student.course_id)) {
-        enrollments.set(student.course_id, {
-          course_id: student.course_id,
-          modes: new Set([student.study_mode === "online" ? "Online" : "Academic"]),
-          statuses: new Set(["assigned"]),
-        });
-      }
-
-      const ids = [...enrollments.keys()];
-      if (!ids.length) return [];
-      const { data: courses, error: courseError } = await supabase
-        .from("courses")
-        .select("id,title,duration")
-        .in("id", ids);
-      if (courseError) throw courseError;
-      const courseById = new Map(courses.map((course) => [course.id, course]));
-      return [...enrollments.values()].map((enrollment) => ({
-        course_id: enrollment.course_id,
-        title: courseById.get(enrollment.course_id)?.title ?? "Course no longer available",
-        duration: courseById.get(enrollment.course_id)?.duration ?? null,
-        modes: [...enrollment.modes],
-        statuses: [...enrollment.statuses],
-      }));
     },
   });
   const [results, fees, payments, assignments] = [
@@ -1045,13 +1139,13 @@ function StudentOverview({
       },
     }),
     useQuery({
-      queryKey: ["student", "assignments", student.id, student.course_id],
-      enabled: !!student.course_id,
+      queryKey: ["student", "assignments", student.id, activeCourseId],
+      enabled: !!activeCourseId,
       queryFn: async () => {
         const { data, error } = await supabase
           .from("assignments")
           .select("id")
-          .eq("course_id", student.course_id!)
+          .eq("course_id", activeCourseId!)
           .eq("published", true);
         if (error) throw error;
         return data;
@@ -1133,6 +1227,17 @@ function StudentOverview({
                     </Badge>
                   ))}
                 </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={course.course_id === activeCourseId ? "secondary" : "outline"}
+                  disabled={
+                    !course.statuses.includes("active") && !course.statuses.includes("assigned")
+                  }
+                  onClick={() => onCourseChange(course.course_id)}
+                >
+                  {course.course_id === activeCourseId ? "Selected course" : "View course"}
+                </Button>
               </li>
             ))}
           </ul>
@@ -1160,11 +1265,13 @@ function StudentOverview({
           </button>
         ))}
       </div>
-      {student.level_id && (
+      {selectedLevelId && (
         <section data-scroll-reveal className="rounded-xl border bg-card p-5 shadow-card">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <h3 className="font-semibold text-brand">Your course level</h3>
+              <h3 className="font-semibold text-brand">
+                {selectedCourse?.title ? `${selectedCourse.title} level` : "Your course level"}
+              </h3>
               {levelQuery.isLoading ? (
                 <p className="mt-2 text-sm text-muted-foreground">Loading your level…</p>
               ) : levelQuery.error ? (
@@ -1851,16 +1958,16 @@ function FeeMetric({ label, value }: { label: string; value: string }) {
   );
 }
 
-function AssignmentsSection({ student }: { student: Student }) {
+function AssignmentsSection({ student, courseId }: { student: Student; courseId: string | null }) {
   const [currentTime, setCurrentTime] = useState(() => Date.now());
   const assignmentsQuery = useQuery({
-    queryKey: ["student", "assignment-list", student.id, student.course_id],
-    enabled: !!student.course_id,
+    queryKey: ["student", "assignment-list", student.id, courseId],
+    enabled: !!courseId,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("assignments")
         .select("*")
-        .eq("course_id", student.course_id!)
+        .eq("course_id", courseId!)
         .eq("published", true)
         .order("due_date", { ascending: true });
       if (error) throw error;
@@ -1869,7 +1976,6 @@ function AssignmentsSection({ student }: { student: Student }) {
   });
   const submissionsQuery = useQuery({
     queryKey: ["student", "assignment-submissions", student.id],
-    enabled: !!student.course_id,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("submissions")
@@ -1883,7 +1989,7 @@ function AssignmentsSection({ student }: { student: Student }) {
     const timer = window.setInterval(() => setCurrentTime(Date.now()), 1000);
     return () => window.clearInterval(timer);
   }, []);
-  if (!student.course_id)
+  if (!courseId)
     return (
       <Empty
         title="No course assigned"
