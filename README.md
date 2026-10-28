@@ -2848,3 +2848,13 @@ the hosted project's email branding until its configuration is pushed (or the
 templates are pasted into the Supabase dashboard). When the refreshed website
 is deployed over the current website, update the template image source to the
 deployed `/images/logo.png` URL if the legacy static logo URL has been removed.
+
+## Vercel Web Analytics
+
+The app loads `@vercel/analytics` from the root layout and reports TanStack
+Router navigations using the matched route and pathname. In the Vercel project,
+enable **Settings → Analytics** and redeploy the production branch. After the
+deployment is live, verify that the browser Network panel shows the Vercel
+Insights script and page-view requests; ad blockers can prevent these requests.
+Analytics data is available in the project's **Analytics** dashboard after
+visits reach the deployed site.
