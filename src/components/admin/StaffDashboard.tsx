@@ -31,7 +31,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { toast } from "sonner";
-import { createExcelWorkbook } from "@/lib/excel-export";
+import { createExcelWorkbook, exportColumnLabel, sanitizeExportRows } from "@/lib/excel-export";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -1128,6 +1128,18 @@ function ApplicationsPanel() {
       }),
     [appsQuery.data, search, status],
   );
+  const exportRows = filtered.map((app) => ({
+    "Application Number": app.application_number,
+    Name: [app.first_name, app.last_name].filter(Boolean).join(" "),
+    "Course Name": relationName(app.courses),
+    Level: relationName(app.course_levels),
+    Intake: relationName(app.intakes),
+    Email: app.email,
+    "Phone Number": app.phone,
+    "Study Mode": app.study_mode,
+    Status: statusLabel(app.status),
+    "Applied On": app.created_at,
+  }));
 
   if (appsQuery.isLoading) return <LoadingState />;
   if (appsQuery.error)
@@ -1159,10 +1171,10 @@ function ApplicationsPanel() {
           ))}
         </select>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => exportCsv("applications.csv", filtered)}>
+          <Button variant="outline" onClick={() => exportCsv("applications.csv", exportRows)}>
             <ArrowDownToLine /> Export CSV
           </Button>
-          <Button variant="outline" onClick={() => exportExcel("applications.xlsx", filtered)}>
+          <Button variant="outline" onClick={() => exportExcel("applications.xlsx", exportRows)}>
             <ArrowDownToLine /> Export Excel
           </Button>
         </div>
@@ -1407,6 +1419,19 @@ function StudentsPanel({
       .toLowerCase()
       .includes(search.toLowerCase()),
   );
+  const exportRows = filtered.map((student) => ({
+    "Student Number": student.student_number,
+    Name: [student.first_name, student.middle_name, student.last_name].filter(Boolean).join(" "),
+    "Course Name":
+      studentCourseQuery.data?.[student.id]?.map((course) => course.title).join(", ") ||
+      "Not assigned",
+    Level: relationName(student.level),
+    Intake: relationName(student.intake),
+    Email: student.email,
+    "Phone Number": student.phone,
+    "Study Mode": student.study_mode ? statusLabel(student.study_mode) : "Not assigned",
+    Status: statusLabel(student.status),
+  }));
 
   async function saveStudent(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1491,10 +1516,18 @@ function StudentsPanel({
           />
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => exportCsv("students.csv", filtered)}>
+          <Button
+            variant="outline"
+            disabled={studentCourseQuery.isLoading || !!studentCourseQuery.error}
+            onClick={() => exportCsv("students.csv", exportRows)}
+          >
             <ArrowDownToLine /> Export CSV
           </Button>
-          <Button variant="outline" onClick={() => exportExcel("students.xlsx", filtered)}>
+          <Button
+            variant="outline"
+            disabled={studentCourseQuery.isLoading || !!studentCourseQuery.error}
+            onClick={() => exportExcel("students.xlsx", exportRows)}
+          >
             <ArrowDownToLine /> Export Excel
           </Button>
         </div>
@@ -2732,7 +2765,9 @@ function DataDirectory({ section }: { section: DashboardSection }) {
         case "results": {
           const result = await supabase
             .from("results")
-            .select("*")
+            .select(
+              "*,student:students(student_number,first_name,middle_name,last_name),unit:course_units(title)",
+            )
             .order("created_at", { ascending: false });
           data = result.data;
           error = result.error;
@@ -2757,7 +2792,10 @@ function DataDirectory({ section }: { section: DashboardSection }) {
           break;
         }
         case "assignments": {
-          const result = await supabase.from("assignments").select("*").order("due_date");
+          const result = await supabase
+            .from("assignments")
+            .select("*,course:courses(title),unit:course_units(title)")
+            .order("due_date");
           data = result.data;
           error = result.error;
           break;
@@ -2988,19 +3026,7 @@ function DataDirectory({ section }: { section: DashboardSection }) {
           <Button
             variant="outline"
             onClick={() =>
-              exportCsv(
-                `${section}.csv`,
-                section === "fees"
-                  ? (query.data ?? []).map((row) => ({
-                      ...Object.fromEntries(
-                        Object.entries(row).filter(
-                          ([key]) => key !== "student" && key !== "id" && !key.endsWith("_id"),
-                        ),
-                      ),
-                      student: feeStudentLabel(row["student"]),
-                    }))
-                  : (query.data ?? []),
-              )
+              exportCsv(`${section}.csv`, directoryExportRows(section, query.data ?? []))
             }
           >
             <ArrowDownToLine /> Export CSV
@@ -3008,19 +3034,7 @@ function DataDirectory({ section }: { section: DashboardSection }) {
           <Button
             variant="outline"
             onClick={() =>
-              exportExcel(
-                `${section}.xlsx`,
-                section === "fees"
-                  ? (query.data ?? []).map((row) => ({
-                      ...Object.fromEntries(
-                        Object.entries(row).filter(
-                          ([key]) => key !== "student" && key !== "id" && !key.endsWith("_id"),
-                        ),
-                      ),
-                      student: feeStudentLabel(row["student"]),
-                    }))
-                  : (query.data ?? []),
-              )
+              exportExcel(`${section}.xlsx`, directoryExportRows(section, query.data ?? []))
             }
           >
             <ArrowDownToLine /> Export Excel
@@ -4838,19 +4852,60 @@ function feeStudentLabel(value: unknown) {
     typeof student.student_number === "string" ? student.student_number : "No admission number";
   return `${admissionNumber} · ${name || "Name unavailable"}`;
 }
+function directoryExportRows(section: DashboardSection, rows: Record<string, unknown>[]) {
+  if (section === "results") {
+    return rows.map((row) => {
+      const student =
+        row["student"] && typeof row["student"] === "object" && !Array.isArray(row["student"])
+          ? (row["student"] as Record<string, unknown>)
+          : {};
+      const studentName = [student["first_name"], student["middle_name"], student["last_name"]]
+        .filter((part): part is string => typeof part === "string" && part.trim().length > 0)
+        .join(" ");
+      const unit = relationName(row["unit"]);
+      return {
+        "Student Number": student["student_number"] ?? "Not assigned",
+        "Student Name": studentName || "Name unavailable",
+        Unit: unit === "Not assigned" ? row["unit_name"] : unit,
+        Score: row["score"],
+        Grade: row["grade"],
+        Semester: row["semester"],
+        "Academic Year": row["academic_year"],
+        Published: row["published"],
+        "Recorded On": row["created_at"],
+      };
+    });
+  }
+  if (section === "assignments") {
+    return rows.map((row) => ({
+      Assignment: row["title"],
+      Course: relationName(row["course"]),
+      Unit: relationName(row["unit"]),
+      Instructions: row["instructions"],
+      "Due Date": row["due_date"],
+      Published: row["published"],
+      "Created On": row["created_at"],
+    }));
+  }
+  if (section === "fees") {
+    return rows.map((row) => ({
+      ...Object.fromEntries(Object.entries(row).filter(([key]) => key !== "student")),
+      Student: feeStudentLabel(row["student"]),
+    }));
+  }
+  return rows;
+}
 function exportCsv(fileName: string, rows: readonly object[]) {
   if (!rows.length) {
     toast.error("There are no records to export.");
     return;
   }
-  const columns = [...new Set(rows.flatMap((row) => Object.keys(row)))].filter(
-    (key) => !["raw", "upload_token"].includes(key),
-  );
+  const safeRows = sanitizeExportRows(rows);
+  const columns = [...new Set(safeRows.flatMap((row) => Object.keys(row)))];
   const escape = (value: unknown) => `"${String(value ?? "").replaceAll('"', '""')}"`;
   const csv = [
-    columns.map(escape).join(","),
-    ...rows.map((row) => {
-      const record = row as Record<string, unknown>;
+    columns.map((column) => escape(exportColumnLabel(column))).join(","),
+    ...safeRows.map((record) => {
       return columns
         .map((column) =>
           escape(

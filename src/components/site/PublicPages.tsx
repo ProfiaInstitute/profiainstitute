@@ -6,7 +6,6 @@ import {
   CheckCircle2,
   Clock3,
   ChevronDown,
-  Download,
   GraduationCap,
   MapPin,
   MessageCircle,
@@ -26,6 +25,7 @@ import {
   PageHero,
   SectionTitle,
 } from "@/components/site/common";
+import { FeeStructureActions } from "@/components/site/FeeStructureActions";
 import { supabase } from "@/integrations/supabase/client";
 import { getYouTubeEmbedUrl, renderContentMarkup } from "@/lib/content-format";
 import { downloadContentAttachment } from "@/lib/content-download";
@@ -34,7 +34,6 @@ import type { Json } from "@/integrations/supabase/types";
 import {
   FACILITY_LOCATION,
   SCHOOL_ROUTES,
-  formatKES,
   useActiveIntake,
   useCourses,
   useGeneral,
@@ -136,7 +135,7 @@ export function AcademicsPage() {
       <section className="bg-muted/40 py-12">
         <div className="container-site">
           <SectionTitle
-            title="Published courses"
+            title="Our Courses"
             subtitle="See programme details and begin an application."
           />
           {courses.data?.length ? (
@@ -182,7 +181,94 @@ export function AcademicsPage() {
           )}
         </div>
       </section>
+      <SchoolFeeStructures schools={schools.data ?? []} />
     </>
+  );
+}
+
+function SchoolFeeStructures({ schools }: { schools: Array<{ id: string; name: string }> }) {
+  const [selectedSchoolId, setSelectedSchoolId] = useState("");
+  const selectedSchool = schools.find((school) => school.id === selectedSchoolId) ?? schools[0];
+  const feeStructures = useQuery({
+    queryKey: ["school-fee-structures", selectedSchool?.id],
+    enabled: Boolean(selectedSchool?.id),
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("school_fee_structures")
+        .select("id,title,description,file_path,file_name")
+        .eq("school_id", selectedSchool!.id)
+        .eq("published", true)
+        .order("sort_order")
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  if (!schools.length) return null;
+
+  return (
+    <section className="container-site py-12">
+      <SectionTitle
+        title="School Fee Structures"
+        subtitle="Choose a school to view and download its published fee schedules."
+      />
+      <div className="mb-6 flex flex-wrap gap-2" role="tablist" aria-label="Schools">
+        {schools.map((school) => (
+          <button
+            key={school.id}
+            type="button"
+            role="tab"
+            id={`school-fee-tab-${school.id}`}
+            aria-selected={selectedSchool?.id === school.id}
+            aria-controls="school-fee-panel"
+            onClick={() => setSelectedSchoolId(school.id)}
+            className={`rounded-full border px-4 py-2 text-sm font-medium transition-colors ${
+              selectedSchool?.id === school.id
+                ? "border-primary bg-primary text-primary-foreground"
+                : "bg-card text-foreground hover:border-primary"
+            }`}
+          >
+            {school.name}
+          </button>
+        ))}
+      </div>
+      <div
+        id="school-fee-panel"
+        role="tabpanel"
+        aria-labelledby={selectedSchool ? `school-fee-tab-${selectedSchool.id}` : undefined}
+      >
+        {feeStructures.isLoading ? (
+          <p className="text-sm text-muted-foreground">Loading fee structures…</p>
+        ) : feeStructures.error ? (
+          <p role="alert" className="text-sm text-destructive">
+            Could not load fee structures: {feeStructures.error.message}
+          </p>
+        ) : feeStructures.data?.length ? (
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {feeStructures.data.map((feeStructure) => (
+              <article key={feeStructure.id} className="rounded-xl border bg-card p-5 shadow-card">
+                <h3 className="font-semibold text-brand">{feeStructure.title}</h3>
+                {feeStructure.description && (
+                  <p className="mt-2 text-sm text-muted-foreground">{feeStructure.description}</p>
+                )}
+                <div className="mt-4">
+                  <FeeStructureActions
+                    path={feeStructure.file_path}
+                    filename={feeStructure.file_name}
+                    title={feeStructure.title}
+                  />
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <p className="rounded-xl border bg-card p-5 text-sm text-muted-foreground">
+            No fee structures have been published for {selectedSchool?.name} yet.
+          </p>
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -192,7 +278,7 @@ function CourseLevelsDetails({ courseId }: { courseId: string }) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("course_levels")
-        .select("id,name,code,description,fee_items,total_fee,fee_structure_url")
+        .select("id,name,code,description")
         .eq("course_id", courseId)
         .eq("published", true)
         .order("sort_order")
@@ -239,9 +325,6 @@ function CourseLevelDetails({
     name: string;
     code: string | null;
     description: string | null;
-    fee_items: Json;
-    total_fee: number;
-    fee_structure_url: string | null;
   };
 }) {
   const [open, setOpen] = useState(false);
@@ -259,15 +342,6 @@ function CourseLevelDetails({
       return data;
     },
   });
-  const feeItems = Array.isArray(level.fee_items)
-    ? level.fee_items.flatMap((item) => {
-        if (typeof item !== "object" || item === null || Array.isArray(item)) return [];
-        const label = item["label"];
-        const amount = item["amount"];
-        return typeof label === "string" && typeof amount === "number" ? [{ label, amount }] : [];
-      })
-    : [];
-
   return (
     <details
       className="rounded-lg border bg-background"
@@ -280,24 +354,11 @@ function CourseLevelDetails({
             {level.name}
             {level.code ? ` · ${level.code}` : ""}
           </span>
-          <span className="mt-1 block text-xs text-muted-foreground">
-            Fees: {formatKES(level.total_fee)}
-          </span>
         </span>
         <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
       </summary>
       <div className="border-t px-3 pb-3 pt-3">
         {level.description && <p className="text-sm text-muted-foreground">{level.description}</p>}
-        {feeItems.length > 0 && (
-          <ul className="mt-3 space-y-1 text-sm">
-            {feeItems.map((item, index) => (
-              <li key={`${item.label}-${index}`} className="flex justify-between gap-3">
-                <span>{item.label}</span>
-                <span>{formatKES(item.amount)}</span>
-              </li>
-            ))}
-          </ul>
-        )}
         {units.isLoading ? (
           <p className="mt-3 text-sm text-muted-foreground">Loading units…</p>
         ) : units.error ? (
@@ -317,19 +378,12 @@ function CourseLevelDetails({
         ) : (
           <p className="mt-3 text-sm text-muted-foreground">Units will be shared by the school.</p>
         )}
-        <div className="mt-4 flex flex-wrap gap-2">
+        <div className="mt-4">
           <Button asChild size="sm">
             <Link to="/admission" search={{ course: courseId, level: level.id }}>
               Apply for this level
             </Link>
           </Button>
-          {level.fee_structure_url && (
-            <Button asChild size="sm" variant="outline">
-              <a href={level.fee_structure_url} target="_blank" rel="noreferrer">
-                <Download className="h-4 w-4" /> Fee structure
-              </a>
-            </Button>
-          )}
         </div>
       </div>
     </details>
@@ -429,9 +483,6 @@ function OnlineCourseCard({
       <div className="space-y-3 p-5">
         <p className="text-xs font-semibold uppercase tracking-wide text-primary">{schoolName}</p>
         <h2 className="text-lg font-bold text-brand">{course.title}</h2>
-        <p className="text-sm font-semibold text-brand">
-          Tuition {course.fees === null ? "Contact admissions" : formatKES(course.fees)}
-        </p>
         {course.description && (
           <p className="line-clamp-4 text-sm text-muted-foreground">{course.description}</p>
         )}
@@ -537,10 +588,6 @@ function OnlineCourseCard({
                 </p>
               )}
             </div>
-            <p className="text-xs text-muted-foreground">
-              Examination: {formatKES(course.online_exam_fee)} · Certificate:{" "}
-              {formatKES(course.online_certificate_fee)} (paid separately after lessons)
-            </p>
           </div>
         )}
       </div>

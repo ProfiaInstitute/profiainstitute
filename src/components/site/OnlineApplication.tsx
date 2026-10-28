@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
+import { FeeStructureActions } from "@/components/site/FeeStructureActions";
 import { formatKES, STUDY_MODES, useActiveIntake } from "@/lib/site";
 import type { Enums, Json } from "@/integrations/supabase/types";
 
@@ -115,7 +116,9 @@ export function OnlineApplication({
     queryFn: async () => {
       const { data, error } = await supabase
         .from("course_levels")
-        .select("id,name,code,description,fee_items,total_fee,fee_structure_url,sort_order")
+        .select(
+          "id,name,code,description,fee_items,total_fee,fee_structure_url,fee_structure_path,fee_structure_file_name,sort_order",
+        )
         .eq("course_id", values.course_id)
         .eq("published", true)
         .order("sort_order")
@@ -254,7 +257,7 @@ export function OnlineApplication({
       let path = uploadedDocumentPaths.get(file);
       if (!path) {
         const safeFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(-180);
-        const newPath = `${application.id}/${type.toLowerCase().replace(/[^a-z0-9]+/g, "-")}/${Date.now()}-${safeFileName}`;
+        const newPath = `${application.id}/${application.token}/${type.toLowerCase().replace(/[^a-z0-9]+/g, "-")}/${Date.now()}-${safeFileName}`;
         const { error: uploadError } = await supabase.storage
           .from("application-docs")
           .upload(newPath, file, { contentType: documentContentType(file), upsert: false });
@@ -580,15 +583,17 @@ export function OnlineApplication({
               Unit details will be shared by the school.
             </p>
           )}
-          {selectedLevel.fee_structure_url && (
-            <a
-              href={selectedLevel.fee_structure_url}
-              target="_blank"
-              rel="noreferrer"
-              className="mt-3 inline-flex text-sm font-semibold text-primary underline"
-            >
-              Download fee structure
-            </a>
+          {(selectedLevel.fee_structure_path || selectedLevel.fee_structure_url) && (
+            <div className="mt-3">
+              <FeeStructureActions
+                path={selectedLevel.fee_structure_path}
+                url={selectedLevel.fee_structure_url}
+                filename={
+                  selectedLevel.fee_structure_file_name ?? `${selectedLevel.name}-fee-structure.pdf`
+                }
+                title={`${selectedLevel.name} fee structure`}
+              />
+            </div>
           )}
         </div>
       )}

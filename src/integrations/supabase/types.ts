@@ -575,6 +575,7 @@ export type Database = {
           created_at: string;
           description: string | null;
           fee_items: Json;
+          fee_structure_file_name: string | null;
           fee_structure_path: string | null;
           fee_structure_url: string | null;
           id: string;
@@ -590,6 +591,7 @@ export type Database = {
           created_at?: string;
           description?: string | null;
           fee_items?: Json;
+          fee_structure_file_name?: string | null;
           fee_structure_path?: string | null;
           fee_structure_url?: string | null;
           id?: string;
@@ -605,6 +607,7 @@ export type Database = {
           created_at?: string;
           description?: string | null;
           fee_items?: Json;
+          fee_structure_file_name?: string | null;
           fee_structure_path?: string | null;
           fee_structure_url?: string | null;
           id?: string;
@@ -1712,6 +1715,53 @@ export type Database = {
             columns: ["source_submission_id"];
             isOneToOne: true;
             referencedRelation: "submissions";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      school_fee_structures: {
+        Row: {
+          created_at: string;
+          description: string | null;
+          file_name: string;
+          file_path: string;
+          id: string;
+          published: boolean;
+          school_id: string;
+          sort_order: number;
+          title: string;
+          updated_at: string;
+        };
+        Insert: {
+          created_at?: string;
+          description?: string | null;
+          file_name: string;
+          file_path: string;
+          id?: string;
+          published?: boolean;
+          school_id: string;
+          sort_order?: number;
+          title: string;
+          updated_at?: string;
+        };
+        Update: {
+          created_at?: string;
+          description?: string | null;
+          file_name?: string;
+          file_path?: string;
+          id?: string;
+          published?: boolean;
+          school_id?: string;
+          sort_order?: number;
+          title?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "school_fee_structures_school_id_fkey";
+            columns: ["school_id"];
+            isOneToOne: false;
+            referencedRelation: "schools";
             referencedColumns: ["id"];
           },
         ];

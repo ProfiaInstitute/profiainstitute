@@ -116,7 +116,7 @@ function Home() {
           key={currentSlide.id}
           src={currentSlide.url}
           alt={currentSlide.alt || "Profia Institute"}
-          className="hero-slide-image absolute inset-0 -z-20 h-full w-full object-cover"
+          className="hero-slide-image absolute inset-0 -z-20 h-full w-full object-contain"
           fetchPriority="high"
         />
         <div className="absolute inset-0 -z-10 bg-hero-overlay" />

@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   BookOpen,
   CalendarDays,
+  FileText,
   Layers3,
   LogOut,
   Pencil,
@@ -19,6 +20,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 import { CourseLevelsManager } from "@/components/admin/CourseLevelsManager";
+import { SchoolFeeStructuresManager } from "@/components/admin/SchoolFeeStructuresManager";
 import { can, useRoles, useUser } from "@/lib/auth";
 import type { Enums, Tables, TablesInsert, TablesUpdate } from "@/integrations/supabase/types";
 
@@ -73,7 +75,9 @@ export function ManagementPanel() {
   const roles = rolesQuery.data;
   const canManageCourses = can(roles, ["academic_admin"]);
   const canManageIntakes = can(roles, ["admissions_admin", "academic_admin"]);
-  const [section, setSection] = useState<"courses" | "levels" | "intakes">("courses");
+  const [section, setSection] = useState<"courses" | "levels" | "schoolFees" | "intakes">(
+    "courses",
+  );
 
   useEffect(() => {
     if (!canManageCourses && canManageIntakes) setSection("intakes");
@@ -160,6 +164,15 @@ export function ManagementPanel() {
                 Course levels & units
               </NavButton>
             )}
+            {canManageCourses && (
+              <NavButton
+                active={section === "schoolFees"}
+                onClick={() => setSection("schoolFees")}
+                icon={<FileText />}
+              >
+                School fee structures
+              </NavButton>
+            )}
             {canManageIntakes && (
               <NavButton
                 active={section === "intakes"}
@@ -174,6 +187,8 @@ export function ManagementPanel() {
             <CoursesManager />
           ) : section === "levels" && canManageCourses ? (
             <CourseLevelsManager />
+          ) : section === "schoolFees" && canManageCourses ? (
+            <SchoolFeeStructuresManager />
           ) : (
             <IntakesManager />
           )}
