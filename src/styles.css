@@ -9,11 +9,11 @@
  *  primary  = Profia orange  (#F1582B)
  *  brand    = Profia maroon  (#680915)
  *  cream    = Profia cream   (#FFF6ED)
- *  Typeface = Inter (as used on the current site)
+ *  Typeface = native system UI fonts
  */
 
 @theme inline {
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: ui-sans-serif, system-ui, sans-serif;
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -227,15 +227,6 @@
     transform: rotate(360deg);
   }
 }
-@keyframes hero-image-drift {
-  0%,
-  100% {
-    transform: scale(1.03) translate3d(0, 0, 0);
-  }
-  50% {
-    transform: scale(1.09) translate3d(-0.5%, -0.5%, 0);
-  }
-}
 .page-transition {
   animation: page-enter 180ms ease-out both;
 }
@@ -283,9 +274,6 @@
 .motion-icon {
   transition: transform 320ms cubic-bezier(0.2, 0.75, 0.25, 1);
 }
-.homepage-motion > section:first-child img[aria-hidden="true"] {
-  animation: hero-image-drift 24s ease-in-out infinite;
-}
 button[data-loading="true"]::after,
 a[data-loading="true"]::after {
   width: 0.9rem;
@@ -332,9 +320,6 @@ a[href] {
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .homepage-motion > section:first-child img[aria-hidden="true"] {
-    animation: none;
-  }
   .motion-card:hover,
   .motion-icon,
   button:hover,

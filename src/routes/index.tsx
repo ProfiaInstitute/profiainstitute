@@ -113,12 +113,6 @@ function Home() {
         aria-roledescription={slides.length > 1 ? "carousel" : undefined}
       >
         <img
-          src={currentSlide.url}
-          alt=""
-          aria-hidden="true"
-          className="hero-image-drift absolute inset-0 -z-20 h-full w-full scale-105 object-cover blur-2xl"
-        />
-        <img
           key={currentSlide.id}
           src={currentSlide.url}
           alt={currentSlide.alt || "Profia Institute"}
