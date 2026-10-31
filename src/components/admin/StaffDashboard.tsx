@@ -8,6 +8,7 @@ import {
   CalendarDays,
   ChartNoAxesCombined,
   ClipboardList,
+  ClipboardCheck,
   CreditCard,
   Eye,
   EyeOff,
@@ -54,6 +55,7 @@ import { PortalInboxPanel } from "@/components/admin/PortalInboxPanel";
 import { CourseFeedbackPanel } from "@/components/admin/CourseFeedbackPanel";
 import { FacilitatorManager } from "@/components/admin/FacilitatorManager";
 import { RegulatoryActionTracker } from "@/components/admin/RegulatoryActionTracker";
+import { ExamCandidateManager } from "@/components/admin/ExamCandidateManager";
 import { NotificationBell } from "@/components/site/NotificationBell";
 import { supabase } from "@/integrations/supabase/client";
 import { can, signOutWithAudit, useRoles, useUser, type AppRole } from "@/lib/auth";
@@ -87,6 +89,7 @@ type DashboardSection =
   | "assignments"
   | "progression"
   | "regulatory"
+  | "exam-candidates"
   | "articles"
   | "announcements"
   | "memos"
@@ -187,6 +190,12 @@ const navItems: { id: DashboardSection; title: string; icon: LucideIcon; roles: 
     icon: ShieldCheck,
     roles: ["super_admin", "admissions_admin", "academic_admin"],
   },
+  {
+    id: "exam-candidates",
+    title: "Exam candidates",
+    icon: ClipboardCheck,
+    roles: ["super_admin", "academic_admin"],
+  },
   { id: "articles", title: "Articles", icon: Newspaper, roles: ["super_admin", "content_admin"] },
   {
     id: "announcements",
@@ -258,6 +267,7 @@ const navGroups: { title: string; ids: DashboardSection[] }[] = [
       "assignments",
       "progression",
       "regulatory",
+      "exam-candidates",
     ],
   },
   {
@@ -392,6 +402,8 @@ export function StaffDashboard() {
       <StudentProgressionPanel />
     ) : section === "regulatory" ? (
       <RegulatoryActionTracker />
+    ) : section === "exam-candidates" ? (
+      <ExamCandidateManager />
     ) : section === "student-inbox" ? (
       <PortalInboxPanel />
     ) : section === "course-feedback" ? (

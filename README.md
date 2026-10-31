@@ -2766,6 +2766,36 @@ portals but are not automatically fetched because a supported public feed or
 API has not been verified. Feed content is informational and is not parsed as
 authoritative deadlines or student-specific account status.
 
+Apply `drizzle/migrations/0040_regulatory_deadline_reminders.sql` after
+`0039_regulatory_public_feeds.sql` and deploy
+`supabase/functions/send-regulatory-deadline-reminders`. Pending exam and
+accreditation actions notify academic admins and Super Admins; funding actions
+notify admissions admins and Super Admins; tax actions notify Super Admins.
+Reminders are queued for 30, 7, and 1 day before a deadline and on the due date
+at 08:00 East Africa Time. The worker requires `REGULATORY_REMINDER_CRON_SECRET`.
+Email delivery additionally requires `RESEND_API_KEY`, `SCHOOL_EMAIL_FROM`,
+and `PUBLIC_SITE_URL`. WhatsApp delivery additionally requires the WhatsApp
+Cloud API secrets and Meta approval of
+`supabase/templates/whatsapp/profia_regulatory_deadline_reminder.json`. Do not
+expose these secrets in the browser or commit them.
+
+To activate automated delivery, configure an external scheduler to POST to the
+worker every 15 minutes with the `x-regulatory-cron-secret` header. The worker
+does not run on a schedule until an operator configures that scheduler and at
+least one delivery channel. It processes only configured channels, so an
+unconfigured WhatsApp channel does not consume retries. Failed deliveries
+retry with backoff, up to five attempts.
+
+Apply `drizzle/migrations/0041_exam_sittings_and_candidates.sql` after
+`0040_regulatory_deadline_reminders.sql`. **Admin → Exam candidates** lets
+academic admins define exam sittings, select the related course, level, and
+required units, and view enrolled students' published unit results against a
+configurable pass mark. Eligible students can be nominated and their
+registration status tracked; nominated rosters can be exported to XLSX without
+national IDs or dates of birth. This is an internal readiness checklist, not
+confirmation of eligibility by an exam body; staff must verify official
+requirements before submitting a roster.
+
 ### Application supporting documents
 
 Apply `0004_application_document_storage.sql` after the earlier migrations to

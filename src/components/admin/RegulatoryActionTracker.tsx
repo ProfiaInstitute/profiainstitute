@@ -305,6 +305,17 @@ export function RegulatoryActionTracker() {
         </div>
       </section>
 
+      <section className="rounded-xl border bg-card p-4 text-sm">
+        <p className="font-semibold text-brand">Automatic deadline reminders</p>
+        <p className="mt-1 text-muted-foreground">
+          Once the reminder migration and scheduled worker are configured, staff receive reminders
+          30, 7, and 1 day before an open action is due, and again on its due date. Academic admins
+          receive exam/accreditation reminders; admissions admins receive funding reminders; tax
+          reminders go to Super Admins. Email and WhatsApp delivery require their provider
+          credentials to be configured securely.
+        </p>
+      </section>
+
       <section className="space-y-4 rounded-xl border bg-card p-5 shadow-card">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
