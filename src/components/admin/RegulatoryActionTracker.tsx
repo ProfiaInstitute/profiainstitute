@@ -341,6 +341,7 @@ export function RegulatoryActionTracker() {
             type="button"
             variant="outline"
             disabled={syncFeeds.isPending}
+            loading={syncFeeds.isPending}
             onClick={() => syncFeeds.mutate()}
           >
             <RefreshCw className={syncFeeds.isPending ? "animate-spin" : ""} />
@@ -571,7 +572,7 @@ export function RegulatoryActionTracker() {
             </FormField>
           </div>
         </div>
-        <Button type="submit" disabled={saveAction.isPending}>
+        <Button type="submit" disabled={saveAction.isPending} loading={saveAction.isPending}>
           {editingId ? <Pencil /> : <Plus />}
           {saveAction.isPending ? "Saving…" : editingId ? "Save changes" : "Add action"}
         </Button>

@@ -589,7 +589,11 @@ export function ExamCandidateManager() {
             )}
           </fieldset>
         )}
-        <Button type="submit" disabled={saveSitting.isPending || sittingsQuery.isLoading}>
+        <Button
+          type="submit"
+          disabled={saveSitting.isPending || sittingsQuery.isLoading}
+          loading={saveSitting.isPending}
+        >
           <Plus /> {saveSitting.isPending ? "Saving…" : "Save sitting"}
         </Button>
       </form>

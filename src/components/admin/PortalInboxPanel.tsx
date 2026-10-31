@@ -203,7 +203,11 @@ export function PortalInboxPanel() {
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
             />
-            <Button className="justify-self-end" disabled={sendMutation.isPending || !draft.trim()}>
+            <Button
+              className="justify-self-end"
+              disabled={sendMutation.isPending || !draft.trim()}
+              loading={sendMutation.isPending}
+            >
               <Send className="mr-2 h-4 w-4" />
               {sendMutation.isPending ? "Sending…" : "Send reply"}
             </Button>

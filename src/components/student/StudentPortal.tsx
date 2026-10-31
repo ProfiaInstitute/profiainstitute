@@ -490,7 +490,7 @@ function StudentSignIn({
               {error}
             </p>
           )}
-          <Button className="w-full" disabled={busy}>
+          <Button className="w-full" disabled={busy} loading={busy}>
             {busy ? "Please wait…" : mode === "signin" ? "Sign in" : "Create account"}
           </Button>
           <button
@@ -613,7 +613,7 @@ function StudentWorkspace({
       onSection("overview");
     }
   }, [onSection, section, studentQuery.data?.study_mode]);
-  useScrollReveal(contentRef, `${section}:${studentQuery.data?.id ?? ""}`, false);
+  useScrollReveal(contentRef, `${section}:${studentQuery.data?.id ?? ""}`, true);
 
   function submitEnrollmentPhone(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -2223,7 +2223,13 @@ function SubmitAssignment({
           You can attach multiple files. Each file must be 50 MB or smaller.
         </span>
       </label>
-      <Button className="mt-2" size="sm" disabled={busy} onClick={() => void submit()}>
+      <Button
+        className="mt-2"
+        size="sm"
+        disabled={busy}
+        loading={busy}
+        onClick={() => void submit()}
+      >
         {busy ? "Submitting…" : "Submit assignment"}
       </Button>
     </div>
@@ -2493,7 +2499,10 @@ function StudentProgressionSection({ student }: { student: Student }) {
               value={message}
               onChange={(event) => setMessage(event.target.value)}
             />
-            <Button disabled={applyMutation.isPending || !levelId}>
+            <Button
+              disabled={applyMutation.isPending || !levelId}
+              loading={applyMutation.isPending}
+            >
               {applyMutation.isPending ? "Submitting…" : "Submit level application"}
             </Button>
           </form>
@@ -2606,7 +2615,7 @@ function StudentFeedbackSection({ studentId }: { studentId: string }) {
           value={body}
           onChange={(event) => setBody(event.target.value)}
         />
-        <Button disabled={submitMutation.isPending}>
+        <Button disabled={submitMutation.isPending} loading={submitMutation.isPending}>
           {submitMutation.isPending ? "Sending…" : "Send feedback"}
         </Button>
       </form>
@@ -2753,7 +2762,11 @@ function StudentMessagesSection({ studentId, userId }: { studentId: string; user
           value={body}
           onChange={(event) => setBody(event.target.value)}
         />
-        <Button className="justify-self-end" disabled={sendMutation.isPending || !body.trim()}>
+        <Button
+          className="justify-self-end"
+          disabled={sendMutation.isPending || !body.trim()}
+          loading={sendMutation.isPending}
+        >
           <Mail className="mr-2 h-4 w-4" />
           {sendMutation.isPending ? "Sending…" : "Send message"}
         </Button>
@@ -3061,13 +3074,18 @@ function FeesSection({
               placeholder={`Balance: ${formatKES(outstanding)}`}
             />
           </label>
-          <Button type="submit" disabled={outstanding < 1 || paymentMutation.isPending}>
+          <Button
+            type="submit"
+            disabled={outstanding < 1 || paymentMutation.isPending}
+            loading={paymentMutation.isPending}
+          >
             {paymentMutation.isPending ? "Sending prompt…" : "Send payment prompt"}
           </Button>
           <Button
             type="button"
             variant="outline"
             disabled={statementMutation.isPending}
+            loading={statementMutation.isPending}
             onClick={downloadStatement}
           >
             <Download />
@@ -3398,7 +3416,9 @@ function ProfileSection({
           Address
           <Textarea rows={3} value={address} onChange={(e) => setAddress(e.target.value)} />
         </label>
-        <Button disabled={busy}>{busy ? "Saving…" : "Save contact details"}</Button>
+        <Button disabled={busy} loading={busy}>
+          {busy ? "Saving…" : "Save contact details"}
+        </Button>
       </form>
       <section className="h-fit rounded-xl border bg-card p-5 shadow-card">
         <h2 className="font-semibold text-brand">Student record</h2>

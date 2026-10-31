@@ -135,8 +135,8 @@ export function FeatureGrid({ features }: { features: { title: string; text: str
       {features.map((f, i) => {
         const Icon = featureIcons[i % featureIcons.length] ?? GraduationCap;
         return (
-          <div key={f.title} className="rounded-xl border bg-card p-6 shadow-card">
-            <span className="inline-flex h-11 w-11 items-center justify-center rounded-lg bg-accent text-primary">
+          <div key={f.title} className="motion-card rounded-xl border bg-card p-6 shadow-card">
+            <span className="motion-icon inline-flex h-11 w-11 items-center justify-center rounded-lg bg-accent text-primary">
               <Icon className="h-5 w-5" />
             </span>
             <h3 className="mt-4 font-bold text-brand">{f.title}</h3>
@@ -163,7 +163,7 @@ export type CourseLite = {
 export function CourseCard({ c }: { c: CourseLite }) {
   const [more, setMore] = useState(false);
   return (
-    <article className="flex flex-col overflow-hidden rounded-xl border bg-card shadow-card transition hover:-translate-y-0.5 hover:shadow-lift">
+    <article className="motion-card flex flex-col overflow-hidden rounded-xl border bg-card shadow-card">
       <div className="aspect-[4/3] overflow-hidden bg-muted">
         {c.image_url ? (
           <img
@@ -495,7 +495,7 @@ export function HomepageMedia() {
           return (
             <figure
               key={item.id}
-              className="group overflow-hidden rounded-xl border bg-card shadow-card transition duration-300 hover:-translate-y-1 hover:shadow-lift"
+              className="motion-card group overflow-hidden rounded-xl border bg-card shadow-card"
             >
               {videoUrl ? (
                 <iframe

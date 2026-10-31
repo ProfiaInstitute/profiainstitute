@@ -102,7 +102,7 @@ function Home() {
   }, [slides.length]);
 
   return (
-    <>
+    <div className="homepage-motion">
       {/* HERO */}
       <section
         className="relative isolate min-h-[32rem] overflow-hidden bg-brand text-brand-foreground sm:min-h-[36rem]"
@@ -116,7 +116,7 @@ function Home() {
           src={currentSlide.url}
           alt=""
           aria-hidden="true"
-          className="absolute inset-0 -z-20 h-full w-full scale-105 object-cover blur-2xl"
+          className="hero-image-drift absolute inset-0 -z-20 h-full w-full scale-105 object-cover blur-2xl"
         />
         <img
           key={currentSlide.id}
@@ -295,7 +295,7 @@ function Home() {
       )}
 
       <HomepageMedia />
-    </>
+    </div>
   );
 }
 

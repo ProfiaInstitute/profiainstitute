@@ -244,7 +244,11 @@ export function StudentCatsSection({
             {saveKasnebNumber.error.message}
           </p>
         )}
-        <Button type="submit" disabled={saveKasnebNumber.isPending}>
+        <Button
+          type="submit"
+          disabled={saveKasnebNumber.isPending}
+          loading={saveKasnebNumber.isPending}
+        >
           {saveKasnebNumber.isPending ? "Saving…" : "Save and continue"}
         </Button>
       </form>
@@ -452,7 +456,7 @@ function CatStudentCard({
         </p>
       ) : null}
       {!submitted && (isOpen || cat.inProgress) && (
-        <Button className="mt-4" disabled={busy} onClick={onStart}>
+        <Button className="mt-4" disabled={busy} loading={busy} onClick={onStart}>
           {busy ? "Opening CAT…" : cat.inProgress ? "Resume CAT" : "Start CAT"}
         </Button>
       )}

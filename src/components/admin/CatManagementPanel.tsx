@@ -432,6 +432,7 @@ export function CatManagementPanel() {
           )}
           <Button
             disabled={createMutation.isPending || query.isLoading || !query.data?.courses.length}
+            loading={createMutation.isPending}
           >
             {createMutation.isPending ? "Publishing CAT…" : "Create and publish CAT"}
           </Button>

@@ -296,7 +296,10 @@ export function StudentProgressionPanel() {
             </span>
           </Field>
         </div>
-        <Button disabled={saveRule.isPending || !coursesQuery.data?.length}>
+        <Button
+          disabled={saveRule.isPending || !coursesQuery.data?.length}
+          loading={saveRule.isPending}
+        >
           {saveRule.isPending ? "Saving…" : "Save progression rule"}
         </Button>
       </form>
@@ -312,6 +315,7 @@ export function StudentProgressionPanel() {
           <Button
             variant="outline"
             disabled={queueExisting.isPending}
+            loading={queueExisting.isPending}
             onClick={() => queueExisting.mutate()}
           >
             <RefreshCw />{" "}

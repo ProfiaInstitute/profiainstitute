@@ -316,7 +316,7 @@ export function SchoolFeeStructuresManager() {
               Published on the public Academics page
             </label>
             <div className="flex gap-2">
-              <Button type="submit" disabled={save.isPending}>
+              <Button type="submit" disabled={save.isPending} loading={save.isPending}>
                 {save.isPending ? "Saving…" : editing ? "Save changes" : "Add fee structure"}
               </Button>
               {editing && (

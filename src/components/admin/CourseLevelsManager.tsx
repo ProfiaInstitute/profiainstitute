@@ -499,7 +499,7 @@ export function CourseLevelsManager() {
                 Published and available to students
               </label>
               <div className="flex gap-2">
-                <Button type="submit" disabled={saveLevel.isPending}>
+                <Button type="submit" disabled={saveLevel.isPending} loading={saveLevel.isPending}>
                   {saveLevel.isPending ? "Saving…" : "Save level"}
                 </Button>
                 {editingLevel && (

@@ -675,6 +675,7 @@ function CoursesManager() {
             className="w-full"
             type="submit"
             disabled={saveCourse.isPending || schoolsQuery.isLoading || !schoolsQuery.data?.length}
+            loading={saveCourse.isPending}
           >
             <Save /> {saveCourse.isPending ? "Saving…" : editing ? "Save changes" : "Add course"}
           </Button>
@@ -908,7 +909,12 @@ function IntakesManager() {
             checked={draft.is_open}
             onChange={(is_open) => setDraft({ ...draft, is_open })}
           />
-          <Button className="w-full" type="submit" disabled={saveIntake.isPending}>
+          <Button
+            className="w-full"
+            type="submit"
+            disabled={saveIntake.isPending}
+            loading={saveIntake.isPending}
+          >
             <Save /> {saveIntake.isPending ? "Saving…" : editing ? "Save changes" : "Add intake"}
           </Button>
         </form>

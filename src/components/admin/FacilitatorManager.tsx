@@ -193,7 +193,7 @@ export function FacilitatorManager() {
             onChange={(event) => setEmail(event.target.value)}
             className="min-w-60 flex-1"
           />
-          <Button disabled={busy} onClick={() => void invite()}>
+          <Button disabled={busy} loading={busy} onClick={() => void invite()}>
             {busy ? "Sending…" : "Send facilitator invite"}
           </Button>
         </div>
@@ -271,6 +271,7 @@ export function FacilitatorManager() {
         </div>
         <Button
           disabled={busy || !selectedFacilitator || !selectedUnit}
+          loading={busy}
           onClick={() => void saveAssignment()}
         >
           {busy ? "Saving…" : assignment ? "Update unit access" : "Assign unit"}
