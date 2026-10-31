@@ -1,6 +1,6 @@
 import { useRef, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Trash2 } from "lucide-react";
+import { ArrowDownToLine, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ import { CatDownloadButton } from "@/components/academics/CatDownloadButton";
 import { CatQuestionImporter } from "@/components/academics/CatQuestionImporter";
 import { CatQuestionPreview } from "@/components/academics/CatQuestionPreview";
 import { supabase } from "@/integrations/supabase/client";
+import { createExcelWorkbook } from "@/lib/excel-export";
 import { safeUploadFileName } from "@/lib/file-uploads";
 import { catDateTimeLabel, parseAdminCats, type AdminCat, type CatOptionKey } from "@/lib/cats";
 import type { ImportedCatQuestion } from "@/lib/cat-import-format";
@@ -471,6 +472,7 @@ export function CatManagementPanel() {
 
 function CatResultCard({ cat }: { cat: AdminCat }) {
   const now = Date.now();
+  const submittedAttempts = cat.attempts.filter((attempt) => attempt.submittedAt);
   const state =
     now < Date.parse(cat.opensAt)
       ? "Scheduled"
@@ -486,7 +488,19 @@ function CatResultCard({ cat }: { cat: AdminCat }) {
           <p className="mt-1 text-sm text-muted-foreground">{cat.courseTitle}</p>
           <p className="mt-1 text-sm">Student download name: {cat.name}</p>
         </div>
-        <Badge variant={state === "Open" ? "default" : "secondary"}>{state}</Badge>
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant={state === "Open" ? "default" : "secondary"}>{state}</Badge>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={!submittedAttempts.length}
+            onClick={() => exportCatResults(cat)}
+          >
+            <ArrowDownToLine className="h-4 w-4" />
+            Export results{submittedAttempts.length ? ` (${submittedAttempts.length})` : ""}
+          </Button>
+        </div>
       </div>
       <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
         <span>{cat.durationMinutes} minute time limit</span>
@@ -525,6 +539,10 @@ function CatResultCard({ cat }: { cat: AdminCat }) {
                 Started {catDateTimeLabel(attempt.startedAt)}
                 {attempt.submittedAt && ` · Submitted ${catDateTimeLabel(attempt.submittedAt)}`}
               </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                KASNEB number: {attempt.kasnebNumber ?? "Not entered"} · Level:{" "}
+                {attempt.levelName ?? "Not recorded"}
+              </p>
               <div className="mt-3 space-y-3">
                 {cat.questions.map((question, index) => {
                   const selected = attempt.answers.find(
@@ -556,4 +574,37 @@ function CatResultCard({ cat }: { cat: AdminCat }) {
       )}
     </article>
   );
+}
+
+function exportCatResults(cat: AdminCat) {
+  const attempts = cat.attempts.filter((attempt) => attempt.submittedAt);
+  if (!attempts.length) {
+    toast.error("There are no submitted CAT results to export.");
+    return;
+  }
+
+  try {
+    const workbook = createExcelWorkbook(
+      attempts.map((attempt) => ({
+        "KASNEB Number": attempt.kasnebNumber ?? "",
+        "Student Name": attempt.studentName,
+        Course: cat.courseTitle,
+        Level: attempt.levelName ?? "",
+        "CAT Marks": attempt.score,
+      })),
+    );
+    const blob = new Blob([new Uint8Array(workbook)], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `${cat.name.replace(/[^a-z0-9-]+/gi, "-").replace(/^-|-$/g, "")}-results.xlsx`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  } catch (error) {
+    toast.error("Could not export CAT results", {
+      description: error instanceof Error ? error.message : "The workbook could not be created.",
+    });
+  }
 }

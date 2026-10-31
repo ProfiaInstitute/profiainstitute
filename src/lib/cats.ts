@@ -55,6 +55,8 @@ export type AdminCatAttempt = {
   id: string;
   studentNumber: string;
   studentName: string;
+  kasnebNumber: string | null;
+  levelName: string | null;
   startedAt: string;
   submittedAt: string | null;
   score: number | null;
@@ -219,6 +221,8 @@ export function parseAdminCats(value: Json | null): AdminCat[] {
         id: stringValue(attempt["id"], "attempt id"),
         studentNumber: stringValue(attempt["student_number"], "student number"),
         studentName: stringValue(attempt["student_name"], "student name"),
+        kasnebNumber: nullableString(attempt["kasneb_number"]),
+        levelName: nullableString(attempt["level_name"]),
         startedAt: stringValue(attempt["started_at"], "attempt start time"),
         submittedAt: nullableString(attempt["submitted_at"]),
         score: nullableNumber(attempt["score"]),

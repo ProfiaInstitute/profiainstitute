@@ -2541,7 +2541,12 @@ Attempts are limited to one per student and CAT; answers are saved as they are
 selected, marked automatically on submission or time expiry, and the student
 can see their mark after submission. Staff can review each attempt and its
 selected answers in the Assignments area. Answer keys are not exposed through
-student database access.
+student database access. Apply
+`drizzle/migrations/0042_cat_kasneb_identity_and_results.sql` after the existing
+migrations to collect each student's KASNEB registration number once, before
+their first CAT. The number is saved to the student record and reused for later
+CATs. Academic admins can export submitted CAT results to Excel with KASNEB
+number, student name, course, level, and marks.
 
 ### Student profile photos
 

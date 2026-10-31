@@ -958,7 +958,10 @@ function StudentWorkspace({
               <AssignmentsSection student={student} courseId={activeCourse?.course_id ?? null} />
             )}
             {section === "cats" && (
-              <StudentCatsSection courseId={activeCourse?.course_id ?? null} />
+              <StudentCatsSection
+                courseId={activeCourse?.course_id ?? null}
+                kasnebNumber={student.kasneb_number}
+              />
             )}
             {section === "results" && <ResultsSection studentId={student.id} />}
             {section === "fees" && (
