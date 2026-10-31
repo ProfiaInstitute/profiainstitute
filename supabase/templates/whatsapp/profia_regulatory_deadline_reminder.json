@@ -1,0 +1,22 @@
+{
+  "name": "profia_regulatory_deadline_reminder",
+  "language": "en",
+  "category": "UTILITY",
+  "components": [
+    {
+      "type": "BODY",
+      "text": "Hello {{1}}, reminder: {{2}} ({{3}}). Deadline: {{4}}. Details: {{5}}.",
+      "example": {
+        "body_text": [
+          [
+            "Profia Administrator",
+            "KASNEB exam registration closes",
+            "KASNEB",
+            "31 October 2026 (Due in 7 days)",
+            "https://www.kasneb.or.ke/"
+          ]
+        ]
+      }
+    }
+  ]
+}

@@ -2575,19 +2575,40 @@ migration `0025_course_levels_and_online_students.sql`. It queues email and
 WhatsApp notifications whenever an application status changes to **Accepted**
 or **Enrolled**. Each message tells the student to create or access their
 student-portal account using the same email address entered on the application.
+The enrollment message is queued when admissions enrolls the applicant.
 Delivery attempts are recorded and retried automatically by the notification
 worker.
+
+Apply `drizzle/migrations/0037_student_learning_notifications.sql` after
+migration `0036_immediate_cats_and_shuffled_options.sql`. Publishing an
+assignment (including publishing a saved draft) or creating a CAT queues an
+email and WhatsApp notification for each active student enrolled in a targeted
+course and level. The message includes the item title, course, due/opening
+time, and student portal link. Notifications are deduplicated per student,
+channel, and published item. Delivery failures are retried up to five times.
 
 Deploy `supabase/functions/send-application-notifications` and configure these
 Edge Function secrets: `RESEND_API_KEY`, `SCHOOL_EMAIL_FROM`,
 `PUBLIC_SITE_URL`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`,
-`WHATSAPP_TEMPLATE_NAME`, and optionally `WHATSAPP_TEMPLATE_LANGUAGE` and
-`WHATSAPP_API_VERSION`. The WhatsApp template must be approved by Meta and
-contain six body text parameters, in order: student name, status, application
-number, application email, student portal URL, and the school's WhatsApp
-contact number. The contact number is read from the `general.whatsapp` site
-setting; the API phone-number ID and token must belong to the school's
-WhatsApp Business sender and are separate credentials.
+`WHATSAPP_TEMPLATE_NAME`, and `WHATSAPP_LEARNING_TEMPLATE_NAME`. Optionally set
+`WHATSAPP_TEMPLATE_LANGUAGE` and `WHATSAPP_API_VERSION`. Both WhatsApp templates
+must be approved by Meta. The admission template must contain six body text
+parameters in this order: student name, application number, status, application
+email, student portal URL, and the school's WhatsApp contact number. The
+learning-notification template must contain six body text parameters in this
+order: student name, item type, item title, course title, due/opening time, and
+student portal URL. The contact number for admission notifications is read from
+the `general.whatsapp` site setting; the API phone-number ID and token must
+belong to the school's WhatsApp Business sender and are separate credentials.
+Ready-to-submit Meta template definitions are in
+`supabase/templates/whatsapp/profia_admission_update.json` and
+`supabase/templates/whatsapp/profia_learning_published.json`. Create each
+template in WhatsApp Manager or with the WhatsApp Business Management API and
+wait for Meta approval before sending. The worker defaults to the template
+names in those files; the two template-name secrets are optional overrides.
+Resend is used only for email. WhatsApp messages are sent through the Meta
+WhatsApp Cloud API and require a WhatsApp Business phone number ID and access
+token.
 
 Schedule authenticated POST requests to
 `/functions/v1/send-application-notifications` at least once per minute, using
@@ -2724,6 +2745,56 @@ published before a rule was created. Students receive an invitation to apply
 for the next course; staff still review and confirm enrolment. Apply
 `0007_student_progression_directory.sql` after the other numbered migrations to
 show linked student, exam result, and course details in the scheduled list.
+
+### Regulatory and exam action tracking
+
+Apply `drizzle/migrations/0038_regulatory_action_tracker.sql` after
+`0037_student_learning_notifications.sql`. **Admin → Regulatory & exams** gives
+Super Admins, Admissions Admins, and Academic Admins a shared register for
+KASNEB, TVETA, HELB, ICPAK, NITA, KRA/eTIMS, eCitizen, and other-body tasks.
+Staff can record exam, accreditation, funding, tax, and government-service
+deadlines, link official notices, track submission references, and see upcoming
+or overdue actions. This is an internal tracker; it does not sign in to agency
+accounts, submit filings, or synchronize student records with external portals.
+
+Apply `drizzle/migrations/0039_regulatory_public_feeds.sql` after migration
+`0038_regulatory_action_tracker.sql` and deploy
+`supabase/functions/sync-regulatory-feeds`. The **Fetch latest** action imports
+public RSS updates from KASNEB, TVETA, HELB, and ICPAK and links each item back
+to its official source. NITA, KRA/eTIMS, and eCitizen are linked as official
+portals but are not automatically fetched because a supported public feed or
+API has not been verified. Feed content is informational and is not parsed as
+authoritative deadlines or student-specific account status.
+
+Apply `drizzle/migrations/0040_regulatory_deadline_reminders.sql` after
+`0039_regulatory_public_feeds.sql` and deploy
+`supabase/functions/send-regulatory-deadline-reminders`. Pending exam and
+accreditation actions notify academic admins and Super Admins; funding actions
+notify admissions admins and Super Admins; tax actions notify Super Admins.
+Reminders are queued for 30, 7, and 1 day before a deadline and on the due date
+at 08:00 East Africa Time. The worker requires `REGULATORY_REMINDER_CRON_SECRET`.
+Email delivery additionally requires `RESEND_API_KEY`, `SCHOOL_EMAIL_FROM`,
+and `PUBLIC_SITE_URL`. WhatsApp delivery additionally requires the WhatsApp
+Cloud API secrets and Meta approval of
+`supabase/templates/whatsapp/profia_regulatory_deadline_reminder.json`. Do not
+expose these secrets in the browser or commit them.
+
+To activate automated delivery, configure an external scheduler to POST to the
+worker every 15 minutes with the `x-regulatory-cron-secret` header. The worker
+does not run on a schedule until an operator configures that scheduler and at
+least one delivery channel. It processes only configured channels, so an
+unconfigured WhatsApp channel does not consume retries. Failed deliveries
+retry with backoff, up to five attempts.
+
+Apply `drizzle/migrations/0041_exam_sittings_and_candidates.sql` after
+`0040_regulatory_deadline_reminders.sql`. **Admin → Exam candidates** lets
+academic admins define exam sittings, select the related course, level, and
+required units, and view enrolled students' published unit results against a
+configurable pass mark. Eligible students can be nominated and their
+registration status tracked; nominated rosters can be exported to XLSX without
+national IDs or dates of birth. This is an internal readiness checklist, not
+confirmation of eligibility by an exam body; staff must verify official
+requirements before submitting a roster.
 
 ### Application supporting documents
 

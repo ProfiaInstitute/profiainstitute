@@ -890,6 +890,64 @@ export type Database = {
           },
         ];
       };
+      exam_sittings: TableShape<
+        {
+          created_at: string;
+          created_by: string | null;
+          course_id: string;
+          exam_body: string;
+          exam_date: string | null;
+          id: string;
+          level_id: string;
+          minimum_passing_score: number;
+          qualification: string;
+          registration_deadline: string | null;
+          required_unit_ids: string[];
+          status: string;
+          title: string;
+          updated_at: string;
+        },
+        {
+          created_at?: string;
+          created_by?: string | null;
+          course_id: string;
+          exam_body: string;
+          exam_date?: string | null;
+          id?: string;
+          level_id: string;
+          minimum_passing_score?: number;
+          qualification: string;
+          registration_deadline?: string | null;
+          required_unit_ids?: string[];
+          status?: string;
+          title: string;
+          updated_at?: string;
+        }
+      >;
+      exam_sitting_candidates: TableShape<
+        {
+          created_at: string;
+          external_reference: string | null;
+          id: string;
+          nominated_by: string | null;
+          notes: string | null;
+          sitting_id: string;
+          status: string;
+          student_id: string;
+          updated_at: string;
+        },
+        {
+          created_at?: string;
+          external_reference?: string | null;
+          id?: string;
+          nominated_by?: string | null;
+          notes?: string | null;
+          sitting_id: string;
+          status?: string;
+          student_id: string;
+          updated_at?: string;
+        }
+      >;
       faqs: {
         Row: {
           answer: string;
@@ -1658,6 +1716,155 @@ export type Database = {
         };
         Relationships: [];
       };
+      regulatory_action_items: {
+        Row: {
+          agency: string;
+          category: string;
+          created_at: string;
+          created_by: string | null;
+          details: string | null;
+          due_date: string;
+          id: string;
+          notes: string | null;
+          reference_url: string | null;
+          status: string;
+          title: string;
+          updated_at: string;
+        };
+        Insert: {
+          agency: string;
+          category: string;
+          created_at?: string;
+          created_by?: string | null;
+          details?: string | null;
+          due_date: string;
+          id?: string;
+          notes?: string | null;
+          reference_url?: string | null;
+          status?: string;
+          title: string;
+          updated_at?: string;
+        };
+        Update: {
+          agency?: string;
+          category?: string;
+          created_at?: string;
+          created_by?: string | null;
+          details?: string | null;
+          due_date?: string;
+          id?: string;
+          notes?: string | null;
+          reference_url?: string | null;
+          status?: string;
+          title?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      regulatory_deadline_reminders: TableShape<
+        {
+          action_id: string;
+          attempts: number;
+          channel: string;
+          created_at: string;
+          days_before: number;
+          due_date: string;
+          id: string;
+          last_error: string | null;
+          next_attempt_at: string;
+          payload: Json;
+          recipient: string;
+          recipient_user_id: string;
+          scheduled_for: string;
+          sent_at: string | null;
+          status: string;
+          updated_at: string;
+        },
+        {
+          action_id: string;
+          attempts?: number;
+          channel: string;
+          created_at?: string;
+          days_before: number;
+          due_date: string;
+          id?: string;
+          last_error?: string | null;
+          next_attempt_at?: string;
+          payload?: Json;
+          recipient: string;
+          recipient_user_id: string;
+          scheduled_for: string;
+          sent_at?: string | null;
+          status?: string;
+          updated_at?: string;
+        }
+      >;
+      regulatory_feed_syncs: {
+        Row: {
+          error_message: string | null;
+          feed_url: string;
+          items_received: number;
+          last_attempted_at: string;
+          last_successful_at: string | null;
+          source_key: string;
+          source_name: string;
+          status: string;
+        };
+        Insert: {
+          error_message?: string | null;
+          feed_url: string;
+          items_received?: number;
+          last_attempted_at?: string;
+          last_successful_at?: string | null;
+          source_key: string;
+          source_name: string;
+          status: string;
+        };
+        Update: {
+          error_message?: string | null;
+          feed_url?: string;
+          items_received?: number;
+          last_attempted_at?: string;
+          last_successful_at?: string | null;
+          source_key?: string;
+          source_name?: string;
+          status?: string;
+        };
+        Relationships: [];
+      };
+      regulatory_source_updates: {
+        Row: {
+          article_url: string;
+          fetched_at: string;
+          id: string;
+          published_at: string | null;
+          source_key: string;
+          source_name: string;
+          summary: string | null;
+          title: string;
+        };
+        Insert: {
+          article_url: string;
+          fetched_at?: string;
+          id?: string;
+          published_at?: string | null;
+          source_key: string;
+          source_name: string;
+          summary?: string | null;
+          title: string;
+        };
+        Update: {
+          article_url?: string;
+          fetched_at?: string;
+          id?: string;
+          published_at?: string | null;
+          source_key?: string;
+          source_name?: string;
+          summary?: string | null;
+          title?: string;
+        };
+        Relationships: [];
+      };
       results: {
         Row: {
           academic_year: string | null;
@@ -2078,6 +2285,14 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
+      claim_regulatory_deadline_reminders: {
+        Args: { _channels?: string[] | null; _limit?: number };
+        Returns: Database["public"]["Tables"]["regulatory_deadline_reminders"]["Row"][];
+      };
+      complete_regulatory_deadline_reminder: {
+        Args: { _error?: string | null; _reminder_id: string; _sent: boolean };
+        Returns: undefined;
+      };
       heartbeat_presence: { Args: never; Returns: undefined };
       list_online_users: {
         Args: never;
