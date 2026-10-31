@@ -36,6 +36,9 @@ verify_jwt = true
 [functions.send-application-notifications]
 verify_jwt = false
 
+[functions.sync-regulatory-feeds]
+verify_jwt = true
+
 [auth.email.template.confirmation]
 subject = "Confirm your Profia Institute account"
 content_path = "./supabase/templates/confirmation.html"

@@ -1658,6 +1658,117 @@ export type Database = {
         };
         Relationships: [];
       };
+      regulatory_action_items: {
+        Row: {
+          agency: string;
+          category: string;
+          created_at: string;
+          created_by: string | null;
+          details: string | null;
+          due_date: string;
+          id: string;
+          notes: string | null;
+          reference_url: string | null;
+          status: string;
+          title: string;
+          updated_at: string;
+        };
+        Insert: {
+          agency: string;
+          category: string;
+          created_at?: string;
+          created_by?: string | null;
+          details?: string | null;
+          due_date: string;
+          id?: string;
+          notes?: string | null;
+          reference_url?: string | null;
+          status?: string;
+          title: string;
+          updated_at?: string;
+        };
+        Update: {
+          agency?: string;
+          category?: string;
+          created_at?: string;
+          created_by?: string | null;
+          details?: string | null;
+          due_date?: string;
+          id?: string;
+          notes?: string | null;
+          reference_url?: string | null;
+          status?: string;
+          title?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      regulatory_feed_syncs: {
+        Row: {
+          error_message: string | null;
+          feed_url: string;
+          items_received: number;
+          last_attempted_at: string;
+          last_successful_at: string | null;
+          source_key: string;
+          source_name: string;
+          status: string;
+        };
+        Insert: {
+          error_message?: string | null;
+          feed_url: string;
+          items_received?: number;
+          last_attempted_at?: string;
+          last_successful_at?: string | null;
+          source_key: string;
+          source_name: string;
+          status: string;
+        };
+        Update: {
+          error_message?: string | null;
+          feed_url?: string;
+          items_received?: number;
+          last_attempted_at?: string;
+          last_successful_at?: string | null;
+          source_key?: string;
+          source_name?: string;
+          status?: string;
+        };
+        Relationships: [];
+      };
+      regulatory_source_updates: {
+        Row: {
+          article_url: string;
+          fetched_at: string;
+          id: string;
+          published_at: string | null;
+          source_key: string;
+          source_name: string;
+          summary: string | null;
+          title: string;
+        };
+        Insert: {
+          article_url: string;
+          fetched_at?: string;
+          id?: string;
+          published_at?: string | null;
+          source_key: string;
+          source_name: string;
+          summary?: string | null;
+          title: string;
+        };
+        Update: {
+          article_url?: string;
+          fetched_at?: string;
+          id?: string;
+          published_at?: string | null;
+          source_key?: string;
+          source_name?: string;
+          summary?: string | null;
+          title?: string;
+        };
+        Relationships: [];
+      };
       results: {
         Row: {
           academic_year: string | null;

@@ -53,6 +53,7 @@ import { PasswordResetPage } from "@/components/auth/PasswordResetPage";
 import { PortalInboxPanel } from "@/components/admin/PortalInboxPanel";
 import { CourseFeedbackPanel } from "@/components/admin/CourseFeedbackPanel";
 import { FacilitatorManager } from "@/components/admin/FacilitatorManager";
+import { RegulatoryActionTracker } from "@/components/admin/RegulatoryActionTracker";
 import { NotificationBell } from "@/components/site/NotificationBell";
 import { supabase } from "@/integrations/supabase/client";
 import { can, signOutWithAudit, useRoles, useUser, type AppRole } from "@/lib/auth";
@@ -85,6 +86,7 @@ type DashboardSection =
   | "lms"
   | "assignments"
   | "progression"
+  | "regulatory"
   | "articles"
   | "announcements"
   | "memos"
@@ -179,6 +181,12 @@ const navItems: { id: DashboardSection; title: string; icon: LucideIcon; roles: 
     icon: GraduationCap,
     roles: ["super_admin", "academic_admin"],
   },
+  {
+    id: "regulatory",
+    title: "Regulatory & exams",
+    icon: ShieldCheck,
+    roles: ["super_admin", "admissions_admin", "academic_admin"],
+  },
   { id: "articles", title: "Articles", icon: Newspaper, roles: ["super_admin", "content_admin"] },
   {
     id: "announcements",
@@ -249,6 +257,7 @@ const navGroups: { title: string; ids: DashboardSection[] }[] = [
       "lms",
       "assignments",
       "progression",
+      "regulatory",
     ],
   },
   {
@@ -381,6 +390,8 @@ export function StaffDashboard() {
       <StaffSettings />
     ) : section === "progression" ? (
       <StudentProgressionPanel />
+    ) : section === "regulatory" ? (
+      <RegulatoryActionTracker />
     ) : section === "student-inbox" ? (
       <PortalInboxPanel />
     ) : section === "course-feedback" ? (

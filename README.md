@@ -2746,6 +2746,26 @@ for the next course; staff still review and confirm enrolment. Apply
 `0007_student_progression_directory.sql` after the other numbered migrations to
 show linked student, exam result, and course details in the scheduled list.
 
+### Regulatory and exam action tracking
+
+Apply `drizzle/migrations/0038_regulatory_action_tracker.sql` after
+`0037_student_learning_notifications.sql`. **Admin → Regulatory & exams** gives
+Super Admins, Admissions Admins, and Academic Admins a shared register for
+KASNEB, TVETA, HELB, ICPAK, NITA, KRA/eTIMS, eCitizen, and other-body tasks.
+Staff can record exam, accreditation, funding, tax, and government-service
+deadlines, link official notices, track submission references, and see upcoming
+or overdue actions. This is an internal tracker; it does not sign in to agency
+accounts, submit filings, or synchronize student records with external portals.
+
+Apply `drizzle/migrations/0039_regulatory_public_feeds.sql` after migration
+`0038_regulatory_action_tracker.sql` and deploy
+`supabase/functions/sync-regulatory-feeds`. The **Fetch latest** action imports
+public RSS updates from KASNEB, TVETA, HELB, and ICPAK and links each item back
+to its official source. NITA, KRA/eTIMS, and eCitizen are linked as official
+portals but are not automatically fetched because a supported public feed or
+API has not been verified. Feed content is informational and is not parsed as
+authoritative deadlines or student-specific account status.
+
 ### Application supporting documents
 
 Apply `0004_application_document_storage.sql` after the earlier migrations to
