@@ -56,10 +56,10 @@ describe("CAT response parsing", () => {
           id: "question-1",
           prompt: "Which option is correct?",
           options: [
-            { key: "A", text: "First" },
-            { key: "B", text: "Second" },
-            { key: "C", text: "Third" },
-            { key: "D", text: "Fourth" },
+            { key: "B", text: "First" },
+            { key: "D", text: "Second" },
+            { key: "A", text: "Third" },
+            { key: "C", text: "Fourth" },
           ],
           points: 2,
           selected_option: "B",
@@ -69,6 +69,7 @@ describe("CAT response parsing", () => {
 
     const attempt = parseStudentCatAttempt(value);
     expect(attempt.questions[0]?.selectedOption).toBe("B");
+    expect(attempt.questions[0]?.options[0]).toEqual({ key: "B", text: "First" });
     expect(attempt.questions[0]).not.toHaveProperty("correctOption");
   });
 

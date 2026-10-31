@@ -8,9 +8,12 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { LevelTargetPicker } from "@/components/academics/LevelTargetPicker";
 import { CatDownloadButton } from "@/components/academics/CatDownloadButton";
+import { CatQuestionImporter } from "@/components/academics/CatQuestionImporter";
+import { CatQuestionPreview } from "@/components/academics/CatQuestionPreview";
 import { supabase } from "@/integrations/supabase/client";
 import { safeUploadFileName } from "@/lib/file-uploads";
 import { catDateTimeLabel, parseAdminCats, type AdminCat, type CatOptionKey } from "@/lib/cats";
+import type { ImportedCatQuestion } from "@/lib/cat-import-format";
 
 type QuestionDraft = {
   id: string;
@@ -19,7 +22,7 @@ type QuestionDraft = {
   optionB: string;
   optionC: string;
   optionD: string;
-  correctOption: CatOptionKey;
+  correctOption: CatOptionKey | "";
   points: string;
 };
 
@@ -48,6 +51,7 @@ export function CatManagementPanel() {
   const downloadFileInputRef = useRef<HTMLInputElement>(null);
   const [instructions, setInstructions] = useState("");
   const [durationMinutes, setDurationMinutes] = useState("30");
+  const [openImmediately, setOpenImmediately] = useState(true);
   const [opensAt, setOpensAt] = useState("");
   const [closesAt, setClosesAt] = useState("");
   const [questions, setQuestions] = useState<QuestionDraft[]>([newQuestion()]);
@@ -68,16 +72,20 @@ export function CatManagementPanel() {
   });
   const createMutation = useMutation({
     mutationFn: async () => {
-      const openingTime = new Date(opensAt);
+      const openingTime = openImmediately ? new Date() : new Date(opensAt);
       const closingTime = new Date(closesAt);
       const duration = Number(durationMinutes);
       if (
         !Number.isFinite(openingTime.getTime()) ||
         !Number.isFinite(closingTime.getTime()) ||
-        openingTime.getTime() <= Date.now() ||
+        (!openImmediately && openingTime.getTime() <= Date.now()) ||
         closingTime.getTime() <= openingTime.getTime()
       ) {
-        throw new Error("Choose a future opening time and a closing time after it.");
+        throw new Error(
+          openImmediately
+            ? "Choose a closing time in the future."
+            : "Choose a future opening time and a closing time after it.",
+        );
       }
       if (!Number.isInteger(duration) || duration < 1 || duration > 360) {
         throw new Error("CAT duration must be from 1 to 360 minutes.");
@@ -109,7 +117,7 @@ export function CatManagementPanel() {
           _level_ids: levelIds,
           _instructions: instructions.trim() || null,
           _duration_minutes: duration,
-          _opens_at: openingTime.toISOString(),
+          _opens_at: openImmediately ? null : openingTime.toISOString(),
           _closes_at: closingTime.toISOString(),
           _questions: questions.map((question) => ({
             prompt: question.prompt.trim(),
@@ -149,6 +157,7 @@ export function CatManagementPanel() {
       if (downloadFileInputRef.current) downloadFileInputRef.current.value = "";
       setInstructions("");
       setDurationMinutes("30");
+      setOpenImmediately(true);
       setOpensAt("");
       setClosesAt("");
       setQuestions([newQuestion()]);
@@ -168,13 +177,37 @@ export function CatManagementPanel() {
     );
   }
 
+  function importQuestions(imported: ImportedCatQuestion[]) {
+    const starterIsBlank =
+      questions.length === 1 &&
+      !questions[0]?.prompt.trim() &&
+      !questions[0]?.optionA.trim() &&
+      !questions[0]?.optionB.trim() &&
+      !questions[0]?.optionC.trim() &&
+      !questions[0]?.optionD.trim();
+    const nextCount = imported.length + (starterIsBlank ? 0 : questions.length);
+    if (nextCount > 100) throw new Error("A CAT can contain no more than 100 questions.");
+    const importedDrafts: QuestionDraft[] = imported.map((question) => ({
+      id: crypto.randomUUID(),
+      prompt: question.prompt,
+      optionA: question.options.A,
+      optionB: question.options.B,
+      optionC: question.options.C,
+      optionD: question.options.D,
+      correctOption: question.correctOption ?? "",
+      points: "1",
+    }));
+    setQuestions((current) => (starterIsBlank ? importedDrafts : [...current, ...importedDrafts]));
+    toast.success(`${imported.length} question${imported.length === 1 ? "" : "s"} imported`);
+  }
+
   return (
     <section className="space-y-5 rounded-xl border bg-card p-5 shadow-card">
       <div>
         <h2 className="font-semibold text-brand">CATs</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Create a course CAT with multiple-choice questions, an access window, and a timed,
-          one-time attempt. Times use your local time zone.
+          Create a course CAT with multiple-choice questions, immediate or scheduled access, and a
+          timed, one-time attempt. Scheduled times use your local time zone.
         </p>
       </div>
       <details className="rounded-lg border bg-muted/30 p-4">
@@ -240,15 +273,26 @@ export function CatManagementPanel() {
               value={durationMinutes}
               onChange={(event) => setDurationMinutes(event.target.value)}
             />
-            <label className="space-y-1 text-sm font-medium">
-              Opens (local date and time)
-              <Input
-                required
-                type="datetime-local"
-                value={opensAt}
-                onChange={(event) => setOpensAt(event.target.value)}
+            <label className="flex items-center gap-2 text-sm font-medium sm:col-span-2">
+              <input
+                type="checkbox"
+                checked={openImmediately}
+                onChange={(event) => setOpenImmediately(event.target.checked)}
+                className="accent-primary"
               />
+              Open immediately when published
             </label>
+            {!openImmediately && (
+              <label className="space-y-1 text-sm font-medium">
+                Opens (local date and time)
+                <Input
+                  required
+                  type="datetime-local"
+                  value={opensAt}
+                  onChange={(event) => setOpensAt(event.target.value)}
+                />
+              </label>
+            )}
             <label className="space-y-1 text-sm font-medium sm:col-span-2">
               Closes (local date and time)
               <Input
@@ -280,6 +324,18 @@ export function CatManagementPanel() {
                 <Plus /> Add question
               </Button>
             </div>
+            <CatQuestionImporter onImport={importQuestions} />
+            <CatQuestionPreview
+              questions={questions.map((question) => ({
+                prompt: question.prompt,
+                options: {
+                  A: question.optionA,
+                  B: question.optionB,
+                  C: question.optionC,
+                  D: question.optionD,
+                },
+              }))}
+            />
             {questions.map((question, index) => (
               <article key={question.id} className="space-y-3 rounded-lg border bg-background p-4">
                 <div className="flex items-center justify-between gap-3">
@@ -333,12 +389,16 @@ export function CatManagementPanel() {
                   <label className="space-y-1 text-sm font-medium">
                     Correct answer
                     <select
+                      required
                       className={selectClass}
                       value={question.correctOption}
                       onChange={(event) =>
                         updateQuestion(question.id, "correctOption", event.target.value)
                       }
                     >
+                      <option value="" disabled>
+                        Select correct answer
+                      </option>
                       {(["A", "B", "C", "D"] as const).map((key) => (
                         <option key={key} value={key}>
                           {key}
