@@ -59,9 +59,21 @@ export function WhatsAppFloat() {
       target="_blank"
       rel="noopener noreferrer"
       aria-label="Chat with Profia on WhatsApp"
-      className="fixed bottom-4 right-4 z-40 inline-flex h-14 w-14 items-center justify-center rounded-full bg-whatsapp text-primary-foreground shadow-lift transition hover:scale-105"
+      className="fixed bottom-4 right-4 z-40 inline-flex h-14 w-14 items-center justify-center rounded-full bg-[#25D366] text-white shadow-lift transition hover:scale-105 hover:bg-[#1EBE5D] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#25D366]/40"
     >
-      <MessageCircle className="h-7 w-7" />
+      <svg aria-hidden="true" viewBox="0 0 32 32" fill="none" className="h-8 w-8">
+        <path
+          d="M16 3.25a12.25 12.25 0 0 0-10.52 18.53L4 28l6.39-1.43A12.25 12.25 0 1 0 16 3.25Z"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth="2"
+        />
+        <path
+          d="M12.04 10.77c-.25-.55-.52-.56-.76-.57h-.65c-.23 0-.61.09-.93.44-.32.35-1.22 1.19-1.22 2.9s1.25 3.36 1.42 3.59c.18.23 2.42 3.88 5.98 5.28 2.96 1.16 3.56.93 4.2.87.64-.06 2.06-.84 2.35-1.65.29-.81.29-1.51.2-1.65-.09-.15-.32-.23-.67-.41-.35-.17-2.06-1.02-2.38-1.13-.32-.12-.55-.18-.78.17-.23.35-.9 1.13-1.1 1.36-.21.23-.41.26-.76.09-.35-.18-1.47-.54-2.8-1.72-1.04-.93-1.75-2.07-1.96-2.42-.2-.35-.02-.54.16-.71.15-.15.35-.41.52-.61.17-.2.23-.35.35-.58.12-.23.06-.44-.03-.61-.09-.18-.78-1.9-1.09-2.59Z"
+          fill="currentColor"
+        />
+      </svg>
     </a>
   );
 }
@@ -504,6 +516,7 @@ export function HomepageMedia() {
                   className="aspect-video w-full"
                   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                   referrerPolicy="strict-origin-when-cross-origin"
+                  loading="lazy"
                   allowFullScreen
                 />
               ) : (

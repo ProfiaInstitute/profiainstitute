@@ -1038,6 +1038,7 @@ function PublicAttachment({
         className="mt-5 aspect-video w-full rounded-lg bg-black"
         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
         referrerPolicy="strict-origin-when-cross-origin"
+        loading="lazy"
         allowFullScreen
       />
     );
