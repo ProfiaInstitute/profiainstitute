@@ -27,6 +27,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
+import { useScrollReveal } from "@/lib/motion";
 import { downloadContentAttachment } from "@/lib/content-download";
 import { PROFILE_PHOTO_MAX_BYTES, PROFILE_PHOTO_TYPES } from "@/lib/profile-photos";
 import { signOutWithAudit, useRoles, useUser } from "@/lib/auth";
@@ -222,7 +223,7 @@ function FacilitatorSignIn() {
         >
           {forgotBusy ? "Sending reset link…" : "Forgot password?"}
         </button>
-        <Button className="w-full" disabled={busy}>
+        <Button className="w-full" disabled={busy} loading={busy}>
           {busy ? "Signing in…" : "Sign in"}
         </Button>
       </form>
@@ -232,10 +233,12 @@ function FacilitatorSignIn() {
 
 function FacilitatorWorkspace({ userId, email }: { userId: string; email: string }) {
   const queryClient = useQueryClient();
+  const contentRef = useRef<HTMLDivElement>(null);
   const [selectedId, setSelectedId] = useState("");
   const [studentId, setStudentId] = useState("");
   const [moreOpen, setMoreOpen] = useState(false);
   const [activeSection, setActiveSection] = useState("dashboard");
+  useScrollReveal(contentRef, activeSection, true);
   const profileQuery = useQuery({
     queryKey: ["facilitator", "profile", userId],
     queryFn: async () => {
@@ -845,7 +848,7 @@ function FacilitatorWorkspace({ userId, email }: { userId: string; email: string
           </nav>
         </aside>
         <main className="student-app-content min-w-0 flex-1 p-4 pb-8 sm:p-6 lg:p-8">
-          <div className="mx-auto w-full max-w-5xl space-y-5">
+          <div ref={contentRef} className="mx-auto w-full max-w-5xl space-y-5">
             <p className="eyebrow">Facilitator services / {activeUnit.course.title}</p>
             <h1 className="text-2xl font-bold text-brand sm:text-3xl">
               {activeSection === "dashboard" ? "Teaching workspace" : activeSectionTitle}
@@ -1069,7 +1072,7 @@ function FacilitatorWorkspace({ userId, email }: { userId: string; email: string
                       }
                     />
                   </label>
-                  <Button className="justify-self-start" disabled={busy}>
+                  <Button className="justify-self-start" disabled={busy} loading={busy}>
                     {busy ? "Publishing…" : "Publish assignment"}
                   </Button>
                 </form>
@@ -1313,7 +1316,9 @@ function FacilitatorWorkspace({ userId, email }: { userId: string; email: string
                       <Plus className="mr-1 h-4 w-4" />
                       Add question
                     </Button>
-                    <Button disabled={busy}>{busy ? "Creating…" : "Schedule CAT"}</Button>
+                    <Button disabled={busy} loading={busy}>
+                      {busy ? "Creating…" : "Schedule CAT"}
+                    </Button>
                   </div>
                 </form>
               </section>
@@ -1363,7 +1368,9 @@ function FacilitatorWorkspace({ userId, email }: { userId: string; email: string
                       setMaterialDraft({ ...materialDraft, description: event.target.value })
                     }
                   />
-                  <Button disabled={busy}>{busy ? "Uploading…" : "Publish material"}</Button>
+                  <Button disabled={busy} loading={busy}>
+                    {busy ? "Uploading…" : "Publish material"}
+                  </Button>
                 </form>
                 <ul className="mt-4 divide-y">
                   {(materialsQuery.data ?? []).map((material) => (
@@ -1445,7 +1452,7 @@ function FacilitatorWorkspace({ userId, email }: { userId: string; email: string
                       setResultDraft({ ...resultDraft, academicYear: event.target.value })
                     }
                   />
-                  <Button disabled={busy || !studentsQuery.data?.length}>
+                  <Button disabled={busy || !studentsQuery.data?.length} loading={busy}>
                     {busy ? "Publishing…" : "Publish result"}
                   </Button>
                 </form>
@@ -1623,10 +1630,10 @@ function DashboardSummaryCard({
   icon: LucideIcon;
 }) {
   return (
-    <div className="rounded-xl border bg-card p-4 shadow-card">
+    <div className="motion-card rounded-xl border bg-card p-4 shadow-card">
       <div className="flex items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">{label}</p>
-        <span className="grid h-9 w-9 place-items-center rounded-lg bg-primary/10 text-primary">
+        <span className="motion-icon grid h-9 w-9 place-items-center rounded-lg bg-primary/10 text-primary">
           <Icon className="h-4 w-4" />
         </span>
       </div>
@@ -1870,6 +1877,7 @@ function FacilitatorInboxSection({
             <Button
               className="shrink-0 sm:self-end"
               disabled={sendMutation.isPending || !body.trim()}
+              loading={sendMutation.isPending}
             >
               {sendMutation.isPending ? "Sending…" : "Send message"}
             </Button>

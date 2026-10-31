@@ -222,6 +222,20 @@
     background-position: -200% 0;
   }
 }
+@keyframes button-loading-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes hero-image-drift {
+  0%,
+  100% {
+    transform: scale(1.03) translate3d(0, 0, 0);
+  }
+  50% {
+    transform: scale(1.09) translate3d(-0.5%, -0.5%, 0);
+  }
+}
 .page-transition {
   animation: page-enter 180ms ease-out both;
 }
@@ -259,18 +273,76 @@
 .dashboard-section-transition {
   animation: fade-up 160ms ease-out both;
 }
-.motion-ready [data-scroll-reveal]:not(.is-visible) {
-  opacity: 0;
-  transform: translateY(18px);
-}
-[data-scroll-reveal] {
+.motion-card {
+  transform-style: preserve-3d;
   transition:
-    opacity 280ms ease,
-    transform 280ms cubic-bezier(0.2, 0.7, 0.2, 1);
+    transform 320ms cubic-bezier(0.2, 0.75, 0.25, 1),
+    box-shadow 320ms ease,
+    border-color 220ms ease;
 }
-[data-scroll-reveal].is-visible {
-  opacity: 1;
-  transform: translateY(0);
+.motion-icon {
+  transition: transform 320ms cubic-bezier(0.2, 0.75, 0.25, 1);
+}
+.homepage-motion > section:first-child img[aria-hidden="true"] {
+  animation: hero-image-drift 24s ease-in-out infinite;
+}
+button[data-loading="true"]::after,
+a[data-loading="true"]::after {
+  width: 0.9rem;
+  height: 0.9rem;
+  flex: none;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 9999px;
+  content: "";
+  animation: button-loading-spin 700ms linear infinite;
+}
+button,
+a[href] {
+  -webkit-tap-highlight-color: transparent;
+}
+@media (hover: hover) and (pointer: fine) {
+  .motion-card:hover {
+    transform: perspective(900px) rotateX(1.3deg) rotateY(-1deg) translateY(-4px);
+    border-color: color-mix(in oklab, var(--color-primary) 30%, var(--color-border));
+    box-shadow: var(--shadow-lift);
+  }
+  .motion-card:hover .motion-icon {
+    transform: translateZ(12px) rotate(-5deg) scale(1.08);
+  }
+}
+@media (max-width: 639px) {
+  .container-site {
+    padding-inline: 1rem;
+  }
+  .student-mobile-nav {
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+  .student-mobile-nav::-webkit-scrollbar {
+    display: none;
+  }
+  .homepage-motion > section:first-child {
+    min-height: min(38rem, calc(100svh - 7rem));
+  }
+}
+@media (max-width: 360px) {
+  .container-site {
+    padding-inline: 0.75rem;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .homepage-motion > section:first-child img[aria-hidden="true"] {
+    animation: none;
+  }
+  .motion-card:hover,
+  .motion-icon,
+  button:hover,
+  button:active,
+  a[href]:hover,
+  a[href]:active {
+    transform: none !important;
+  }
 }
 .receipt-printing {
   animation: receipt-print 680ms ease-in-out infinite;

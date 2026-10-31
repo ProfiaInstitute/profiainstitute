@@ -288,7 +288,7 @@ export function StaffDashboard() {
   const [section, setSection] = useState<DashboardSection>("dashboard");
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
-  useScrollReveal(contentRef, `${section}:${roles.join(",")}`, false);
+  useScrollReveal(contentRef, `${section}:${roles.join(",")}`, true);
   const [passwordSetup, setPasswordSetup] = useState(
     () =>
       typeof window !== "undefined" &&
@@ -713,7 +713,7 @@ function StaffPasswordSetup({
             />
           </label>
           {error && <ErrorBanner message={error} />}
-          <Button className="w-full" disabled={busy}>
+          <Button className="w-full" disabled={busy} loading={busy}>
             {busy ? "Saving password…" : "Save password and continue"}
           </Button>
         </form>
@@ -796,7 +796,9 @@ function StaffPasswordSettings({ email }: { email: string }) {
           onChange={(event) => setConfirmPassword(event.target.value)}
         />
       </label>
-      <Button disabled={busy}>{busy ? "Saving password…" : "Update password"}</Button>
+      <Button disabled={busy} loading={busy}>
+        {busy ? "Saving password…" : "Update password"}
+      </Button>
     </form>
   );
 }
@@ -936,7 +938,7 @@ function StaffSignIn() {
             {recoveryBusy ? "Sending reset link…" : "Forgot password?"}
           </button>
           {error && <ErrorBanner message={error} />}
-          <Button className="w-full" disabled={busy}>
+          <Button className="w-full" disabled={busy} loading={busy}>
             {busy ? "Signing in…" : "Sign in"}
           </Button>
         </form>

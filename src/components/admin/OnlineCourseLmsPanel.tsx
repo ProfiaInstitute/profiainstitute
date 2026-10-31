@@ -411,7 +411,12 @@ export function OnlineCourseLmsPanel() {
               />
               List this course in the public online catalogue
             </label>
-            <Button type="submit" disabled={saveCourse.isPending} className="sm:col-span-2">
+            <Button
+              type="submit"
+              disabled={saveCourse.isPending}
+              loading={saveCourse.isPending}
+              className="sm:col-span-2"
+            >
               {saveCourse.isPending ? "Saving…" : "Save online course"}
             </Button>
             {activeCourse.available_online && (
@@ -628,7 +633,7 @@ export function OnlineCourseLmsPanel() {
               />
               Publish lesson and include it in the course outline
             </label>
-            <Button type="submit" disabled={saveLesson.isPending}>
+            <Button type="submit" disabled={saveLesson.isPending} loading={saveLesson.isPending}>
               <Upload />{" "}
               {saveLesson.isPending ? "Saving…" : editingLesson ? "Save lesson" : "Add lesson"}
             </Button>

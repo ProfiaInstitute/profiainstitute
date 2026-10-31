@@ -9,68 +9,52 @@ export function useScrollReveal(
   useEffect(() => {
     const container = containerRef.current;
     if (!container || !enabled) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    if (!("IntersectionObserver" in window) || !("animate" in HTMLElement.prototype)) return;
 
     const selector = includeGenericElements
       ? "[data-scroll-reveal], section, article"
       : "[data-scroll-reveal]";
-    const markVisible = (root: ParentNode) => {
-      root
-        .querySelectorAll<HTMLElement>(selector)
-        .forEach((element) => element.classList.add("is-visible"));
-    };
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      markVisible(container);
-      const mutations = new MutationObserver((records) => {
-        records.forEach((record) =>
-          record.addedNodes.forEach((node) => {
-            if (node instanceof HTMLElement) {
-              if (node.matches(selector)) node.classList.add("is-visible");
-              markVisible(node);
-            }
-          }),
-        );
-      });
-      mutations.observe(container, { childList: true, subtree: true });
-      return () => mutations.disconnect();
-    }
-    if (!("IntersectionObserver" in window)) {
-      markVisible(container);
-      return;
-    }
-
     const reveal = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
           if (!entry.isIntersecting) return;
-          entry.target.classList.add("is-visible");
+          const target = entry.target as HTMLElement;
+          const animation = target.animate(
+            [
+              { opacity: 0, transform: "translate3d(0, 28px, 0) scale(.985)" },
+              { opacity: 1, transform: "translate3d(0, 0, 0) scale(1)" },
+            ],
+            {
+              duration: 520,
+              delay: Math.min(delays.get(target) ?? 0, 5) * 55,
+              easing: "cubic-bezier(.2, .72, .2, 1)",
+            },
+          );
+          animation.onfinish = () => animation.cancel();
           reveal.unobserve(entry.target);
         });
       },
       { threshold: 0.08, rootMargin: "0px 0px -36px 0px" },
     );
     const observed = new WeakSet<Element>();
+    const delays = new WeakMap<Element, number>();
+    const observeTarget = (element: HTMLElement, index: number) => {
+      if (observed.has(element)) return;
+      observed.add(element);
+      delays.set(element, index);
+      reveal.observe(element);
+    };
     const observeTargets = (root: ParentNode) => {
-      root.querySelectorAll<HTMLElement>(selector).forEach((element) => {
-        if (observed.has(element)) return;
-        observed.add(element);
-        reveal.observe(element);
-      });
+      root.querySelectorAll<HTMLElement>(selector).forEach(observeTarget);
     };
 
-    document.documentElement.classList.add("motion-ready");
     observeTargets(container);
     const mutations = new MutationObserver((records) => {
       records.forEach((record) => {
         record.addedNodes.forEach((node) => {
           if (node instanceof HTMLElement) {
-            if (
-              !observed.has(node) &&
-              (node.matches("[data-scroll-reveal]") ||
-                (includeGenericElements && node.matches("section, article")))
-            ) {
-              observed.add(node);
-              reveal.observe(node);
-            }
+            if (node.matches(selector)) observeTarget(node, 0);
             observeTargets(node);
           }
         });

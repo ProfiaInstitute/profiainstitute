@@ -9,7 +9,7 @@ import {
   Scripts,
   type ErrorComponentProps,
 } from "@tanstack/react-router";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { Analytics } from "@vercel/analytics/react";
 
 import appCss from "../styles.css?url";
@@ -21,6 +21,7 @@ import { WhatsAppFloat } from "@/components/site/common";
 import { Toaster } from "@/components/ui/sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { FACILITY_LOCATION } from "@/lib/site";
+import { useScrollReveal } from "@/lib/motion";
 
 const structuredData = {
   "@context": "https://schema.org",
@@ -200,6 +201,8 @@ function RootComponent() {
     : isStudentApp
       ? "/student.webmanifest"
       : "/manifest.webmanifest";
+  const publicContentRef = useRef<HTMLDivElement>(null);
+  useScrollReveal(publicContentRef, pathname, true, !isApp);
 
   useEffect(() => {
     if (!import.meta.env.PROD || !("serviceWorker" in navigator)) return;
@@ -281,7 +284,11 @@ function RootComponent() {
       <PwaInstallProvider manifestHref={manifestHref}>
         {!isApp && <SiteHeader />}
         <main>
-          <div key={pathname} className={isApp ? undefined : "page-transition"}>
+          <div
+            ref={publicContentRef}
+            key={pathname}
+            className={isApp ? undefined : "page-transition"}
+          >
             <Outlet />
           </div>
         </main>
