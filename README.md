@@ -2575,19 +2575,40 @@ migration `0025_course_levels_and_online_students.sql`. It queues email and
 WhatsApp notifications whenever an application status changes to **Accepted**
 or **Enrolled**. Each message tells the student to create or access their
 student-portal account using the same email address entered on the application.
+The enrollment message is queued when admissions enrolls the applicant.
 Delivery attempts are recorded and retried automatically by the notification
 worker.
+
+Apply `drizzle/migrations/0037_student_learning_notifications.sql` after
+migration `0036_immediate_cats_and_shuffled_options.sql`. Publishing an
+assignment (including publishing a saved draft) or creating a CAT queues an
+email and WhatsApp notification for each active student enrolled in a targeted
+course and level. The message includes the item title, course, due/opening
+time, and student portal link. Notifications are deduplicated per student,
+channel, and published item. Delivery failures are retried up to five times.
 
 Deploy `supabase/functions/send-application-notifications` and configure these
 Edge Function secrets: `RESEND_API_KEY`, `SCHOOL_EMAIL_FROM`,
 `PUBLIC_SITE_URL`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`,
-`WHATSAPP_TEMPLATE_NAME`, and optionally `WHATSAPP_TEMPLATE_LANGUAGE` and
-`WHATSAPP_API_VERSION`. The WhatsApp template must be approved by Meta and
-contain six body text parameters, in order: student name, status, application
-number, application email, student portal URL, and the school's WhatsApp
-contact number. The contact number is read from the `general.whatsapp` site
-setting; the API phone-number ID and token must belong to the school's
-WhatsApp Business sender and are separate credentials.
+`WHATSAPP_TEMPLATE_NAME`, and `WHATSAPP_LEARNING_TEMPLATE_NAME`. Optionally set
+`WHATSAPP_TEMPLATE_LANGUAGE` and `WHATSAPP_API_VERSION`. Both WhatsApp templates
+must be approved by Meta. The admission template must contain six body text
+parameters in this order: student name, application number, status, application
+email, student portal URL, and the school's WhatsApp contact number. The
+learning-notification template must contain six body text parameters in this
+order: student name, item type, item title, course title, due/opening time, and
+student portal URL. The contact number for admission notifications is read from
+the `general.whatsapp` site setting; the API phone-number ID and token must
+belong to the school's WhatsApp Business sender and are separate credentials.
+Ready-to-submit Meta template definitions are in
+`supabase/templates/whatsapp/profia_admission_update.json` and
+`supabase/templates/whatsapp/profia_learning_published.json`. Create each
+template in WhatsApp Manager or with the WhatsApp Business Management API and
+wait for Meta approval before sending. The worker defaults to the template
+names in those files; the two template-name secrets are optional overrides.
+Resend is used only for email. WhatsApp messages are sent through the Meta
+WhatsApp Cloud API and require a WhatsApp Business phone number ID and access
+token.
 
 Schedule authenticated POST requests to
 `/functions/v1/send-application-notifications` at least once per minute, using

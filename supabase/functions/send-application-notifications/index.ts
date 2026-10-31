@@ -9,6 +9,15 @@ type ApplicationNotification = {
   payload: Record<string, unknown>;
 };
 
+type StudentLearningNotification = {
+  id: string;
+  channel: "email" | "whatsapp";
+  recipient: string;
+  subject: string;
+  attempts: number;
+  payload: Record<string, unknown>;
+};
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -22,7 +31,7 @@ Deno.serve(async (request: Request) => {
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   if (!supabaseUrl || !serviceRoleKey) {
-    console.error("Admission notification service configuration is incomplete.");
+    console.error("Student notification service configuration is incomplete.");
     return json({ error: "Notification service is not configured." }, 500);
   }
   if (request.headers.get("Authorization") !== `Bearer ${serviceRoleKey}`) {
@@ -82,7 +91,73 @@ Deno.serve(async (request: Request) => {
       sent++;
     }
   }
-  return json({ claimed: claimed?.length ?? 0, sent, failed, failures }, 200);
+
+  const { data: learningNotifications, error: learningClaimError } = await client.rpc(
+    "claim_student_learning_notifications",
+    { _limit: 50 },
+  );
+  if (learningClaimError) {
+    console.error("Could not claim student learning notifications:", learningClaimError.message);
+    return json(
+      {
+        claimed: claimed?.length ?? 0,
+        sent,
+        failed,
+        failures,
+        error: "Could not claim student learning notifications.",
+      },
+      500,
+    );
+  }
+
+  for (const notification of (learningNotifications ?? []) as StudentLearningNotification[]) {
+    let deliveryError: string | null = null;
+    try {
+      if (notification.channel === "email") {
+        await sendStudentLearningEmail(notification);
+      } else if (notification.channel === "whatsapp") {
+        await sendStudentLearningWhatsApp(notification);
+      } else {
+        throw new Error("Unsupported student learning notification channel.");
+      }
+    } catch (error) {
+      deliveryError = error instanceof Error ? error.message : "Notification delivery failed.";
+    }
+
+    const { error: completionError } = await client.rpc("complete_student_learning_notification", {
+      _notification_id: notification.id,
+      _sent: deliveryError === null,
+      _error: deliveryError,
+    });
+    if (completionError) {
+      console.error(
+        `Could not record learning notification ${notification.id}:`,
+        completionError.message,
+      );
+      failures.push({
+        id: notification.id,
+        channel: notification.channel,
+        error: `Could not record delivery status: ${completionError.message}`,
+      });
+      failed++;
+    } else if (deliveryError) {
+      console.error(`Student learning notification ${notification.id} failed: ${deliveryError}`);
+      failures.push({ id: notification.id, channel: notification.channel, error: deliveryError });
+      failed++;
+    } else {
+      sent++;
+    }
+  }
+
+  return json(
+    {
+      claimed: (claimed?.length ?? 0) + (learningNotifications?.length ?? 0),
+      sent,
+      failed,
+      failures,
+    },
+    200,
+  );
 });
 
 async function sendEmail(notification: ApplicationNotification) {
@@ -155,12 +230,12 @@ async function sendEmail(notification: ApplicationNotification) {
 async function sendWhatsApp(notification: ApplicationNotification) {
   const accessToken = Deno.env.get("WHATSAPP_ACCESS_TOKEN");
   const phoneNumberId = Deno.env.get("WHATSAPP_PHONE_NUMBER_ID");
-  const templateName = Deno.env.get("WHATSAPP_TEMPLATE_NAME");
+  const templateName = Deno.env.get("WHATSAPP_TEMPLATE_NAME") ?? "profia_admission_update";
   const templateLanguage = Deno.env.get("WHATSAPP_TEMPLATE_LANGUAGE") ?? "en";
   const apiVersion = Deno.env.get("WHATSAPP_API_VERSION") ?? "v22.0";
-  if (!accessToken || !phoneNumberId || !templateName) {
+  if (!accessToken || !phoneNumberId) {
     throw new Error(
-      "WhatsApp delivery requires WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID, and WHATSAPP_TEMPLATE_NAME.",
+      "WhatsApp delivery requires WHATSAPP_ACCESS_TOKEN and WHATSAPP_PHONE_NUMBER_ID.",
     );
   }
 
@@ -209,12 +284,156 @@ async function sendWhatsApp(notification: ApplicationNotification) {
   }
 }
 
+async function sendStudentLearningEmail(notification: StudentLearningNotification) {
+  const apiKey = Deno.env.get("RESEND_API_KEY");
+  const sender = Deno.env.get("SCHOOL_EMAIL_FROM");
+  const siteUrl = Deno.env.get("PUBLIC_SITE_URL");
+  if (!apiKey || !sender || !siteUrl) {
+    throw new Error(
+      "Email delivery requires RESEND_API_KEY, SCHOOL_EMAIL_FROM, and PUBLIC_SITE_URL.",
+    );
+  }
+
+  const name = payloadText(notification.payload, "student_name");
+  const notificationType = payloadText(notification.payload, "notification_type");
+  const title = payloadText(notification.payload, "content_title");
+  const course = payloadText(notification.payload, "course_title");
+  const portalUrl = new URL(payloadText(notification.payload, "portal_path"), siteUrl).toString();
+  const schedule = learningSchedule(notification.payload);
+  const typeLabel = notificationType === "cat" ? "CAT" : "assignment";
+  const text = [
+    `Hello ${name},`,
+    "",
+    `A new ${typeLabel} has been published for ${course}: ${title}.`,
+    schedule,
+    "",
+    `Open your student portal: ${portalUrl}`,
+  ].join("\n");
+  const html = [
+    `<p>Hello ${escapeHtml(name)},</p>`,
+    `<p>A new ${escapeHtml(typeLabel)} has been published for <strong>${escapeHtml(course)}</strong>: <strong>${escapeHtml(title)}</strong>.</p>`,
+    `<p>${escapeHtml(schedule)}</p>`,
+    `<p><a href="${escapeHtml(portalUrl)}">Open your student portal</a></p>`,
+  ].join("");
+
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: ["Bearer", apiKey].join(" "),
+      "Content-Type": "application/json",
+      "Idempotency-Key": notification.id,
+    },
+    body: JSON.stringify({
+      from: sender,
+      to: [notification.recipient],
+      subject: notification.subject,
+      text,
+      html,
+    }),
+  });
+  if (!response.ok) {
+    throw new Error(
+      `Email provider returned ${response.status}: ${(await response.text()).slice(0, 500)}`,
+    );
+  }
+}
+
+async function sendStudentLearningWhatsApp(notification: StudentLearningNotification) {
+  const accessToken = Deno.env.get("WHATSAPP_ACCESS_TOKEN");
+  const phoneNumberId = Deno.env.get("WHATSAPP_PHONE_NUMBER_ID");
+  const templateName =
+    Deno.env.get("WHATSAPP_LEARNING_TEMPLATE_NAME") ?? "profia_learning_published";
+  const templateLanguage = Deno.env.get("WHATSAPP_TEMPLATE_LANGUAGE") ?? "en";
+  const apiVersion = Deno.env.get("WHATSAPP_API_VERSION") ?? "v22.0";
+  const siteUrl = Deno.env.get("PUBLIC_SITE_URL");
+  if (!accessToken || !phoneNumberId || !siteUrl) {
+    throw new Error(
+      "WhatsApp learning notifications require WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID, and PUBLIC_SITE_URL.",
+    );
+  }
+
+  const notificationType = payloadText(notification.payload, "notification_type");
+  const portalUrl = new URL(payloadText(notification.payload, "portal_path"), siteUrl).toString();
+  const parameters = [
+    payloadText(notification.payload, "student_name"),
+    notificationType === "cat" ? "CAT" : "Assignment",
+    payloadText(notification.payload, "content_title"),
+    payloadText(notification.payload, "course_title"),
+    learningSchedule(notification.payload),
+    portalUrl,
+  ];
+  const response = await fetch(
+    `https://graph.facebook.com/${apiVersion}/${encodeURIComponent(phoneNumberId)}/messages`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: ["Bearer", accessToken].join(" "),
+        "Content-Type": "application/json",
+        "Idempotency-Key": notification.id,
+      },
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        recipient_type: "individual",
+        to: normalizePhone(notification.recipient),
+        type: "template",
+        template: {
+          name: templateName,
+          language: { code: templateLanguage },
+          components: [
+            {
+              type: "body",
+              parameters: parameters.map((text) => ({ type: "text", text })),
+            },
+          ],
+        },
+      }),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(
+      `WhatsApp provider returned ${response.status}: ${(await response.text()).slice(0, 500)}`,
+    );
+  }
+}
+
+function learningSchedule(payload: Record<string, unknown>) {
+  const notificationType = payloadText(payload, "notification_type");
+  const opensAt = payloadOptionalText(payload, "opens_at");
+  const closesAt = payloadOptionalText(payload, "closes_at");
+  if (notificationType === "cat") {
+    return `Opens ${formatKenyaDateTime(opensAt)} and closes ${formatKenyaDateTime(closesAt)}.`;
+  }
+  return closesAt
+    ? `Submission deadline: ${formatKenyaDateTime(closesAt)}.`
+    : "Check the student portal for the submission deadline.";
+}
+
+function formatKenyaDateTime(value: string | null) {
+  if (!value) return "immediately";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) throw new Error("Notification contains an invalid date.");
+  return new Intl.DateTimeFormat("en-KE", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "Africa/Nairobi",
+  }).format(date);
+}
+
 function payloadText(payload: Record<string, unknown>, key: string) {
   const value = payload[key];
   if (typeof value !== "string" || !value.trim()) {
     throw new Error(`Admission notification is missing ${key}.`);
   }
   return value.trim();
+}
+
+function payloadOptionalText(payload: Record<string, unknown>, key: string) {
+  const value = payload[key];
+  if (value === null || value === undefined || value === "") return null;
+  if (typeof value !== "string") {
+    throw new Error(`Notification contains an invalid ${key}.`);
+  }
+  return value;
 }
 
 function normalizePhone(phone: string) {
