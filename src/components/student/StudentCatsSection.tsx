@@ -179,7 +179,14 @@ export function StudentCatsSection({ courseId }: { courseId: string | null }) {
         <section className="space-y-4 rounded-xl border bg-card p-5 shadow-card">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h2 className="font-semibold text-brand">{activeAttempt.title}</h2>
+              <div className="flex items-center gap-3">
+                <img
+                  src="/favicon.png"
+                  alt="Profia Institute"
+                  className="h-10 w-10 shrink-0 object-contain"
+                />
+                <h2 className="font-semibold text-brand">{activeAttempt.title}</h2>
+              </div>
               <p className="mt-1 text-sm text-muted-foreground">CAT submitted</p>
             </div>
             <Badge>Result</Badge>
@@ -197,7 +204,14 @@ export function StudentCatsSection({ courseId }: { courseId: string | null }) {
       <section className="space-y-5 rounded-xl border bg-card p-5 shadow-card">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 className="font-semibold text-brand">{activeAttempt.title}</h2>
+            <div className="flex items-center gap-3">
+              <img
+                src="/favicon.png"
+                alt="Profia Institute"
+                className="h-10 w-10 shrink-0 object-contain"
+              />
+              <h2 className="font-semibold text-brand">{activeAttempt.title}</h2>
+            </div>
             {activeAttempt.instructions && (
               <p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">
                 {activeAttempt.instructions}

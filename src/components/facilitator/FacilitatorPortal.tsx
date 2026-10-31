@@ -20,6 +20,8 @@ import {
 import { toast } from "sonner";
 import { PasswordResetPage } from "@/components/auth/PasswordResetPage";
 import { LevelTargetPicker } from "@/components/academics/LevelTargetPicker";
+import { CatQuestionImporter } from "@/components/academics/CatQuestionImporter";
+import { CatQuestionPreview } from "@/components/academics/CatQuestionPreview";
 import { SubmissionFileDownloads } from "@/components/academics/SubmissionFileDownloads";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,6 +31,7 @@ import { downloadContentAttachment } from "@/lib/content-download";
 import { PROFILE_PHOTO_MAX_BYTES, PROFILE_PHOTO_TYPES } from "@/lib/profile-photos";
 import { signOutWithAudit, useRoles, useUser } from "@/lib/auth";
 import { submissionFilePaths } from "@/lib/assignments";
+import type { ImportedCatQuestion } from "@/lib/cat-import-format";
 import {
   contentKind,
   MAX_CONTENT_UPLOAD_SIZE,
@@ -391,6 +394,7 @@ function FacilitatorWorkspace({ userId, email }: { userId: string; email: string
     name: "",
     instructions: "",
     duration: "30",
+    openImmediately: true,
     opensAt: "",
     closesAt: "",
     levelIds: [] as string[],
@@ -547,14 +551,19 @@ function FacilitatorWorkspace({ userId, email }: { userId: string; email: string
       toast.error("Select at least one course level for this CAT.");
       return;
     }
-    const opensAt = new Date(catDraft.opensAt);
+    const opensAt = catDraft.openImmediately ? new Date() : new Date(catDraft.opensAt);
     const closesAt = new Date(catDraft.closesAt);
     if (
       Number.isNaN(opensAt.getTime()) ||
       Number.isNaN(closesAt.getTime()) ||
+      (!catDraft.openImmediately && opensAt <= new Date()) ||
       closesAt <= opensAt
     ) {
-      toast.error("Choose valid CAT opening and closing times.");
+      toast.error(
+        catDraft.openImmediately
+          ? "Choose a CAT closing time in the future."
+          : "Choose valid future CAT opening and closing times.",
+      );
       return;
     }
     if (catDraft.downloadFile && catDraft.downloadFile.size > 50 * 1024 * 1024) {
@@ -603,7 +612,7 @@ function FacilitatorWorkspace({ userId, email }: { userId: string; email: string
         _level_ids: catDraft.levelIds,
         _instructions: catDraft.instructions.trim() || null,
         _duration_minutes: Number(catDraft.duration),
-        _opens_at: opensAt.toISOString(),
+        _opens_at: catDraft.openImmediately ? null : opensAt.toISOString(),
         _closes_at: closesAt.toISOString(),
         _questions: questions,
         _download_file_path: downloadPath,
@@ -627,12 +636,13 @@ function FacilitatorWorkspace({ userId, email }: { userId: string; email: string
       toast.error("Could not create CAT", { description });
       return;
     }
-    toast.success("CAT scheduled for the assigned unit");
+    toast.success("CAT published for the assigned unit");
     setCatDraft({
       title: "",
       name: "",
       instructions: "",
       duration: "30",
+      openImmediately: true,
       opensAt: "",
       closesAt: "",
       levelIds: activeUnit.unit.level_id ? [activeUnit.unit.level_id] : [],
@@ -640,6 +650,32 @@ function FacilitatorWorkspace({ userId, email }: { userId: string; email: string
     });
     if (catDownloadInputRef.current) catDownloadInputRef.current.value = "";
     setQuestions([initialQuestion()]);
+  }
+
+  function importCatQuestions(imported: ImportedCatQuestion[]) {
+    const starterIsBlank =
+      questions.length === 1 &&
+      !questions[0]?.prompt.trim() &&
+      !questions[0]?.option_a.trim() &&
+      !questions[0]?.option_b.trim() &&
+      !questions[0]?.option_c.trim() &&
+      !questions[0]?.option_d.trim();
+    if (imported.length + (starterIsBlank ? 0 : questions.length) > 100) {
+      throw new Error("A CAT can contain no more than 100 questions.");
+    }
+    const importedQuestions = imported.map((question) => ({
+      prompt: question.prompt,
+      option_a: question.options.A,
+      option_b: question.options.B,
+      option_c: question.options.C,
+      option_d: question.options.D,
+      correct_option: question.correctOption ?? "",
+      points: 1,
+    }));
+    setQuestions((current) =>
+      starterIsBlank ? importedQuestions : [...current, ...importedQuestions],
+    );
+    toast.success(`${imported.length} question${imported.length === 1 ? "" : "s"} imported`);
   }
 
   async function signOut() {
@@ -1113,6 +1149,17 @@ function FacilitatorWorkspace({ userId, email }: { userId: string; email: string
                       setCatDraft({ ...catDraft, instructions: event.target.value })
                     }
                   />
+                  <label className="flex items-center gap-2 text-sm font-medium">
+                    <input
+                      type="checkbox"
+                      checked={catDraft.openImmediately}
+                      onChange={(event) =>
+                        setCatDraft({ ...catDraft, openImmediately: event.target.checked })
+                      }
+                      className="accent-primary"
+                    />
+                    Open immediately when published
+                  </label>
                   <div className="grid gap-3 sm:grid-cols-3">
                     <label className="grid gap-1 text-sm">
                       Duration (minutes)
@@ -1127,17 +1174,19 @@ function FacilitatorWorkspace({ userId, email }: { userId: string; email: string
                         }
                       />
                     </label>
-                    <label className="grid gap-1 text-sm">
-                      Opens at
-                      <Input
-                        type="datetime-local"
-                        required
-                        value={catDraft.opensAt}
-                        onChange={(event) =>
-                          setCatDraft({ ...catDraft, opensAt: event.target.value })
-                        }
-                      />
-                    </label>
+                    {!catDraft.openImmediately && (
+                      <label className="grid gap-1 text-sm">
+                        Opens at
+                        <Input
+                          type="datetime-local"
+                          required
+                          value={catDraft.opensAt}
+                          onChange={(event) =>
+                            setCatDraft({ ...catDraft, opensAt: event.target.value })
+                          }
+                        />
+                      </label>
+                    )}
                     <label className="grid gap-1 text-sm">
                       Closes at
                       <Input
@@ -1150,6 +1199,18 @@ function FacilitatorWorkspace({ userId, email }: { userId: string; email: string
                       />
                     </label>
                   </div>
+                  <CatQuestionImporter onImport={importCatQuestions} />
+                  <CatQuestionPreview
+                    questions={questions.map((question) => ({
+                      prompt: question.prompt,
+                      options: {
+                        A: question.option_a,
+                        B: question.option_b,
+                        C: question.option_c,
+                        D: question.option_d,
+                      },
+                    }))}
+                  />
                   {questions.map((question, index) => (
                     <fieldset key={index} className="grid gap-2 rounded-lg border p-3">
                       <legend className="px-1 text-sm font-semibold">Question {index + 1}</legend>
@@ -1188,6 +1249,7 @@ function FacilitatorWorkspace({ userId, email }: { userId: string; email: string
                         <label className="grid gap-1 text-xs">
                           Correct option
                           <select
+                            required
                             className="h-9 rounded-md border bg-background px-2"
                             value={question.correct_option}
                             onChange={(event) =>
@@ -1200,6 +1262,9 @@ function FacilitatorWorkspace({ userId, email }: { userId: string; email: string
                               )
                             }
                           >
+                            <option value="" disabled>
+                              Select correct answer
+                            </option>
                             <option>A</option>
                             <option>B</option>
                             <option>C</option>
@@ -1242,6 +1307,7 @@ function FacilitatorWorkspace({ userId, email }: { userId: string; email: string
                     <Button
                       type="button"
                       variant="outline"
+                      disabled={questions.length >= 100}
                       onClick={() => setQuestions([...questions, initialQuestion()])}
                     >
                       <Plus className="mr-1 h-4 w-4" />

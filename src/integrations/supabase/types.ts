@@ -2095,7 +2095,7 @@ export type Database = {
           _instructions: string | null;
           _level_ids: string[];
           _name: string;
-          _opens_at: string;
+          _opens_at: string | null;
           _questions: Json;
           _title: string;
         };
@@ -2139,7 +2139,7 @@ export type Database = {
           _instructions: string | null;
           _level_ids: string[];
           _name: string;
-          _opens_at: string;
+          _opens_at: string | null;
           _questions: Json;
           _title: string;
           _unit_id: string;
