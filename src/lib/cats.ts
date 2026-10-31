@@ -280,3 +280,22 @@ export function catDateTimeLabel(value: string): string {
     timeStyle: "short",
   });
 }
+
+export function getDateTimeLocalMinimum(afterValue?: string, now = new Date()): string {
+  const minimum = new Date(now);
+  minimum.setSeconds(0, 0);
+  minimum.setMinutes(minimum.getMinutes() + 1);
+
+  if (afterValue) {
+    const after = new Date(afterValue);
+    if (Number.isFinite(after.getTime())) {
+      after.setSeconds(0, 0);
+      after.setMinutes(after.getMinutes() + 1);
+      if (after > minimum) minimum.setTime(after.getTime());
+    }
+  }
+
+  return new Date(minimum.getTime() - minimum.getTimezoneOffset() * 60_000)
+    .toISOString()
+    .slice(0, 16);
+}

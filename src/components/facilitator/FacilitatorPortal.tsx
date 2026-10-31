@@ -33,6 +33,7 @@ import { PROFILE_PHOTO_MAX_BYTES, PROFILE_PHOTO_TYPES } from "@/lib/profile-phot
 import { signOutWithAudit, useRoles, useUser } from "@/lib/auth";
 import { submissionFilePaths } from "@/lib/assignments";
 import type { ImportedCatQuestion } from "@/lib/cat-import-format";
+import { getDateTimeLocalMinimum } from "@/lib/cats";
 import {
   contentKind,
   MAX_CONTENT_UPLOAD_SIZE,
@@ -554,18 +555,19 @@ function FacilitatorWorkspace({ userId, email }: { userId: string; email: string
       toast.error("Select at least one course level for this CAT.");
       return;
     }
-    const opensAt = catDraft.openImmediately ? new Date() : new Date(catDraft.opensAt);
+    const now = new Date();
+    const opensAt = catDraft.openImmediately ? now : new Date(catDraft.opensAt);
     const closesAt = new Date(catDraft.closesAt);
     if (
       Number.isNaN(opensAt.getTime()) ||
       Number.isNaN(closesAt.getTime()) ||
-      (!catDraft.openImmediately && opensAt <= new Date()) ||
+      (!catDraft.openImmediately && opensAt <= now) ||
       closesAt <= opensAt
     ) {
       toast.error(
         catDraft.openImmediately
-          ? "Choose a CAT closing time in the future."
-          : "Choose valid future CAT opening and closing times.",
+          ? `The CAT closing time must be later than now (${now.toLocaleString()}). Check your device clock and time zone, or choose a later time.`
+          : "Choose a CAT opening time in the future and a closing time at least one minute after it. Times use your device's local time zone.",
       );
       return;
     }
@@ -1105,6 +1107,10 @@ function FacilitatorWorkspace({ userId, email }: { userId: string; email: string
             {permissions.can_manage_cats && activeSection === "facilitator-cats" && (
               <section id="facilitator-cats" className="rounded-xl border bg-card p-5 shadow-card">
                 <h2 className="font-semibold text-brand">Create a CAT</h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Times use your device's local time zone. Set the closing time at least one minute
+                  after now or the scheduled opening.
+                </p>
                 <form className="mt-3 space-y-3" onSubmit={(event) => void createCat(event)}>
                   <Input
                     required
@@ -1183,6 +1189,7 @@ function FacilitatorWorkspace({ userId, email }: { userId: string; email: string
                         <Input
                           type="datetime-local"
                           required
+                          min={getDateTimeLocalMinimum()}
                           value={catDraft.opensAt}
                           onChange={(event) =>
                             setCatDraft({ ...catDraft, opensAt: event.target.value })
@@ -1195,6 +1202,9 @@ function FacilitatorWorkspace({ userId, email }: { userId: string; email: string
                       <Input
                         type="datetime-local"
                         required
+                        min={getDateTimeLocalMinimum(
+                          catDraft.openImmediately ? undefined : catDraft.opensAt,
+                        )}
                         value={catDraft.closesAt}
                         onChange={(event) =>
                           setCatDraft({ ...catDraft, closesAt: event.target.value })

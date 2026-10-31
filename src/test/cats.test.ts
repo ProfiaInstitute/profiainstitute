@@ -1,6 +1,27 @@
 import { describe, expect, it } from "vitest";
 import type { Json } from "@/integrations/supabase/types";
-import { parseAdminCats, parseStudentCatAttempt, parseStudentCats } from "@/lib/cats";
+import {
+  getDateTimeLocalMinimum,
+  parseAdminCats,
+  parseStudentCatAttempt,
+  parseStudentCats,
+} from "@/lib/cats";
+
+describe("CAT local date and time validation", () => {
+  it("sets the minimum to the next minute for an immediately opened CAT", () => {
+    const now = new Date(2026, 9, 31, 10, 14, 30);
+    const minimum = getDateTimeLocalMinimum(undefined, now);
+
+    expect(new Date(minimum).getTime()).toBe(new Date(2026, 9, 31, 10, 15).getTime());
+  });
+
+  it("requires a CAT closing time to be after its scheduled opening time", () => {
+    const now = new Date(2026, 9, 31, 10, 14, 30);
+    const minimum = getDateTimeLocalMinimum("2026-11-05T11:11", now);
+
+    expect(new Date(minimum).getTime()).toBe(new Date(2026, 10, 5, 11, 12).getTime());
+  });
+});
 
 describe("CAT response parsing", () => {
   it("parses the student's available CATs and submitted marks", () => {
