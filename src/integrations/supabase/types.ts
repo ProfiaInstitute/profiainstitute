@@ -833,6 +833,7 @@ export type Database = {
           created_at?: string;
           id?: string;
           intake_id?: string | null;
+          kasneb_number?: string | null;
           level_id?: string | null;
           progress?: number;
           status?: string;
@@ -846,6 +847,7 @@ export type Database = {
           created_at?: string;
           id?: string;
           intake_id?: string | null;
+          kasneb_number?: string | null;
           level_id?: string | null;
           progress?: number;
           status?: string;
@@ -2066,6 +2068,7 @@ export type Database = {
           gender: string | null;
           id: string;
           intake_id: string | null;
+          kasneb_number: string | null;
           level_id: string | null;
           last_name: string;
           middle_name: string | null;
@@ -2092,6 +2095,7 @@ export type Database = {
           gender?: string | null;
           id?: string;
           intake_id?: string | null;
+          kasneb_number?: string | null;
           level_id?: string | null;
           last_name: string;
           middle_name?: string | null;
@@ -2118,6 +2122,7 @@ export type Database = {
           gender?: string | null;
           id?: string;
           intake_id?: string | null;
+          kasneb_number?: string | null;
           level_id?: string | null;
           last_name?: string;
           middle_name?: string | null;
@@ -2406,6 +2411,7 @@ export type Database = {
         };
         Returns: undefined;
       };
+      save_my_kasneb_number: { Args: { _kasneb_number: string }; Returns: string };
       start_cat_attempt: { Args: { _assessment_id: string }; Returns: Json };
       submit_cat_attempt: { Args: { _attempt_id: string }; Returns: Json };
       list_faq_search_insights: {

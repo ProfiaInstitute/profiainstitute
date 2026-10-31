@@ -105,6 +105,8 @@ describe("CAT response parsing", () => {
             id: "attempt-1",
             student_number: "PRF/2026/0001",
             student_name: "Student Name",
+            kasneb_number: "1234567890",
+            level_name: "Level 1",
             started_at: "2026-10-25T08:10:00.000Z",
             submitted_at: "2026-10-25T08:15:00.000Z",
             score: 0,
@@ -120,6 +122,8 @@ describe("CAT response parsing", () => {
     expect(cat?.levelIds).toEqual(["level-1", "level-2"]);
     expect(cat?.downloadFileName).toBe("cat-file.pdf");
     expect(cat?.questions[0]?.correctOption).toBe("C");
+    expect(cat?.attempts[0]?.kasnebNumber).toBe("1234567890");
+    expect(cat?.attempts[0]?.levelName).toBe("Level 1");
     expect(cat?.attempts[0]?.answers[0]?.selectedOption).toBe("A");
   });
 

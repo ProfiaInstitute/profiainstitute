@@ -4,6 +4,7 @@ import { Clock3 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { CatDownloadButton } from "@/components/academics/CatDownloadButton";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -16,10 +17,18 @@ import {
   type StudentCatAttempt,
 } from "@/lib/cats";
 
-export function StudentCatsSection({ courseId }: { courseId: string | null }) {
+export function StudentCatsSection({
+  courseId,
+  kasnebNumber,
+}: {
+  courseId: string | null;
+  kasnebNumber: string | null;
+}) {
   const queryClient = useQueryClient();
   const [activeAttempt, setActiveAttempt] = useState<StudentCatAttempt | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  const [kasnebDraft, setKasnebDraft] = useState(kasnebNumber ?? "");
+  const [savedKasnebNumber, setSavedKasnebNumber] = useState(kasnebNumber);
   const [savingQuestionId, setSavingQuestionId] = useState<string | null>(null);
   const [startingId, setStartingId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -34,11 +43,40 @@ export function StudentCatsSection({ courseId }: { courseId: string | null }) {
       return parseStudentCats(data);
     },
   });
+  const saveKasnebNumber = useMutation({
+    mutationFn: async () => {
+      const value = kasnebDraft.trim().toUpperCase();
+      if (!/^[A-Z0-9][A-Z0-9 /.-]{1,39}$/.test(value)) {
+        throw new Error(
+          "Enter a valid KASNEB registration number using 2 to 40 letters, numbers, spaces, dots, slashes, or hyphens.",
+        );
+      }
+      const { data, error } = await supabase.rpc("save_my_kasneb_number", {
+        _kasneb_number: value,
+      });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: async (value) => {
+      setSavedKasnebNumber(value);
+      setKasnebDraft(value);
+      toast.success("KASNEB number saved to your student record");
+      await queryClient.invalidateQueries({ queryKey: ["student", "record"] });
+    },
+    onError: (error) =>
+      toast.error("Could not save your KASNEB number", { description: error.message }),
+  });
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
   }, []);
+  useEffect(() => {
+    if (kasnebNumber) {
+      setSavedKasnebNumber(kasnebNumber);
+      setKasnebDraft(kasnebNumber);
+    }
+  }, [kasnebNumber]);
 
   const submitAttempt = useCallback(
     async (attemptId: string, automatic = false) => {
@@ -88,6 +126,10 @@ export function StudentCatsSection({ courseId }: { courseId: string | null }) {
   }, [activeAttempt, now, submitError, submitAttempt, submitting]);
 
   async function startAttempt(cat: StudentCat) {
+    if (!savedKasnebNumber) {
+      toast.error("Enter your KASNEB number before starting a CAT.");
+      return;
+    }
     setStartingId(cat.id);
     try {
       const { data, error } = await supabase.rpc("start_cat_attempt", {
@@ -166,6 +208,46 @@ export function StudentCatsSection({ courseId }: { courseId: string | null }) {
           Retry
         </Button>
       </div>
+    );
+  }
+
+  if (!savedKasnebNumber) {
+    return (
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          saveKasnebNumber.mutate();
+        }}
+        className="max-w-2xl space-y-4 rounded-xl border bg-card p-5 shadow-card"
+      >
+        <div>
+          <h2 className="font-semibold text-brand">Set up your KASNEB CAT details</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Enter your KASNEB registration number once before your first CAT. It will be saved to
+            your student record and reused for future CAT results.
+          </p>
+        </div>
+        <label className="grid gap-1.5 text-sm font-medium">
+          KASNEB registration number
+          <Input
+            required
+            minLength={2}
+            maxLength={40}
+            autoComplete="off"
+            value={kasnebDraft}
+            onChange={(event) => setKasnebDraft(event.target.value)}
+            placeholder="Enter your KASNEB number"
+          />
+        </label>
+        {saveKasnebNumber.error && (
+          <p role="alert" className="text-sm text-destructive">
+            {saveKasnebNumber.error.message}
+          </p>
+        )}
+        <Button type="submit" disabled={saveKasnebNumber.isPending}>
+          {saveKasnebNumber.isPending ? "Saving…" : "Save and continue"}
+        </Button>
+      </form>
     );
   }
 
