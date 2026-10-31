@@ -13,7 +13,13 @@ import { CatQuestionPreview } from "@/components/academics/CatQuestionPreview";
 import { supabase } from "@/integrations/supabase/client";
 import { createExcelWorkbook } from "@/lib/excel-export";
 import { safeUploadFileName } from "@/lib/file-uploads";
-import { catDateTimeLabel, parseAdminCats, type AdminCat, type CatOptionKey } from "@/lib/cats";
+import {
+  catDateTimeLabel,
+  getDateTimeLocalMinimum,
+  parseAdminCats,
+  type AdminCat,
+  type CatOptionKey,
+} from "@/lib/cats";
 import type { ImportedCatQuestion } from "@/lib/cat-import-format";
 
 type QuestionDraft = {
@@ -73,19 +79,20 @@ export function CatManagementPanel() {
   });
   const createMutation = useMutation({
     mutationFn: async () => {
-      const openingTime = openImmediately ? new Date() : new Date(opensAt);
+      const now = new Date();
+      const openingTime = openImmediately ? now : new Date(opensAt);
       const closingTime = new Date(closesAt);
       const duration = Number(durationMinutes);
       if (
         !Number.isFinite(openingTime.getTime()) ||
         !Number.isFinite(closingTime.getTime()) ||
-        (!openImmediately && openingTime.getTime() <= Date.now()) ||
+        (!openImmediately && openingTime.getTime() <= now.getTime()) ||
         closingTime.getTime() <= openingTime.getTime()
       ) {
         throw new Error(
           openImmediately
-            ? "Choose a closing time in the future."
-            : "Choose a future opening time and a closing time after it.",
+            ? `The closing time must be later than now (${now.toLocaleString()}). Check your device clock and time zone, or choose a later time.`
+            : "Choose an opening time in the future and a closing time at least one minute after it. Times use your device's local time zone.",
         );
       }
       if (!Number.isInteger(duration) || duration < 1 || duration > 360) {
@@ -208,7 +215,8 @@ export function CatManagementPanel() {
         <h2 className="font-semibold text-brand">CATs</h2>
         <p className="mt-1 text-sm text-muted-foreground">
           Create a course CAT with multiple-choice questions, immediate or scheduled access, and a
-          timed, one-time attempt. Scheduled times use your local time zone.
+          timed, one-time attempt. Times use your device's local time zone; select a closing time at
+          least one minute after now or the scheduled opening.
         </p>
       </div>
       <details className="rounded-lg border bg-muted/30 p-4">
@@ -289,6 +297,7 @@ export function CatManagementPanel() {
                 <Input
                   required
                   type="datetime-local"
+                  min={getDateTimeLocalMinimum()}
                   value={opensAt}
                   onChange={(event) => setOpensAt(event.target.value)}
                 />
@@ -299,6 +308,7 @@ export function CatManagementPanel() {
               <Input
                 required
                 type="datetime-local"
+                min={getDateTimeLocalMinimum(openImmediately ? undefined : opensAt)}
                 value={closesAt}
                 onChange={(event) => setClosesAt(event.target.value)}
               />
