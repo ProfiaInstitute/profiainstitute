@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import {
   ArrowRight,
+  CalendarDays,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -54,17 +55,7 @@ function Home() {
     cta: "Apply now",
     image: "/images/profia_school.webp",
   });
-  const intakeBadge = activeIntake.data ? `${activeIntake.data.name} now open` : null;
-  const intakeDetails = [
-    activeIntake.data?.start_date
-      ? `Starts ${new Date(`${activeIntake.data.start_date}T00:00:00`).toLocaleDateString("en-KE", { dateStyle: "medium" })}`
-      : null,
-    activeIntake.data?.application_deadline
-      ? `Apply by ${new Date(`${activeIntake.data.application_deadline}T00:00:00`).toLocaleDateString("en-KE", { dateStyle: "medium" })}`
-      : null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
+  const about = useSetting<{ intro?: string }>("content.about", {});
   const web = useSetting<WebSettings>("content.webdev", { enabled: true });
   const stats = useSetting<{ items: { value: string; label: string }[] }>("stats", { items: [] });
   const slides = heroMedia.data?.length
@@ -103,9 +94,10 @@ function Home() {
 
   return (
     <div className="homepage-motion">
-      {/* HERO */}
+      <AnnouncementStrip />
+
       <section
-        className="relative isolate min-h-[32rem] overflow-hidden bg-brand text-brand-foreground sm:min-h-[36rem]"
+        className="relative isolate overflow-hidden bg-brand-deep text-brand-foreground"
         onMouseEnter={() => setCarouselHovered(true)}
         onMouseLeave={() => setCarouselHovered(false)}
         role="region"
@@ -115,95 +107,161 @@ function Home() {
         <img
           key={currentSlide.id}
           src={currentSlide.url}
-          alt={currentSlide.alt || "Profia Institute"}
-          className="absolute inset-0 -z-10 h-full w-full object-contain"
+          alt={currentSlide.alt || "Profia Institute students and community"}
+          className="absolute inset-0 -z-20 h-full w-full object-cover object-center"
           fetchPriority="high"
         />
-        <div className="container-site grid min-h-[32rem] items-center gap-6 py-12 sm:min-h-[36rem] sm:py-16 lg:grid-cols-[10rem_minmax(0,1fr)] lg:gap-12 lg:py-20">
-          <aside className="absolute left-4 top-1/2 z-10 hidden w-40 min-w-0 -translate-y-1/2 rounded-2xl border border-white/20 bg-white/95 p-3 text-foreground shadow-lift backdrop-blur-sm lg:left-6 lg:block">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-primary">
-              Your next step
-            </p>
-            <h2 className="mt-1.5 text-base font-bold leading-tight text-brand">
-              Find your place at Profia
-            </h2>
-            <div className="mt-2 divide-y">
-              <Link
-                to="/admission"
-                search={{}}
-                className="group flex items-center justify-between gap-1.5 py-2.5 text-[11px] font-semibold text-brand transition-colors hover:text-primary"
-              >
-                Apply for admission
-                <ArrowRight className="h-3.5 w-3.5 shrink-0 transition-transform group-hover:translate-x-1" />
-              </Link>
-              <Link
-                to="/academics"
-                className="group flex items-center justify-between gap-1.5 py-2.5 text-[11px] font-semibold text-brand transition-colors hover:text-primary"
-              >
-                Explore our schools
-                <ArrowRight className="h-3.5 w-3.5 shrink-0 transition-transform group-hover:translate-x-1" />
-              </Link>
-              <Link
-                to="/student"
-                search={{ course: undefined }}
-                className="group flex items-center justify-between gap-1.5 py-2.5 text-[11px] font-semibold text-brand transition-colors hover:text-primary"
-              >
-                Open student portal
-                <ArrowRight className="h-3.5 w-3.5 shrink-0 transition-transform group-hover:translate-x-1" />
-              </Link>
-            </div>
-          </aside>
-          <div className="hero-copy max-w-3xl animate-fade-up lg:col-start-2">
-            <p className="inline-flex items-center gap-2 rounded-full border border-white/25 bg-black/15 px-4 py-2 text-xs font-bold uppercase tracking-[0.18em] text-white/95 backdrop-blur-sm">
+        <div className="absolute inset-0 -z-10 bg-[linear-gradient(90deg,rgba(24,7,10,0.8)_0%,rgba(39,9,14,0.68)_42%,rgba(39,9,14,0.3)_100%)]" />
+        <div className="absolute inset-0 -z-10 bg-[linear-gradient(0deg,rgba(24,7,10,0.28)_0%,transparent_38%)]" />
+        <div className="container-site grid min-h-[44rem] items-center gap-10 py-12 sm:min-h-[40rem] sm:py-14 lg:min-h-[38rem] lg:grid-cols-[minmax(0,1.15fr)_minmax(19rem,0.7fr)] lg:gap-16 lg:py-16">
+          <div className="animate-fade-up py-2 lg:py-8">
+            <p className="inline-flex items-center gap-2 rounded-full border border-white/25 bg-black/20 px-4 py-2 text-xs font-bold uppercase tracking-[0.16em] text-white/95 backdrop-blur-sm sm:text-sm">
               <span className="h-2 w-2 rounded-full bg-primary" />
-              Profia Institute of Professionals · Homa Bay
+              Profia Institute of Professionals
+              <span className="text-white/60">·</span> Homa Bay, Kenya
             </p>
-            {intakeBadge && (
-              <span className="mt-5 inline-flex items-center gap-2 rounded-full bg-primary px-3 py-1.5 text-sm font-semibold text-primary-foreground">
-                <Check className="h-4 w-4" /> {intakeBadge}
-              </span>
-            )}
             {activeIntake.isError && (
-              <p role="status" className="mt-3 text-sm">
+              <p role="status" className="mt-4 text-sm text-white/85">
                 Admissions details are temporarily unavailable.
               </p>
             )}
             {heroMedia.error && (
-              <p role="status" className="mt-3 text-sm">
+              <p role="status" className="mt-4 text-sm text-white/85">
                 Featured slides are temporarily unavailable. Showing the default campus image.
               </p>
             )}
-            {intakeDetails && (
-              <p className="mt-3 text-sm font-medium text-brand-foreground/90">{intakeDetails}</p>
-            )}
-            <h1 className="mt-5 max-w-3xl text-xl font-extrabold leading-[1.15] tracking-tight sm:text-2xl lg:text-3xl">
+            <h1 className="mt-6 max-w-3xl text-4xl font-extrabold leading-[1.08] tracking-tight text-white sm:text-5xl lg:text-[3.8rem]">
               <span aria-live="polite" aria-atomic="true">
                 {currentSlide.caption || hero.title}
               </span>
             </h1>
-            <p className="mt-4 max-w-2xl text-sm leading-6 text-white/85 sm:text-base sm:leading-7">
+            <p className="mt-5 max-w-2xl text-base leading-7 text-white/85 sm:text-lg sm:leading-8">
               Build practical skills, earn recognised qualifications and take your next step with a
               learning community rooted in Homa Bay.
             </p>
-            <div className="mt-6 flex flex-wrap gap-3">
-              <Button asChild variant="hero" size="lg">
+            <div className="mt-7 flex flex-wrap gap-3">
+              <Button asChild variant="hero" size="lg" className="px-7">
                 <Link to="/admission" search={{}}>
-                  {hero.cta || "Apply now"}
+                  {hero.cta || "Apply now"} <ArrowRight className="ml-1 h-4 w-4" />
                 </Link>
               </Button>
-              <Button asChild variant="heroOutline" size="lg">
-                <Link to="/academics">View courses</Link>
+              <Button
+                asChild
+                variant="heroOutline"
+                size="lg"
+                className="border-white/60 bg-white/5 px-7 text-white hover:bg-white/15"
+              >
+                <Link to="/academics">Explore programmes</Link>
               </Button>
             </div>
           </div>
+
+          <aside className="relative mx-auto w-full max-w-md overflow-hidden rounded-2xl border border-white/35 bg-brand-deep/65 text-white shadow-[0_24px_80px_-28px_rgba(0,0,0,0.55)] backdrop-blur-xl backdrop-saturate-150 lg:ml-auto">
+            <div className="h-px bg-gradient-to-r from-transparent via-white/80 to-transparent" />
+            <div className="p-6 sm:p-8">
+              <div className="flex items-center gap-3">
+                <span className="flex h-11 w-11 items-center justify-center rounded-xl border border-white/20 bg-white/10 text-primary">
+                  <CalendarDays className="h-5 w-5" />
+                </span>
+                <div>
+                  <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-primary">
+                    Admissions
+                  </p>
+                  <p className="mt-0.5 text-xs font-semibold uppercase tracking-wide text-white/65">
+                    Profia Institute · Homa Bay
+                  </p>
+                </div>
+              </div>
+
+              {activeIntake.data ? (
+                <>
+                  <p className="mt-6 inline-flex items-center gap-2 rounded-full border border-emerald-200/20 bg-emerald-300/15 px-3 py-1.5 text-xs font-bold text-emerald-100">
+                    <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                    Applications open
+                  </p>
+                  <h2 className="mt-3 text-2xl font-extrabold leading-tight text-white sm:text-3xl">
+                    {activeIntake.data.name}
+                  </h2>
+                  <p className="mt-2 text-sm leading-6 text-white/75">
+                    Take the next step toward a practical, career-focused qualification.
+                  </p>
+                  {(activeIntake.data.start_date || activeIntake.data.application_deadline) && (
+                    <dl className="mt-5 grid grid-cols-2 gap-3 border-y border-white/20 py-4">
+                      {activeIntake.data.start_date && (
+                        <div>
+                          <dt className="text-[11px] font-semibold uppercase tracking-wide text-white/60">
+                            Intake starts
+                          </dt>
+                          <dd className="mt-1 text-sm font-bold text-white">
+                            {new Date(
+                              `${activeIntake.data.start_date}T00:00:00`,
+                            ).toLocaleDateString("en-KE", { dateStyle: "medium" })}
+                          </dd>
+                        </div>
+                      )}
+                      {activeIntake.data.application_deadline && (
+                        <div>
+                          <dt className="text-[11px] font-semibold uppercase tracking-wide text-white/60">
+                            Apply by
+                          </dt>
+                          <dd className="mt-1 text-sm font-bold text-white">
+                            {new Date(
+                              `${activeIntake.data.application_deadline}T00:00:00`,
+                            ).toLocaleDateString("en-KE", { dateStyle: "medium" })}
+                          </dd>
+                        </div>
+                      )}
+                    </dl>
+                  )}
+                  {activeIntake.data.notes && (
+                    <p className="mt-4 line-clamp-3 text-sm leading-6 text-white/75">
+                      {activeIntake.data.notes}
+                    </p>
+                  )}
+                </>
+              ) : (
+                <>
+                  <p className="mt-6 text-xs font-bold uppercase tracking-[0.18em] text-primary">
+                    Find your next step
+                  </p>
+                  <h2 className="mt-3 text-2xl font-extrabold leading-tight text-white sm:text-3xl">
+                    Your future starts here.
+                  </h2>
+                  <p className="mt-2 text-sm leading-6 text-white/75">
+                    Explore our programmes or talk with admissions about upcoming opportunities.
+                  </p>
+                  {activeIntake.isError && (
+                    <p role="status" className="mt-3 text-xs text-white/65">
+                      Current intake information is temporarily unavailable.
+                    </p>
+                  )}
+                </>
+              )}
+
+              <div className="mt-6 grid gap-2.5">
+                <Button asChild variant="hero" className="w-full justify-between">
+                  <Link to="/admission" search={{}}>
+                    Start your application <ArrowRight className="h-4 w-4" />
+                  </Link>
+                </Button>
+                <Link
+                  to="/application-status"
+                  search={{}}
+                  className="text-center text-sm font-semibold text-white/85 underline-offset-4 hover:text-primary hover:underline"
+                >
+                  Already applied? Track your application
+                </Link>
+              </div>
+            </div>
+          </aside>
         </div>
         {slides.length > 1 && (
-          <div className="container-site absolute inset-x-0 bottom-5 z-10 flex items-center justify-center gap-2 sm:bottom-7 lg:justify-start">
+          <div className="container-site flex items-center gap-2 pb-5">
             <button
               type="button"
               aria-label="Previous hero slide"
               onClick={() => setSlideIndex((index) => (index - 1 + slides.length) % slides.length)}
-              className="flex h-9 w-9 items-center justify-center rounded-full border border-white/40 bg-black/20 text-white transition hover:bg-white/20"
+              className="flex h-9 w-9 items-center justify-center rounded-full border border-white/50 bg-black/20 text-white transition hover:bg-white/20"
             >
               <ChevronLeft className="h-5 w-5" />
             </button>
@@ -221,7 +279,7 @@ function Home() {
               type="button"
               aria-label="Next hero slide"
               onClick={() => setSlideIndex((index) => (index + 1) % slides.length)}
-              className="flex h-9 w-9 items-center justify-center rounded-full border border-white/40 bg-black/20 text-white transition hover:bg-white/20"
+              className="flex h-9 w-9 items-center justify-center rounded-full border border-white/50 bg-black/20 text-white transition hover:bg-white/20"
             >
               <ChevronRight className="h-5 w-5" />
             </button>
@@ -230,15 +288,13 @@ function Home() {
               aria-label={carouselPaused ? "Play hero slideshow" : "Pause hero slideshow"}
               aria-pressed={carouselPaused}
               onClick={() => setCarouselPaused((paused) => !paused)}
-              className="flex h-9 w-9 items-center justify-center rounded-full border border-white/40 bg-black/20 text-white transition hover:bg-white/20"
+              className="ml-auto flex h-9 w-9 items-center justify-center rounded-full border border-white/50 bg-black/20 text-white transition hover:bg-white/20"
             >
               {carouselPaused ? <Play className="h-4 w-4" /> : <Pause className="h-4 w-4" />}
             </button>
           </div>
         )}
       </section>
-
-      <AnnouncementStrip />
 
       <QuickLinks />
 
@@ -256,6 +312,31 @@ function Home() {
           </div>
         </section>
       )}
+
+      <section className="container-site grid gap-6 py-14 sm:py-16 lg:grid-cols-[0.8fr_1.2fr] lg:items-center lg:gap-16">
+        <div>
+          <p className="eyebrow">Welcome to Profia</p>
+          <h2 className="mt-3 text-3xl font-extrabold leading-tight text-brand sm:text-4xl">
+            A practical start to a brighter future.
+          </h2>
+        </div>
+        <div className="rounded-2xl border bg-muted/30 p-6 sm:p-8">
+          <p className="text-base leading-7 text-muted-foreground">
+            {about.intro ||
+              "Profia Institute is a TVET college in Homa Bay. Explore our schools and programmes, or contact the Institute for current admissions information."}
+          </p>
+          <div className="mt-5 flex flex-wrap gap-3">
+            <Button asChild variant="outline">
+              <Link to="/about">
+                About the Institute <ArrowRight className="ml-1 h-4 w-4" />
+              </Link>
+            </Button>
+            <Button asChild variant="link" className="text-brand">
+              <Link to="/academics">Explore our schools</Link>
+            </Button>
+          </div>
+        </div>
+      </section>
 
       <AcademicsGrid />
       <Partners />
@@ -316,7 +397,7 @@ function AnnouncementStrip() {
   if (error)
     return (
       <div
-        className="bg-brand-deep px-4 py-3 text-center text-sm text-brand-foreground"
+        className="border-b bg-muted/50 px-4 py-3 text-center text-sm text-muted-foreground"
         role="status"
       >
         Current notices are temporarily unavailable. Please check the announcements page later.
@@ -324,36 +405,30 @@ function AnnouncementStrip() {
     );
   if (!data?.length) return null;
   return (
-    <div className="announcement-strip bg-brand-deep text-brand-foreground">
-      <div className="container-site flex h-12 items-center gap-4">
-        <span className="flex shrink-0 items-center gap-2 text-xs font-bold uppercase tracking-wider text-primary sm:text-sm">
+    <div className="border-b border-white/10 bg-brand-deep text-brand-foreground">
+      <div className="container-site flex min-h-12 items-center gap-4 py-2.5">
+        <span className="flex shrink-0 items-center gap-2 text-xs font-bold uppercase tracking-wider text-white sm:text-sm">
           <Megaphone className="h-4 w-4" /> Latest notices
         </span>
         <div
-          className="announcement-marquee min-w-0 flex-1"
+          className="flex min-w-0 flex-1 items-center gap-5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           role="region"
           aria-label="Profia announcements"
         >
-          <div className="announcement-marquee-track">
-            {[0, 1].map((copy) => (
-              <div
-                key={copy}
-                className="announcement-marquee-content"
-                aria-hidden={copy === 1 ? true : undefined}
-              >
-                {data.map((announcement) => (
-                  <span key={`${copy}-${announcement.id}`} className="flex items-center gap-3">
-                    <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-primary" />
-                    {announcement.title}
-                  </span>
-                ))}
-              </div>
-            ))}
-          </div>
+          {data.map((announcement) => (
+            <Link
+              key={announcement.id}
+              to="/announcements"
+              className="flex shrink-0 items-center gap-2 text-sm text-white/80 transition hover:text-primary"
+            >
+              <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-primary" />
+              <span className="max-w-[18rem] truncate">{announcement.title}</span>
+            </Link>
+          ))}
         </div>
         <Link
           to="/announcements"
-          className="shrink-0 text-xs font-semibold underline underline-offset-4 hover:text-primary sm:text-sm"
+          className="shrink-0 text-xs font-semibold text-primary underline-offset-4 hover:text-white hover:underline sm:text-sm"
         >
           All notices
         </Link>
@@ -378,24 +453,34 @@ function QuickLinks() {
       icon: UserRound,
       student: true,
     },
+    {
+      to: "/holiday-program",
+      label: "Holiday program",
+      detail: "General and kids training",
+      icon: CalendarDays,
+    },
     { to: "/contact", label: "Talk to us", detail: "Get help from admissions", icon: Phone },
   ];
   return (
-    <section className="relative z-10 -mt-1 border-b bg-background py-4 sm:py-5">
-      <div className="container-site grid grid-cols-2 gap-3 lg:grid-cols-4">
+    <section className="border-b bg-white py-4 sm:py-5">
+      <div className="container-site grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         {links.map(({ to, label, detail, icon: Icon, student }) => (
           <Link
             key={label}
             to={to}
             {...(student ? { search: { course: undefined } } : {})}
-            className="group flex min-h-20 items-center gap-3 rounded-xl border bg-card px-4 py-3 transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-card sm:px-5"
+            className="group flex min-h-20 items-center gap-2.5 rounded-xl bg-muted/40 px-3 py-3 transition hover:bg-accent/70 sm:gap-3 sm:px-5"
           >
-            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-accent text-primary">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-primary shadow-sm sm:h-10 sm:w-10">
               <Icon className="h-5 w-5" />
             </span>
             <span className="min-w-0">
-              <span className="block truncate font-bold text-brand">{label}</span>
-              <span className="mt-0.5 block truncate text-xs text-muted-foreground">{detail}</span>
+              <span className="block whitespace-normal text-sm font-bold leading-tight text-brand sm:text-base">
+                {label}
+              </span>
+              <span className="mt-1 block whitespace-normal text-[11px] leading-snug text-muted-foreground sm:text-xs">
+                {detail}
+              </span>
             </span>
             <ArrowRight className="ml-auto hidden h-4 w-4 shrink-0 text-primary transition-transform group-hover:translate-x-1 sm:block" />
           </Link>
