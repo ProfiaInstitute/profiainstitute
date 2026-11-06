@@ -453,11 +453,17 @@ function QuickLinks() {
       icon: UserRound,
       student: true,
     },
+    {
+      to: "/holiday-program",
+      label: "Holiday program",
+      detail: "General and kids training",
+      icon: CalendarDays,
+    },
     { to: "/contact", label: "Talk to us", detail: "Get help from admissions", icon: Phone },
   ];
   return (
     <section className="border-b bg-white py-4 sm:py-5">
-      <div className="container-site grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="container-site grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         {links.map(({ to, label, detail, icon: Icon, student }) => (
           <Link
             key={label}

@@ -57,6 +57,7 @@ import { FacilitatorManager } from "@/components/admin/FacilitatorManager";
 import { SystemUsersPanel } from "@/components/admin/SystemUsersPanel";
 import { RegulatoryActionTracker } from "@/components/admin/RegulatoryActionTracker";
 import { ExamCandidateManager } from "@/components/admin/ExamCandidateManager";
+import { HolidayProgramAdminPanel } from "@/components/admin/HolidayProgramAdminPanel";
 import { NotificationBell } from "@/components/site/NotificationBell";
 import { supabase } from "@/integrations/supabase/client";
 import { can, signOutWithAudit, useRoles, useUser, type AppRole } from "@/lib/auth";
@@ -81,6 +82,7 @@ type DashboardSection =
   | "courses"
   | "schools"
   | "admissions"
+  | "holiday-program"
   | "academics"
   | "results"
   | "fees"
@@ -157,6 +159,12 @@ const navItems: { id: DashboardSection; title: string; icon: LucideIcon; roles: 
     title: "Admissions",
     icon: CalendarDays,
     roles: ["super_admin", "admissions_admin", "academic_admin"],
+  },
+  {
+    id: "holiday-program",
+    title: "Holiday program",
+    icon: CalendarDays,
+    roles: ["super_admin", "admissions_admin"],
   },
   { id: "academics", title: "Academics", icon: BookOpen, roles: ["super_admin", "academic_admin"] },
   { id: "results", title: "Results", icon: FileText, roles: ["super_admin", "academic_admin"] },
@@ -254,7 +262,15 @@ const navGroups: { title: string; ids: DashboardSection[] }[] = [
   { title: "Overview", ids: ["dashboard"] },
   {
     title: "Students & admissions",
-    ids: ["applications", "students", "admissions", "messages", "student-inbox", "course-feedback"],
+    ids: [
+      "applications",
+      "students",
+      "admissions",
+      "holiday-program",
+      "messages",
+      "student-inbox",
+      "course-feedback",
+    ],
   },
   {
     title: "Academics & finance",
@@ -430,6 +446,8 @@ export function StaffDashboard() {
       <CourseFeedbackPanel />
     ) : section === "facilitators" ? (
       <FacilitatorManager />
+    ) : section === "holiday-program" ? (
+      <HolidayProgramAdminPanel />
     ) : section === "lms" ? (
       <OnlineCourseLmsPanel />
     ) : section === "fees" ? (

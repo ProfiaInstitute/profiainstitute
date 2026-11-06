@@ -107,6 +107,11 @@ export function SiteFooter() {
               </Link>
             </li>
             <li>
+              <Link to="/holiday-program" className="hover:text-primary">
+                Holiday program
+              </Link>
+            </li>
+            <li>
               <Link to="/facilitator" className="hover:text-primary">
                 Staff portal
               </Link>

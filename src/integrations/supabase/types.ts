@@ -1106,6 +1106,178 @@ export type Database = {
           },
         ];
       };
+      holiday_program_applications: TableShape<
+        {
+          admin_notes: string;
+          amount_due: number;
+          applicant_age: number | null;
+          applicant_name: string;
+          confirmation_code: string;
+          created_at: string;
+          deposit_amount: number;
+          discount_percent: number;
+          email: string | null;
+          fee_amount: number;
+          guardian_consent: boolean;
+          guardian_email: string | null;
+          guardian_name: string | null;
+          guardian_phone: string | null;
+          id: string;
+          location: string;
+          module_ids: string[];
+          payment_status: string;
+          period_id: string;
+          phone: string;
+          reviewed_at: string | null;
+          reviewed_by: string | null;
+          status: string;
+          submitted_at: string;
+          track_id: string;
+          updated_at: string;
+        },
+        {
+          admin_notes?: string;
+          amount_due: number;
+          applicant_age?: number | null;
+          applicant_name: string;
+          confirmation_code?: string;
+          created_at?: string;
+          deposit_amount: number;
+          discount_percent: number;
+          email?: string | null;
+          fee_amount: number;
+          guardian_consent?: boolean;
+          guardian_email?: string | null;
+          guardian_name?: string | null;
+          guardian_phone?: string | null;
+          id?: string;
+          location: string;
+          module_ids: string[];
+          payment_status?: string;
+          period_id: string;
+          phone: string;
+          reviewed_at?: string | null;
+          reviewed_by?: string | null;
+          status?: string;
+          submitted_at?: string;
+          track_id: string;
+          updated_at?: string;
+        }
+      >;
+      holiday_program_modules: TableShape<
+        {
+          active: boolean;
+          created_at: string;
+          description: string;
+          duration: string;
+          id: string;
+          title: string;
+          track_id: string;
+          updated_at: string;
+        },
+        {
+          active?: boolean;
+          created_at?: string;
+          description?: string;
+          duration?: string;
+          id?: string;
+          title: string;
+          track_id: string;
+          updated_at?: string;
+        }
+      >;
+      holiday_program_application_history: TableShape<
+        {
+          application_id: string;
+          changed_at: string;
+          changed_by: string | null;
+          id: string;
+          new_values: Json;
+          previous_values: Json;
+        },
+        {
+          application_id: string;
+          changed_at?: string;
+          changed_by?: string | null;
+          id?: string;
+          new_values: Json;
+          previous_values: Json;
+        }
+      >;
+      holiday_program_period_modules: TableShape<
+        { module_id: string; period_id: string },
+        { module_id: string; period_id: string }
+      >;
+      holiday_program_periods: TableShape<
+        {
+          capacity: number | null;
+          created_at: string;
+          deposit_amount: number;
+          discount_percent: number;
+          ends_on: string;
+          fee_amount: number;
+          id: string;
+          location: string;
+          offer_deadline: string | null;
+          registration_deadline: string | null;
+          schedule: string;
+          starts_on: string;
+          status: string;
+          title: string;
+          track_id: string;
+          updated_at: string;
+        },
+        {
+          capacity?: number | null;
+          created_at?: string;
+          deposit_amount?: number;
+          discount_percent?: number;
+          ends_on: string;
+          fee_amount?: number;
+          id?: string;
+          location?: string;
+          offer_deadline?: string | null;
+          registration_deadline?: string | null;
+          schedule?: string;
+          starts_on: string;
+          status?: string;
+          title: string;
+          track_id: string;
+          updated_at?: string;
+        }
+      >;
+      holiday_program_tracks: TableShape<
+        {
+          contact_email: string;
+          contact_phone: string;
+          created_at: string;
+          description: string;
+          id: string;
+          location: string;
+          max_age: number | null;
+          min_age: number | null;
+          published: boolean;
+          subtitle: string;
+          title: string;
+          track_key: string;
+          updated_at: string;
+        },
+        {
+          contact_email?: string;
+          contact_phone?: string;
+          created_at?: string;
+          description?: string;
+          id?: string;
+          location?: string;
+          max_age?: number | null;
+          min_age?: number | null;
+          published?: boolean;
+          subtitle?: string;
+          title: string;
+          track_key: string;
+          updated_at?: string;
+        }
+      >;
       intakes: {
         Row: {
           application_deadline: string | null;
@@ -2552,7 +2724,12 @@ export type Database = {
         Args: { _status: string; _student_id: string };
         Returns: undefined;
       };
+      set_holiday_program_period_modules: {
+        Args: { p_module_ids: string[]; p_period_id: string };
+        Returns: undefined;
+      };
       submit_application: { Args: { p: Json }; Returns: Json };
+      submit_holiday_program_application: { Args: { p: Json }; Returns: string };
       submit_student_level_application: {
         Args: { _level_id: string; _message?: string | null };
         Returns: string;
