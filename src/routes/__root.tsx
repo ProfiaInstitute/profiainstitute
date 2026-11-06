@@ -11,6 +11,7 @@ import {
 } from "@tanstack/react-router";
 import { useEffect, useRef, type ReactNode } from "react";
 import { Analytics } from "@vercel/analytics/react";
+import { SpeedInsights } from "@vercel/speed-insights/react";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
@@ -290,6 +291,7 @@ function RootComponent() {
         {!isApp && <WhatsAppFloat />}
         <Toaster richColors position="top-center" />
         <Analytics route={route} path={pathname} />
+        <SpeedInsights />
       </PwaInstallProvider>
     </QueryClientProvider>
   );
