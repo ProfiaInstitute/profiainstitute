@@ -230,10 +230,6 @@
 .page-transition {
   animation: page-enter 180ms ease-out both;
 }
-.hero-copy h1,
-.hero-copy > p {
-  text-shadow: 0 1px 3px rgb(0 0 0 / 85%);
-}
 .announcement-marquee {
   overflow: hidden;
 }
@@ -309,9 +305,6 @@ a[href] {
   }
   .student-mobile-nav::-webkit-scrollbar {
     display: none;
-  }
-  .homepage-motion > section:first-child {
-    min-height: min(38rem, calc(100svh - 7rem));
   }
 }
 @media (max-width: 360px) {

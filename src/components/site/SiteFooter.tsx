@@ -106,6 +106,11 @@ export function SiteFooter() {
                 Student portal
               </Link>
             </li>
+            <li>
+              <Link to="/facilitator" className="hover:text-primary">
+                Staff portal
+              </Link>
+            </li>
           </ul>
         </div>
         <div>
