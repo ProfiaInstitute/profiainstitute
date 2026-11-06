@@ -148,10 +148,11 @@ export function StudentPortal({ selectedCourseId }: { selectedCourseId: string |
       new URLSearchParams(window.location.search).get("resetPassword") === "1",
   );
 
-  if (passwordReset) {
+  if (passwordReset || user?.app_metadata?.["password_reset_required"] === true) {
     return (
       <PasswordResetPage
         destination="/student"
+        forced={user?.app_metadata?.["password_reset_required"] === true}
         onComplete={() => {
           window.history.replaceState({}, "", "/student");
           setPasswordReset(false);

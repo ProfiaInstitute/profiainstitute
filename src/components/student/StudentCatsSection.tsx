@@ -8,6 +8,11 @@ import { Input } from "@/components/ui/input";
 import { CatDownloadButton } from "@/components/academics/CatDownloadButton";
 import { supabase } from "@/integrations/supabase/client";
 import {
+  buildAnswerSheetQuestionList,
+  downloadMarkedAnswerSheet,
+  fetchAnswerSheetUnit,
+} from "@/lib/answer-sheet";
+import {
   catDateTimeLabel,
   parseCatSubmission,
   parseStudentCatAttempt,
@@ -33,6 +38,8 @@ export function StudentCatsSection({
   const [startingId, setStartingId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
+  const [studentName, setStudentName] = useState("");
+  const [courseTitle, setCourseTitle] = useState("");
   const submittingAttemptId = useRef<string | null>(null);
   const catsQuery = useQuery({
     queryKey: ["student", "cats", courseId],
@@ -78,6 +85,75 @@ export function StudentCatsSection({
     }
   }, [kasnebNumber]);
 
+  useEffect(() => {
+    if (!courseId) return;
+    void (async () => {
+      try {
+        const [studentResult, courseResult] = await Promise.all([
+          supabase.auth.getUser(),
+          supabase.from("courses").select("title").eq("id", courseId).maybeSingle(),
+        ]);
+        if (studentResult.error) throw studentResult.error;
+        const userId = studentResult.data.user?.id;
+        if (!userId) return;
+        const { data: profileData, error: profileError } = await supabase
+          .from("students")
+          .select("first_name,last_name")
+          .eq("user_id", userId)
+          .maybeSingle();
+        if (profileError) throw profileError;
+        const resolvedName = [profileData?.first_name, profileData?.last_name]
+          .filter(Boolean)
+          .join(" ");
+        setStudentName(resolvedName);
+        if (courseResult.error) throw courseResult.error;
+        setCourseTitle(courseResult.data?.title ?? "");
+      } catch {
+        setStudentName("");
+        setCourseTitle("");
+      }
+    })();
+  }, [courseId]);
+
+  const downloadGeneratedAnswerSheet = useCallback(
+    async (attempt: StudentCatAttempt) => {
+      if (!courseId || !courseTitle || !studentName) {
+        toast.error("This CAT answer sheet is not ready yet. Please refresh and try again.");
+        return;
+      }
+
+      try {
+        const unit = await fetchAnswerSheetUnit(attempt.assessmentId);
+
+        await downloadMarkedAnswerSheet(
+          {
+            courseName: courseTitle,
+            unitName: unit.name,
+            unitCode: unit.code,
+            examName: attempt.title,
+            studentName,
+            kasnebNumber: savedKasnebNumber || kasnebDraft || "Not provided",
+            questions: buildAnswerSheetQuestionList(
+              attempt.questions.map((question) => ({
+                id: question.id,
+                selectedOption: question.selectedOption,
+                correctOption: null,
+                points: question.points,
+              })),
+            ),
+          },
+          `${studentName.replace(/\s+/g, "-")}-${attempt.title.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "")}-answer-sheet.docx`,
+        );
+      } catch (error) {
+        toast.error("Could not generate the CAT answer sheet", {
+          description:
+            error instanceof Error ? error.message : "The unit details could not be loaded.",
+        });
+      }
+    },
+    [courseId, courseTitle, kasnebDraft, savedKasnebNumber, studentName],
+  );
+
   const submitAttempt = useCallback(
     async (attemptId: string, automatic = false) => {
       if (submittingAttemptId.current === attemptId) return;
@@ -112,10 +188,13 @@ export function StudentCatsSection({
       );
       setSubmitting(false);
       setSubmitError("");
+      if (result && activeAttempt && activeAttempt.id === attemptId) {
+        downloadGeneratedAnswerSheet(activeAttempt);
+      }
       toast.success(automatic ? "CAT time expired. Your answers were submitted." : "CAT submitted");
       void queryClient.invalidateQueries({ queryKey: ["student", "cats", courseId] });
     },
-    [courseId, queryClient],
+    [activeAttempt, courseId, downloadGeneratedAnswerSheet, queryClient],
   );
 
   useEffect(() => {
@@ -280,9 +359,18 @@ export function StudentCatsSection({
           <p className="rounded-lg bg-accent p-4 text-lg font-semibold">
             Your mark: {activeAttempt.score} / {activeAttempt.maxScore}
           </p>
-          <Button variant="outline" onClick={() => setActiveAttempt(null)}>
-            Back to CATs
-          </Button>
+          <div className="flex flex-wrap items-center gap-3">
+            <Button
+              variant="outline"
+              onClick={() => downloadGeneratedAnswerSheet(activeAttempt)}
+              disabled={!courseTitle || !studentName}
+            >
+              Download answer sheet
+            </Button>
+            <Button variant="outline" onClick={() => setActiveAttempt(null)}>
+              Back to CATs
+            </Button>
+          </div>
         </section>
       );
     }

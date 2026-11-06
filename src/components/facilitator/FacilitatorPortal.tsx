@@ -103,6 +103,7 @@ export function FacilitatorPortal() {
     return (
       <PasswordResetPage
         destination="/facilitator"
+        forced={user?.app_metadata?.["password_reset_required"] === true}
         onComplete={() => {
           window.history.replaceState({}, "", "/facilitator");
           setResetMode(false);
@@ -116,6 +117,19 @@ export function FacilitatorPortal() {
   if (sessionError)
     return <PortalMessage error={sessionError.message} retry={() => window.location.reload()} />;
   if (!user) return <FacilitatorSignIn />;
+  if (user.app_metadata?.["password_reset_required"] === true) {
+    return (
+      <PasswordResetPage
+        destination="/facilitator"
+        forced
+        onComplete={() => {
+          window.history.replaceState({}, "", "/facilitator");
+          setResetMode(false);
+          setSetupMode(false);
+        }}
+      />
+    );
+  }
   if (rolesQuery.error)
     return (
       <PortalMessage error={rolesQuery.error.message} retry={() => void rolesQuery.refetch()} />

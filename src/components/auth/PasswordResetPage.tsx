@@ -9,9 +9,11 @@ import { useUser } from "@/lib/auth";
 export function PasswordResetPage({
   destination,
   onComplete,
+  forced = false,
 }: {
   destination: string;
   onComplete: () => void;
+  forced?: boolean;
 }) {
   const { user, loading } = useUser();
   const [password, setPassword] = useState("");
@@ -23,8 +25,9 @@ export function PasswordResetPage({
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
-    if (password.length < 8) {
-      setError("Use a password with at least 8 characters.");
+    const minLength = forced ? 12 : 8;
+    if (password.length < minLength) {
+      setError(`Use a password with at least ${minLength} characters.`);
       return;
     }
     if (password !== confirmation) {
@@ -32,14 +35,38 @@ export function PasswordResetPage({
       return;
     }
     setSaving(true);
-    const { error: updateError } = await supabase.auth.updateUser({ password });
-    setSaving(false);
-    if (updateError) {
-      setError(updateError.message);
-      return;
+    try {
+      if (forced) {
+        const { error: completionError } = await supabase.functions.invoke("manage-system-users", {
+          body: { action: "complete_password_reset", newPassword: password },
+        });
+        if (completionError) throw completionError;
+      } else {
+        const { error: updateError } = await supabase.auth.updateUser({ password });
+        if (updateError) throw updateError;
+      }
+      const { error: refreshError } = await supabase.auth.refreshSession();
+      if (refreshError) {
+        const { error: signOutError } = await supabase.auth.signOut();
+        if (signOutError) throw refreshError;
+      }
+      toast.success("Password updated");
+      onComplete();
+    } catch (reason) {
+      const message =
+        reason instanceof Error
+          ? reason.message
+          : reason && typeof reason === "object" && "message" in reason
+            ? String(reason.message)
+            : "Could not finish updating your password.";
+      setError(
+        forced
+          ? `Your password may have been saved, but the required reset could not be completed: ${message}`
+          : message,
+      );
+    } finally {
+      setSaving(false);
     }
-    toast.success("Password updated");
-    onComplete();
   }
 
   return (
@@ -67,7 +94,7 @@ export function PasswordResetPage({
                 <Input
                   type={visible ? "text" : "password"}
                   required
-                  minLength={8}
+                  minLength={forced ? 12 : 8}
                   autoComplete="new-password"
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
@@ -88,7 +115,7 @@ export function PasswordResetPage({
               <Input
                 type={visible ? "text" : "password"}
                 required
-                minLength={8}
+                minLength={forced ? 12 : 8}
                 autoComplete="new-password"
                 value={confirmation}
                 onChange={(event) => setConfirmation(event.target.value)}

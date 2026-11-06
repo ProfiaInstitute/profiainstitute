@@ -11,6 +11,11 @@ import { CatDownloadButton } from "@/components/academics/CatDownloadButton";
 import { CatQuestionImporter } from "@/components/academics/CatQuestionImporter";
 import { CatQuestionPreview } from "@/components/academics/CatQuestionPreview";
 import { supabase } from "@/integrations/supabase/client";
+import {
+  buildAnswerSheetQuestionList,
+  downloadMarkedAnswerSheet,
+  fetchAnswerSheetUnit,
+} from "@/lib/answer-sheet";
 import { createExcelWorkbook } from "@/lib/excel-export";
 import { safeUploadFileName } from "@/lib/file-uploads";
 import {
@@ -53,6 +58,7 @@ export function CatManagementPanel() {
   const [title, setTitle] = useState("");
   const [name, setName] = useState("");
   const [courseId, setCourseId] = useState("");
+  const [unitId, setUnitId] = useState("");
   const [levelIds, setLevelIds] = useState<string[]>([]);
   const [downloadFile, setDownloadFile] = useState<File | null>(null);
   const downloadFileInputRef = useRef<HTMLInputElement>(null);
@@ -75,6 +81,33 @@ export function CatManagementPanel() {
         cats: parseAdminCats(catsResult.data),
         courses: coursesResult.data,
       };
+    },
+  });
+  const courseUnitsQuery = useQuery({
+    queryKey: ["admin", "cat-unit-options", courseId],
+    enabled: Boolean(courseId),
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("course_units")
+        .select("id,title,code,level_id,level:course_levels(name)")
+        .eq("course_id", courseId)
+        .order("sort_order");
+      if (error) throw error;
+      return data;
+    },
+  });
+  const linkedUnitsQuery = useQuery({
+    queryKey: ["admin", "cat-linked-unit-options", query.data?.cats.map((cat) => cat.courseId)],
+    enabled: Boolean(query.data?.cats.length),
+    queryFn: async () => {
+      const courseIds = [...new Set((query.data?.cats ?? []).map((cat) => cat.courseId))];
+      const { data, error } = await supabase
+        .from("course_units")
+        .select("id,title,code,course_id,level_id,level:course_levels(name)")
+        .in("course_id", courseIds)
+        .order("sort_order");
+      if (error) throw error;
+      return data;
     },
   });
   const createMutation = useMutation({
@@ -100,6 +133,11 @@ export function CatManagementPanel() {
       }
       if (!name.trim() || !levelIds.length) {
         throw new Error("Enter a CAT download name and select at least one course level.");
+      }
+      if (!unitId) throw new Error("Select the course unit this CAT assesses.");
+      const selectedUnit = courseUnitsQuery.data?.find((unit) => unit.id === unitId);
+      if (!selectedUnit?.code?.trim()) {
+        throw new Error("Select a unit with a configured unit code.");
       }
       if (downloadFile && downloadFile.size > 50 * 1024 * 1024) {
         throw new Error("CAT download files must be 50 MB or smaller.");
@@ -138,6 +176,7 @@ export function CatManagementPanel() {
           })),
           _download_file_path: downloadFilePath,
           _download_file_name: downloadFile?.name ?? null,
+          _unit_id: unitId,
         });
         if (error) throw error;
       } catch (error) {
@@ -160,6 +199,7 @@ export function CatManagementPanel() {
       setTitle("");
       setName("");
       setCourseId("");
+      setUnitId("");
       setLevelIds([]);
       setDownloadFile(null);
       if (downloadFileInputRef.current) downloadFileInputRef.current.value = "";
@@ -243,6 +283,7 @@ export function CatManagementPanel() {
               value={courseId}
               onChange={(event) => {
                 setCourseId(event.target.value);
+                setUnitId("");
                 setLevelIds([]);
               }}
             >
@@ -258,6 +299,41 @@ export function CatManagementPanel() {
               selectedLevelIds={levelIds}
               onChange={setLevelIds}
             />
+            <label className="grid gap-1 text-sm font-medium sm:col-span-2">
+              Course unit
+              <select
+                required
+                className={selectClass}
+                value={unitId}
+                disabled={!courseId || courseUnitsQuery.isLoading}
+                onChange={(event) => {
+                  const nextUnitId = event.target.value;
+                  setUnitId(nextUnitId);
+                  const selectedUnit = courseUnitsQuery.data?.find(
+                    (unit) => unit.id === nextUnitId,
+                  );
+                  if (selectedUnit?.level_id) setLevelIds([selectedUnit.level_id]);
+                }}
+              >
+                <option value="">
+                  {courseUnitsQuery.isLoading ? "Loading units…" : "Select course unit"}
+                </option>
+                {(courseUnitsQuery.data ?? []).map((unit) => (
+                  <option key={unit.id} value={unit.id} disabled={!unit.code?.trim()}>
+                    {unit.code?.trim() || "Missing unit code"} · {unit.title}
+                    {unit.level?.name ? ` · ${unit.level.name}` : ""}
+                  </option>
+                ))}
+              </select>
+              {courseUnitsQuery.error && (
+                <span role="alert" className="text-xs text-destructive">
+                  Could not load course units: {courseUnitsQuery.error.message}
+                </span>
+              )}
+              <span className="text-xs text-muted-foreground">
+                The answer sheet uses this unit’s exact system name and unit code.
+              </span>
+            </label>
             <label className="grid gap-1 text-sm font-medium sm:col-span-2">
               Optional downloadable CAT file
               <input
@@ -469,7 +545,25 @@ export function CatManagementPanel() {
       ) : query.data?.cats.length ? (
         <div className="space-y-3">
           {query.data.cats.map((cat) => (
-            <CatResultCard key={cat.id} cat={cat} />
+            <CatResultCard
+              key={cat.id}
+              cat={cat}
+              units={(linkedUnitsQuery.data ?? []).filter(
+                (unit) => unit.course_id === cat.courseId,
+              )}
+              onUnitChanged={async (assessmentId, nextUnitId) => {
+                const { error } = await supabase.rpc("set_cat_assessment_unit", {
+                  _assessment_id: assessmentId,
+                  _unit_id: nextUnitId,
+                });
+                if (error) {
+                  toast.error("Could not link CAT to course unit", { description: error.message });
+                  return;
+                }
+                toast.success("CAT linked to course unit");
+                await queryClient.invalidateQueries({ queryKey: ["admin", "cat-assessments"] });
+              }}
+            />
           ))}
         </div>
       ) : (
@@ -481,9 +575,26 @@ export function CatManagementPanel() {
   );
 }
 
-function CatResultCard({ cat }: { cat: AdminCat }) {
+function CatResultCard({
+  cat,
+  units,
+  onUnitChanged,
+}: {
+  cat: AdminCat;
+  units: {
+    id: string;
+    title: string;
+    code: string | null;
+    course_id: string;
+    level_id: string | null;
+    level: { name: string } | null;
+  }[];
+  onUnitChanged: (assessmentId: string, unitId: string) => Promise<void>;
+}) {
   const now = Date.now();
   const submittedAttempts = cat.attempts.filter((attempt) => attempt.submittedAt);
+  const [unitId, setUnitId] = useState(cat.unitId ?? "");
+  const [savingUnit, setSavingUnit] = useState(false);
   const state =
     now < Date.parse(cat.opensAt)
       ? "Scheduled"
@@ -498,6 +609,40 @@ function CatResultCard({ cat }: { cat: AdminCat }) {
           <h3 className="font-semibold text-brand">{cat.title}</h3>
           <p className="mt-1 text-sm text-muted-foreground">{cat.courseTitle}</p>
           <p className="mt-1 text-sm">Student download name: {cat.name}</p>
+          <div className="mt-2 flex flex-wrap items-end gap-2">
+            <label className="grid gap-1 text-xs font-medium">
+              Answer-sheet unit
+              <select
+                className={`${selectClass} min-w-64`}
+                value={unitId}
+                onChange={(event) => setUnitId(event.target.value)}
+              >
+                <option value="">Select unit</option>
+                {units.map((unit) => (
+                  <option key={unit.id} value={unit.id} disabled={!unit.code?.trim()}>
+                    {unit.code?.trim() || "Missing code"} · {unit.title}
+                    {unit.level?.name ? ` · ${unit.level.name}` : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={!unitId || unitId === cat.unitId || savingUnit}
+              onClick={async () => {
+                setSavingUnit(true);
+                try {
+                  await onUnitChanged(cat.id, unitId);
+                } finally {
+                  setSavingUnit(false);
+                }
+              }}
+            >
+              {savingUnit ? "Saving unit…" : cat.unitId ? "Update unit" : "Link unit"}
+            </Button>
+          </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant={state === "Open" ? "default" : "secondary"}>{state}</Badge>
@@ -554,6 +699,16 @@ function CatResultCard({ cat }: { cat: AdminCat }) {
                 KASNEB number: {attempt.kasnebNumber ?? "Not entered"} · Level:{" "}
                 {attempt.levelName ?? "Not recorded"}
               </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => downloadAttemptAnswerSheet(cat, attempt)}
+                >
+                  Download answer sheet
+                </Button>
+              </div>
               <div className="mt-3 space-y-3">
                 {cat.questions.map((question, index) => {
                   const selected = attempt.answers.find(
@@ -585,6 +740,38 @@ function CatResultCard({ cat }: { cat: AdminCat }) {
       )}
     </article>
   );
+}
+
+async function downloadAttemptAnswerSheet(cat: AdminCat, attempt: AdminCat["attempts"][number]) {
+  try {
+    const unit = await fetchAnswerSheetUnit(cat.id);
+
+    await downloadMarkedAnswerSheet(
+      {
+        courseName: cat.courseTitle,
+        unitName: unit.name,
+        unitCode: unit.code,
+        examName: cat.name,
+        studentName: attempt.studentName,
+        kasnebNumber: attempt.kasnebNumber ?? "Not entered",
+        questions: buildAnswerSheetQuestionList(
+          cat.questions.map((question) => ({
+            id: question.id,
+            selectedOption:
+              attempt.answers.find((answer) => answer.questionId === question.id)?.selectedOption ??
+              null,
+            correctOption: question.correctOption,
+            points: question.points,
+          })),
+        ),
+      },
+      `${attempt.studentName.replace(/\s+/g, "-")}-${cat.name.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "")}-answer-sheet.docx`,
+    );
+  } catch (error) {
+    toast.error("Could not generate the CAT answer sheet", {
+      description: error instanceof Error ? error.message : "The unit details could not be loaded.",
+    });
+  }
 }
 
 function exportCatResults(cat: AdminCat) {
