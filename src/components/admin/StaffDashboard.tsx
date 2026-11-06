@@ -54,6 +54,7 @@ import { PasswordResetPage } from "@/components/auth/PasswordResetPage";
 import { PortalInboxPanel } from "@/components/admin/PortalInboxPanel";
 import { CourseFeedbackPanel } from "@/components/admin/CourseFeedbackPanel";
 import { FacilitatorManager } from "@/components/admin/FacilitatorManager";
+import { SystemUsersPanel } from "@/components/admin/SystemUsersPanel";
 import { RegulatoryActionTracker } from "@/components/admin/RegulatoryActionTracker";
 import { ExamCandidateManager } from "@/components/admin/ExamCandidateManager";
 import { NotificationBell } from "@/components/site/NotificationBell";
@@ -103,6 +104,7 @@ type DashboardSection =
   | "online-users"
   | "audit"
   | "staff"
+  | "users"
   | "settings";
 
 type StaffAccount = {
@@ -238,6 +240,7 @@ const navItems: { id: DashboardSection; title: string; icon: LucideIcon; roles: 
   { id: "online-users", title: "Online users", icon: UsersRound, roles: ["super_admin"] },
   { id: "audit", title: "Audit Logs", icon: Activity, roles: ["super_admin"] },
   { id: "staff", title: "Staff", icon: Users, roles: ["super_admin"] },
+  { id: "users", title: "System users", icon: UsersRound, roles: ["super_admin"] },
   { id: "facilitators", title: "Facilitators", icon: Users, roles: ["super_admin"] },
   {
     id: "settings",
@@ -276,7 +279,7 @@ const navGroups: { title: string; ids: DashboardSection[] }[] = [
   },
   {
     title: "Administration",
-    ids: ["reports", "online-users", "audit", "staff", "facilitators", "settings"],
+    ids: ["reports", "online-users", "audit", "staff", "users", "facilitators", "settings"],
   },
 ];
 
@@ -313,6 +316,7 @@ export function StaffDashboard() {
     return (
       <PasswordResetPage
         destination="/admin"
+        forced={user?.app_metadata?.["password_reset_required"] === true}
         onComplete={() => {
           window.history.replaceState({}, "", "/admin");
           setPasswordReset(false);
@@ -321,6 +325,18 @@ export function StaffDashboard() {
     );
   }
   if (user && rolesQuery.isLoading) return <FullPageMessage title="Loading secure workspace…" />;
+  if (user?.app_metadata?.["password_reset_required"] === true) {
+    return (
+      <PasswordResetPage
+        destination="/admin"
+        forced
+        onComplete={() => {
+          window.history.replaceState({}, "", "/admin");
+          setPasswordReset(false);
+        }}
+      />
+    );
+  }
   if (passwordSetup) {
     return (
       <StaffPasswordSetup
@@ -382,6 +398,8 @@ export function StaffDashboard() {
         canManage={can(roles, ["academic_admin"])}
         canViewDocuments={can(roles, ["admissions_admin"])}
         canManageDocuments={can(roles, ["admissions_admin"])}
+        canViewAcademicRecords={can(roles, ["academic_admin"])}
+        canViewFinancialRecords={can(roles, ["super_admin"])}
         userId={user.id}
       />
     ) : section === "faqs" ? (
@@ -398,6 +416,8 @@ export function StaffDashboard() {
       <StaffPasswordSettings email={user.email ?? ""} />
     ) : section === "staff" ? (
       <StaffSettings />
+    ) : section === "users" ? (
+      <SystemUsersPanel />
     ) : section === "progression" ? (
       <StudentProgressionPanel />
     ) : section === "regulatory" ? (
@@ -1302,11 +1322,15 @@ function StudentsPanel({
   canManage,
   canViewDocuments,
   canManageDocuments,
+  canViewAcademicRecords,
+  canViewFinancialRecords,
   userId,
 }: {
   canManage: boolean;
   canViewDocuments: boolean;
   canManageDocuments: boolean;
+  canViewAcademicRecords: boolean;
+  canViewFinancialRecords: boolean;
   userId: string;
 }) {
   const queryClient = useQueryClient();
@@ -1317,7 +1341,7 @@ function StudentsPanel({
       const { data, error } = await supabase
         .from("students")
         .select(
-          "id,user_id,student_number,application_id,first_name,middle_name,last_name,email,phone,status,course_id,level_id,intake_id,study_mode,level:course_levels(name),intake:intakes(name)",
+          "id,user_id,student_number,application_id,first_name,middle_name,last_name,email,phone,status,course_id,level_id,intake_id,study_mode,kasneb_number,date_of_birth,gender,county,town,address,current_semester,level:course_levels(name),intake:intakes(name)",
         )
         .order("created_at", { ascending: false });
       if (error) throw error;
@@ -1438,6 +1462,7 @@ function StudentsPanel({
   });
   const [adding, setAdding] = useState(false);
   const [editingStudentId, setEditingStudentId] = useState<string | null>(null);
+  const [detailsStudentId, setDetailsStudentId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [draft, setDraft] = useState({
     student_number: "",
@@ -1853,35 +1878,281 @@ function StudentsPanel({
                   )}
                 </div>
               )}
+              {detailsStudentId === student.id && (
+                <StudentRecordDetails
+                  student={student}
+                  canViewAcademicRecords={canViewAcademicRecords}
+                  canViewFinancialRecords={canViewFinancialRecords}
+                />
+              )}
             </div>
-            {canManage && (
-              <div className="flex flex-wrap gap-2">
-                <Button size="sm" variant="outline" onClick={() => editStudent(student)}>
-                  Edit profile
-                </Button>
-                <select
-                  aria-label={`Student status: ${student.first_name} ${student.last_name}`}
-                  className={selectClass}
-                  value={student.status}
-                  onChange={(e) =>
-                    void setStudentStatus(
-                      student.id,
-                      e.target.value as "active" | "suspended" | "graduated",
-                    )
-                  }
-                >
-                  <option value="active">Active</option>
-                  <option value="suspended">Suspended</option>
-                  <option value="graduated">Graduated</option>
-                </select>
-              </div>
-            )}
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                aria-expanded={detailsStudentId === student.id}
+                onClick={() =>
+                  setDetailsStudentId((current) => (current === student.id ? null : student.id))
+                }
+              >
+                {detailsStudentId === student.id ? "Hide details" : "View full record"}
+              </Button>
+              {canManage && (
+                <>
+                  <Button size="sm" variant="outline" onClick={() => editStudent(student)}>
+                    Edit profile
+                  </Button>
+                  <select
+                    aria-label={`Student status: ${student.first_name} ${student.last_name}`}
+                    className={selectClass}
+                    value={student.status}
+                    onChange={(e) =>
+                      void setStudentStatus(
+                        student.id,
+                        e.target.value as "active" | "suspended" | "graduated",
+                      )
+                    }
+                  >
+                    <option value="active">Active</option>
+                    <option value="suspended">Suspended</option>
+                    <option value="graduated">Graduated</option>
+                  </select>
+                </>
+              )}
+            </div>
           </article>
         ))
       ) : (
         <EmptyPanel title="No students found" detail="Try another search term or add a student." />
       )}
     </div>
+  );
+}
+
+function StudentRecordDetails({
+  student,
+  canViewAcademicRecords,
+  canViewFinancialRecords,
+}: {
+  student: Pick<
+    Tables<"students">,
+    | "id"
+    | "student_number"
+    | "kasneb_number"
+    | "date_of_birth"
+    | "gender"
+    | "county"
+    | "town"
+    | "address"
+    | "current_semester"
+    | "email"
+    | "phone"
+  >;
+  canViewAcademicRecords: boolean;
+  canViewFinancialRecords: boolean;
+}) {
+  const resultsQuery = useQuery({
+    queryKey: ["admin", "student-record-results", student.id],
+    enabled: canViewAcademicRecords,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("results")
+        .select("id,unit_name,score,grade,semester,academic_year,published,created_at")
+        .eq("student_id", student.id)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data;
+    },
+  });
+  const feesQuery = useQuery({
+    queryKey: ["admin", "student-record-fees", student.id],
+    enabled: canViewFinancialRecords,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("fees")
+        .select("id,description,amount,academic_year,due_date,created_at")
+        .eq("student_id", student.id)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data;
+    },
+  });
+  const paymentsQuery = useQuery({
+    queryKey: ["admin", "student-record-payments", student.id],
+    enabled: canViewFinancialRecords,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("payments")
+        .select("id,amount,method,reference,status,paid_at,provider")
+        .eq("student_id", student.id)
+        .order("paid_at", { ascending: false });
+      if (error) throw error;
+      return data;
+    },
+  });
+  const feeTotal = (feesQuery.data ?? []).reduce((total, fee) => total + Number(fee.amount), 0);
+  const confirmedPayments = (paymentsQuery.data ?? []).filter(
+    (payment) => payment.status.toLowerCase() === "confirmed",
+  );
+  const paymentTotal = confirmedPayments.reduce(
+    (total, payment) => total + Number(payment.amount),
+    0,
+  );
+
+  return (
+    <section
+      className="mt-4 space-y-4 rounded-lg border bg-muted/20 p-4"
+      aria-label="Student record details"
+    >
+      <div>
+        <h4 className="text-sm font-semibold text-brand">Personal and academic profile</h4>
+        <dl className="mt-2 grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-3">
+          <div>
+            <dt className="text-muted-foreground">Student number</dt>
+            <dd>{student.student_number}</dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">KASNEB number</dt>
+            <dd>{student.kasneb_number || "Not recorded"}</dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">Date of birth</dt>
+            <dd>{student.date_of_birth || "Not recorded"}</dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">Gender</dt>
+            <dd>{student.gender || "Not recorded"}</dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">County / town</dt>
+            <dd>{[student.county, student.town].filter(Boolean).join(" / ") || "Not recorded"}</dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">Current semester</dt>
+            <dd>{student.current_semester || "Not recorded"}</dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">Email</dt>
+            <dd>{student.email}</dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">Phone</dt>
+            <dd>{student.phone || "Not recorded"}</dd>
+          </div>
+          <div className="sm:col-span-2 lg:col-span-3">
+            <dt className="text-muted-foreground">Address</dt>
+            <dd>{student.address || "Not recorded"}</dd>
+          </div>
+        </dl>
+      </div>
+
+      {canViewAcademicRecords && (
+        <div className="border-t pt-3">
+          <h4 className="text-sm font-semibold text-brand">Academic results</h4>
+          {resultsQuery.isLoading ? (
+            <p className="mt-2 text-sm text-muted-foreground">Loading academic results…</p>
+          ) : resultsQuery.error ? (
+            <p role="alert" className="mt-2 text-sm text-destructive">
+              Could not load academic results: {resultsQuery.error.message}
+            </p>
+          ) : resultsQuery.data?.length ? (
+            <div className="mt-2 overflow-x-auto">
+              <table className="w-full min-w-[32rem] text-left text-sm">
+                <thead>
+                  <tr className="border-b text-xs text-muted-foreground">
+                    <th className="py-2 pr-3">Unit</th>
+                    <th className="py-2 pr-3">Score</th>
+                    <th className="py-2 pr-3">Grade</th>
+                    <th className="py-2 pr-3">Semester</th>
+                    <th className="py-2 pr-3">Academic year</th>
+                    <th className="py-2">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {resultsQuery.data.map((result) => (
+                    <tr key={result.id} className="border-b last:border-0">
+                      <td className="py-2 pr-3">{result.unit_name}</td>
+                      <td className="py-2 pr-3">{result.score ?? "—"}</td>
+                      <td className="py-2 pr-3">{result.grade ?? "—"}</td>
+                      <td className="py-2 pr-3">{result.semester ?? "—"}</td>
+                      <td className="py-2 pr-3">{result.academic_year ?? "—"}</td>
+                      <td className="py-2">{result.published ? "Published" : "Unpublished"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="mt-2 text-sm text-muted-foreground">No academic results recorded.</p>
+          )}
+        </div>
+      )}
+
+      {canViewFinancialRecords && (
+        <div className="grid gap-4 border-t pt-3 lg:grid-cols-2">
+          <div>
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <h4 className="text-sm font-semibold text-brand">Fee charges</h4>
+              <span className="text-sm font-semibold">Total: {formatKES(feeTotal)}</span>
+            </div>
+            {feesQuery.isLoading ? (
+              <p className="mt-2 text-sm text-muted-foreground">Loading fee records…</p>
+            ) : feesQuery.error ? (
+              <p role="alert" className="mt-2 text-sm text-destructive">
+                Could not load fees: {feesQuery.error.message}
+              </p>
+            ) : feesQuery.data?.length ? (
+              <ul className="mt-2 divide-y text-sm">
+                {feesQuery.data.map((fee) => (
+                  <li key={fee.id} className="flex justify-between gap-3 py-2">
+                    <span>
+                      {fee.description}
+                      {fee.academic_year ? ` · ${fee.academic_year}` : ""}
+                    </span>
+                    <span className="shrink-0">{formatKES(Number(fee.amount))}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-2 text-sm text-muted-foreground">No fee charges recorded.</p>
+            )}
+          </div>
+          <div>
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <h4 className="text-sm font-semibold text-brand">Payments</h4>
+              <span className="text-sm font-semibold">Confirmed: {formatKES(paymentTotal)}</span>
+            </div>
+            {paymentsQuery.isLoading ? (
+              <p className="mt-2 text-sm text-muted-foreground">Loading payment records…</p>
+            ) : paymentsQuery.error ? (
+              <p role="alert" className="mt-2 text-sm text-destructive">
+                Could not load payments: {paymentsQuery.error.message}
+              </p>
+            ) : paymentsQuery.data?.length ? (
+              <ul className="mt-2 divide-y text-sm">
+                {paymentsQuery.data.map((payment) => (
+                  <li key={payment.id} className="flex justify-between gap-3 py-2">
+                    <span>
+                      {new Date(payment.paid_at).toLocaleDateString()} · {payment.method}
+                      {payment.reference ? ` · ${payment.reference}` : ""}
+                      <Badge
+                        className="ml-2"
+                        variant={payment.status === "confirmed" ? "default" : "secondary"}
+                      >
+                        {payment.status}
+                      </Badge>
+                    </span>
+                    <span className="shrink-0">{formatKES(Number(payment.amount))}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-2 text-sm text-muted-foreground">No payment records found.</p>
+            )}
+          </div>
+        </div>
+      )}
+    </section>
   );
 }
 

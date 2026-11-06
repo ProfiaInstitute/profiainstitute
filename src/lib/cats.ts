@@ -68,6 +68,7 @@ export type AdminCat = {
   id: string;
   courseId: string;
   courseTitle: string;
+  unitId: string | null;
   title: string;
   name: string;
   levelIds: string[];
@@ -240,6 +241,7 @@ export function parseAdminCats(value: Json | null): AdminCat[] {
       id: stringValue(cat["id"], "CAT id"),
       courseId: stringValue(cat["course_id"], "course id"),
       courseTitle: stringValue(cat["course_title"], "course name"),
+      unitId: nullableString(cat["unit_id"]),
       title: stringValue(cat["title"], "CAT title"),
       name:
         cat["name"] === null || cat["name"] === undefined

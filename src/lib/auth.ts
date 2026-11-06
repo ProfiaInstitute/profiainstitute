@@ -26,8 +26,9 @@ export function useUser() {
   const [error, setError] = useState<Error | null>(null);
   useEffect(() => {
     let mounted = true;
-    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data } = supabase.auth.onAuthStateChange((event, session) => {
       if (!mounted) return;
+      if (event === "INITIAL_SESSION") return;
       setUser(session?.user ?? null);
       setError(null);
       setLoading(false);
@@ -35,14 +36,27 @@ export function useUser() {
 
     void supabase.auth
       .getSession()
-      .then(({ data: sessionData, error: sessionError }) => {
+      .then(async ({ data: sessionData, error: sessionError }) => {
         if (!mounted) return;
         if (sessionError) {
           setError(sessionError);
           setUser(null);
           return;
         }
-        setUser(sessionData.session?.user ?? null);
+        if (!sessionData.session) {
+          setUser(null);
+          return;
+        }
+        const { data: userData, error: userError } = await supabase.auth.getUser(
+          sessionData.session.access_token,
+        );
+        if (!mounted) return;
+        if (userError) {
+          setError(userError);
+          setUser(null);
+          return;
+        }
+        setUser(userData.user);
       })
       .catch((reason: unknown) => {
         if (!mounted) return;
