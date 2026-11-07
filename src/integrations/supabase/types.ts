@@ -2561,6 +2561,7 @@ export type Database = {
       };
       get_or_create_student_conversation: { Args: never; Returns: string };
       list_cat_assessments: { Args: never; Returns: Json };
+      list_facilitator_cat_performance: { Args: { _unit_id: string }; Returns: Json };
       get_cat_answer_sheet_unit: { Args: { _assessment_id: string }; Returns: Json };
       list_my_cats: { Args: { _course_id?: string | null }; Returns: Json };
       my_course_ids: { Args: never; Returns: string[] };

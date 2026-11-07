@@ -9,7 +9,7 @@ import {
   Scripts,
   type ErrorComponentProps,
 } from "@tanstack/react-router";
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Analytics } from "@vercel/analytics/react";
 import { SpeedInsights } from "@vercel/speed-insights/react";
 
@@ -23,6 +23,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { FACILITY_LOCATION } from "@/lib/site";
 import { useScrollReveal } from "@/lib/motion";
+import { LogoTraceLoader } from "@/components/LogoTraceLoader";
 
 const structuredData = {
   "@context": "https://schema.org",
@@ -127,6 +128,32 @@ function ErrorComponent({ error, reset }: ErrorComponentProps) {
           </a>
         </div>
       </div>
+    </div>
+  );
+}
+
+function PageLoadOverlay() {
+  const [isComplete, setIsComplete] = useState(false);
+  const [visible, setVisible] = useState(true);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setIsComplete(true), 500);
+    return () => window.clearTimeout(timeout);
+  }, []);
+
+  if (!visible) return null;
+
+  return (
+    <div className="page-load-overlay">
+      <LogoTraceLoader
+        loading={!isComplete}
+        isComplete={isComplete}
+        size={216}
+        strokeWidth={3}
+        className="text-brand"
+        ariaLabel="Loading page"
+        onDone={() => setVisible(false)}
+      />
     </div>
   );
 }
@@ -277,6 +304,7 @@ function RootComponent() {
   return (
     <QueryClientProvider client={queryClient}>
       <PwaInstallProvider manifestHref={manifestHref}>
+        <PageLoadOverlay key={pathname} />
         {!isApp && <SiteHeader />}
         <main>
           <div

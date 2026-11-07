@@ -2290,20 +2290,40 @@ function showReceiptPopup(windowRef: Window, ready: boolean) {
   if (windowRef.closed) return;
   windowRef.document.title = ready ? "Receipt download started" : "Preparing your receipt";
   windowRef.document.head.innerHTML = `<meta name="viewport" content="width=device-width, initial-scale=1"><style>
-    *{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:#fff8f1;color:#321018;font:15px Inter,Arial,sans-serif}
-    main{width:min(360px,calc(100% - 36px));padding:34px 28px;text-align:center;background:#fff;border:1px solid #eaded8;border-radius:20px;box-shadow:0 18px 55px #68091518}
-    .icon{height:62px;width:62px;margin:0 auto 18px;display:grid;place-items:center;border-radius:18px;background:#fff1e8;color:#f1582b}
-    .printer{animation:print .7s ease-in-out infinite}.check{color:#287a52;animation:ready .4s ease both}
-    .paper{height:4px;margin-top:22px;overflow:hidden;border-radius:9px;background:#f2e9e4}.paper:after{content:"";display:block;width:42%;height:100%;border-radius:9px;background:#f1582b;animation:progress 1.2s ease-in-out infinite}
-    h1{margin:0;font-size:18px;color:#680915}p{margin:8px 0 0;line-height:1.55;color:#75666a}
-    @keyframes print{25%{transform:translateY(-3px) rotate(-7deg)}50%{transform:translateY(1px) rotate(5deg)}75%{transform:translateY(-1px) rotate(-3deg}}
-    @keyframes ready{from{transform:scale(.7);opacity:0}to{transform:scale(1);opacity:1}}
-    @keyframes progress{from{transform:translateX(-110%)}to{transform:translateX(250%)}}
-    @media(prefers-reduced-motion:reduce){*,*:before{animation:none!important}}
+    *{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;background:#f4f1ed;color:#211d1c;font:14px Inter,Arial,sans-serif}
+    main{width:min(410px,100%);text-align:center;animation:card-in .45s cubic-bezier(.2,.8,.2,1) both}
+    .printer{position:relative;z-index:2;padding:14px 14px 12px;border:1px solid #45413f;border-radius:24px;background:linear-gradient(145deg,#383533,#211f1e);box-shadow:0 18px 34px #211d1c35,0 5px 0 #171615}
+    .printer-top{display:flex;align-items:center;justify-content:space-between;margin:0 2px 11px;color:#f7f4f1}
+    .brand{display:grid;width:24px;height:24px;place-items:center;border-radius:5px;background:#f1582b;color:#fff;font-size:14px;font-weight:800}
+    .home{border:0;border-radius:999px;background:#55514f;padding:7px 12px;color:#fff;font-size:11px;font-weight:700}
+    .screen{padding:15px;border:1px solid #363331;border-radius:14px;background:#151413;color:#f8f6f4;text-align:left}
+    .summary{display:flex;justify-content:space-between;gap:12px}
+    .plan{font-size:13px;font-weight:700}.caption{margin-top:3px;color:#a8a3a0;font-size:11px}
+    .status{display:flex;align-items:center;gap:8px;margin-top:16px;color:#c7c2bf;font-size:11px}
+    .status-mark{display:grid;width:15px;height:15px;place-items:center;border-radius:50%;background:#f1582b;color:#fff}
+    .done .status-mark{background:#399b6c}
+    .slot{height:7px;margin:13px 10px 0;border-radius:9px;background:#111;box-shadow:inset 0 2px 3px #000}
+    .paper-window{height:244px;margin:-1px 42px 0;overflow:hidden;background:#d8d4d0;box-shadow:inset 0 4px 8px #0002}
+    .paper{position:relative;min-height:238px;padding:17px 18px 20px;background:repeating-linear-gradient(to bottom,#fff 0,#fff 11px,#f7f5f2 12px,#fff 13px);color:#373331;text-align:left;box-shadow:0 8px 14px #0002;transform:translateY(-102%);animation:paper-feed 1.5s cubic-bezier(.2,.75,.25,1) .15s forwards}
+    .paper:after{position:absolute;right:0;bottom:-1px;left:0;height:9px;background:linear-gradient(135deg,#d8d4d0 25%,transparent 25%) 0 0/12px 9px,linear-gradient(225deg,#d8d4d0 25%,transparent 25%) 0 0/12px 9px;content:""}
+    .paper-brand{font-size:10px;font-weight:800;letter-spacing:.13em;text-align:center}
+    .paper-title{margin-top:5px;font-size:8px;letter-spacing:.16em;text-align:center}
+    .rule{margin:13px 0;border:0;border-top:1px dashed #c9c4c0}
+    .paper-line{display:flex;justify-content:space-between;gap:8px;font-size:8px;line-height:1.8}
+    .paper-line strong{font-weight:700}
+    .barcode{height:25px;margin:13px auto 0;width:67%;background:repeating-linear-gradient(90deg,#282523 0,#282523 1px,transparent 1px,transparent 3px,#282523 3px,#282523 5px,transparent 5px,transparent 7px)}
+    .order-code{margin-top:4px;color:#77716d;font-size:7px;letter-spacing:.2em;text-align:center}
+    .message{margin:21px 0 0;color:#57514e;font-size:14px;font-weight:700}
+    .detail{margin:6px 0 0;color:#77716d;font-size:12px;line-height:1.5}
+    .ready-mark{display:inline-grid;width:17px;height:17px;place-items:center;border-radius:50%;background:#399b6c;color:white;animation:ready-pop .4s cubic-bezier(.2,.8,.2,1) both}
+    @keyframes card-in{from{opacity:0;transform:translateY(10px) scale(.98)}to{opacity:1;transform:translateY(0) scale(1)}}
+    @keyframes paper-feed{0%{transform:translateY(-102%)}18%{transform:translateY(-92%)}38%{transform:translateY(-58%)}58%{transform:translateY(-43%)}78%,100%{transform:translateY(0)}}
+    @keyframes ready-pop{0%{transform:scale(.5) rotate(-12deg);opacity:0}70%{transform:scale(1.18) rotate(4deg);opacity:1}100%{transform:scale(1) rotate(0)}}
+    @media(prefers-reduced-motion:reduce){*,*:before,*:after{animation:none!important;scroll-behavior:auto!important}.paper{transform:translateY(0)}}
   </style>`;
   windowRef.document.body.innerHTML = ready
-    ? `<main role="status" aria-live="polite"><div class="icon check"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 4 4L19 6"/></svg></div><h1>Receipt ready</h1><p>Your download has started. This window will close shortly.</p></main>`
-    : `<main role="status" aria-live="polite"><div class="icon printer"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 14h12v8H6z"/></svg></div><h1>Preparing your receipt</h1><p>Creating your secure, school-branded PDF…</p><div class="paper" aria-hidden="true"></div></main>`;
+    ? `<main role="status" aria-live="polite"><div class="printer"><div class="printer-top"><span class="brand" aria-hidden="true">P</span><span class="home">PROFIA INSTITUTE</span></div><div class="screen"><div class="summary"><div><div class="plan">Fee payment</div><div class="caption">Official school receipt</div></div><div class="plan">PDF</div></div><div class="status done"><span class="status-mark">✓</span>Receipt ready</div></div><div class="slot"></div></div><div class="paper-window" aria-hidden="true"><div class="paper"><div class="paper-brand">PROFIA INSTITUTE</div><div class="paper-title">OFFICIAL FEE RECEIPT</div><hr class="rule"><div class="paper-line"><span>Document</span><strong>PDF RECEIPT</strong></div><hr class="rule"><div class="paper-line"><strong>Thank you for your payment</strong></div><div class="barcode"></div><div class="order-code">SECURE RECEIPT</div></div></div><p class="message"><span class="ready-mark">✓</span> Receipt ready</p><p class="detail">Your secure receipt download has started.</p></main>`
+    : `<main role="status" aria-live="polite"><div class="printer"><div class="printer-top"><span class="brand" aria-hidden="true">P</span><span class="home">PROFIA INSTITUTE</span></div><div class="screen"><div class="summary"><div><div class="plan">Fee payment</div><div class="caption">Preparing official receipt</div></div><div class="plan">PDF</div></div><div class="status"><span class="status-mark">•</span>Printing your receipt</div></div><div class="slot"></div></div><div class="paper-window" aria-hidden="true"><div class="paper"><div class="paper-brand">PROFIA INSTITUTE</div><div class="paper-title">OFFICIAL FEE RECEIPT</div><hr class="rule"><div class="paper-line"><span>Document</span><strong>PDF RECEIPT</strong></div><hr class="rule"><div class="paper-line"><strong>Thank you for your payment</strong></div><div class="barcode"></div><div class="order-code">SECURE RECEIPT</div></div></div><p class="message">Preparing your receipt</p><p class="detail">Creating your secure, school-branded PDF…</p></main>`;
 }
 
 function StudentProgressionSection({ student }: { student: Student }) {
