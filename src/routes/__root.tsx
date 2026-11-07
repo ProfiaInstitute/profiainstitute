@@ -24,6 +24,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { FACILITY_LOCATION } from "@/lib/site";
 import { useScrollReveal } from "@/lib/motion";
 import { LogoTraceLoader } from "@/components/LogoTraceLoader";
+import { DownloadPrintAnimation } from "@/components/site/DownloadPrintAnimation";
 
 const structuredData = {
   "@context": "https://schema.org",
@@ -318,6 +319,7 @@ function RootComponent() {
         {!isApp && <SiteFooter />}
         {!isApp && <WhatsAppFloat />}
         <Toaster richColors position="top-center" />
+        <DownloadPrintAnimation />
         <Analytics route={route} path={pathname} />
         <SpeedInsights />
       </PwaInstallProvider>

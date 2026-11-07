@@ -32,6 +32,7 @@ import { downloadContentAttachment } from "@/lib/content-download";
 import { StudentCatsSection } from "@/components/student/StudentCatsSection";
 import { formatKES } from "@/lib/site";
 import { useScrollReveal } from "@/lib/motion";
+import { AdmissionLetterDownload } from "@/components/academics/AdmissionLetterDownload";
 import type { Database, Tables } from "@/integrations/supabase/types";
 import { InstallAppButton } from "@/components/site/InstallAppButton";
 import { NotificationBell } from "@/components/site/NotificationBell";
@@ -817,13 +818,17 @@ function StudentWorkspace({
                   ? "messages"
                   : category === "student_feedback"
                     ? "feedback"
-                    : category === "academics"
-                      ? "progression"
-                      : category === "fees"
-                        ? "fees"
-                        : category === "results"
-                          ? "results"
-                          : "overview",
+                    : category === "admission"
+                      ? student.study_mode === "online"
+                        ? "online"
+                        : "learning"
+                      : category === "academics"
+                        ? "progression"
+                        : category === "fees"
+                          ? "fees"
+                          : category === "results"
+                            ? "results"
+                            : "overview",
               )
             }
           />
@@ -953,7 +958,11 @@ function StudentWorkspace({
               ))}
             {section === "online" && <OnlineCoursesSection student={student} />}
             {section === "learning" && (
-              <LearningSection courseId={activeCourse?.course_id ?? null} />
+              <LearningSection
+                courseId={activeCourse?.course_id ?? null}
+                studentId={student.id}
+                enrolled={activeCourse?.statuses.includes("active") ?? false}
+              />
             )}
             {section === "assignments" && (
               <AssignmentsSection student={student} courseId={activeCourse?.course_id ?? null} />
@@ -1523,7 +1532,15 @@ function OnlineStudentOverview({
   );
 }
 
-function LearningSection({ courseId }: { courseId: string | null }) {
+function LearningSection({
+  courseId,
+  studentId,
+  enrolled,
+}: {
+  courseId: string | null;
+  studentId: string;
+  enrolled: boolean;
+}) {
   const query = useQuery({
     queryKey: ["student", "materials", courseId],
     enabled: !!courseId,
@@ -1538,55 +1555,74 @@ function LearningSection({ courseId }: { courseId: string | null }) {
       return data;
     },
   });
-  if (!courseId)
-    return (
-      <Empty
-        title="No course assigned"
-        detail="Learning materials will appear after a course has been assigned to your student profile."
-      />
-    );
-  if (query.isLoading) return <Loading />;
-  if (query.error) return <ErrorCard error={query.error.message} retry={() => query.refetch()} />;
-  return query.data?.length ? (
-    <div className="space-y-3">
-      {query.data.map((material) => (
-        <article
-          key={material.id}
-          data-scroll-reveal
-          className="rounded-xl border bg-card p-5 shadow-card"
-        >
-          <h2 className="font-semibold text-brand">{material.title}</h2>
-          <p className="mt-1 text-xs uppercase tracking-wide text-primary">
-            {material.material_type}
+  return (
+    <div className="space-y-5">
+      <section className="space-y-3 rounded-xl border bg-card p-5 shadow-card">
+        <div>
+          <h2 className="font-semibold text-brand">Module downloads</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Download official documents for your enrolled course.
           </p>
-          {material.description && (
-            <p className="mt-2 text-sm text-muted-foreground">{material.description}</p>
-          )}
-          {material.external_url && (
-            <a
-              className="mt-3 inline-block text-sm font-medium text-primary hover:underline"
-              href={material.external_url}
-              target="_blank"
-              rel="noreferrer"
+        </div>
+        {courseId && enrolled ? (
+          <AdmissionLetterDownload studentId={studentId} courseId={courseId} />
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            Your admission letter will be available here after you are enrolled in a course.
+          </p>
+        )}
+      </section>
+      {!courseId ? (
+        <Empty
+          title="No course assigned"
+          detail="Learning materials will appear after a course has been assigned to your student profile."
+        />
+      ) : query.isLoading ? (
+        <Loading />
+      ) : query.error ? (
+        <ErrorCard error={query.error.message} retry={() => query.refetch()} />
+      ) : query.data?.length ? (
+        <div className="space-y-3">
+          {query.data.map((material) => (
+            <article
+              key={material.id}
+              data-scroll-reveal
+              className="rounded-xl border bg-card p-5 shadow-card"
             >
-              Open learning material ↗
-            </a>
-          )}
-          {material.file_path && (
-            <PrivateStorageMedia
-              path={material.file_path}
-              contentType={material.material_type}
-              label="Open learning material"
-            />
-          )}
-        </article>
-      ))}
+              <h2 className="font-semibold text-brand">{material.title}</h2>
+              <p className="mt-1 text-xs uppercase tracking-wide text-primary">
+                {material.material_type}
+              </p>
+              {material.description && (
+                <p className="mt-2 text-sm text-muted-foreground">{material.description}</p>
+              )}
+              {material.external_url && (
+                <a
+                  className="mt-3 inline-block text-sm font-medium text-primary hover:underline"
+                  href={material.external_url}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Open learning material ↗
+                </a>
+              )}
+              {material.file_path && (
+                <PrivateStorageMedia
+                  path={material.file_path}
+                  contentType={material.material_type}
+                  label="Open learning material"
+                />
+              )}
+            </article>
+          ))}
+        </div>
+      ) : (
+        <Empty
+          title="No learning materials yet"
+          detail="Your instructor has not published course materials yet."
+        />
+      )}
     </div>
-  ) : (
-    <Empty
-      title="No learning materials yet"
-      detail="Your instructor has not published course materials yet."
-    />
   );
 }
 
@@ -1758,6 +1794,13 @@ function OnlineCoursesSection({ student }: { student: Student }) {
                 Watch course introduction ↗
               </a>
             )}
+            <div className="mt-4 border-t pt-4">
+              <h3 className="font-semibold text-brand">Module downloads</h3>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Download your official admission letter for this enrolled course.
+              </p>
+              <AdmissionLetterDownload studentId={student.id} courseId={selected.course.id} />
+            </div>
             <div className="mt-4 grid gap-3 sm:grid-cols-3">
               <FeeMetric label="Tuition paid" value={formatKES(tuitionPaid) ?? "KES 0"} />
               <FeeMetric
@@ -3192,6 +3235,7 @@ function FeesSection({
                     size="sm"
                     variant="ghost"
                     disabled={receiptMutation.isPending}
+                    data-document-download="false"
                     onClick={() => openReceipt(payment.id, "download")}
                     className={
                       receiptMutation.isPending &&

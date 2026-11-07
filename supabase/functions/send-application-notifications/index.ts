@@ -20,7 +20,8 @@ type StudentLearningNotification = {
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type, x-notification-scope, x-notification-scheduler-secret",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
@@ -34,25 +35,37 @@ Deno.serve(async (request: Request) => {
     console.error("Student notification service configuration is incomplete.");
     return json({ error: "Notification service is not configured." }, 500);
   }
-  if (request.headers.get("Authorization") !== `Bearer ${serviceRoleKey}`) {
+  const learningEmailOnly = request.headers.get("x-notification-scope") === "learning-email-only";
+  const schedulerSecret = Deno.env.get("LEARNING_NOTIFICATIONS_CRON_SECRET");
+  const schedulerAuthorized =
+    learningEmailOnly &&
+    !!schedulerSecret &&
+    request.headers.get("x-notification-scheduler-secret") === schedulerSecret;
+  const serviceRoleAuthorized = request.headers.get("Authorization") === `Bearer ${serviceRoleKey}`;
+  if (!serviceRoleAuthorized && !schedulerAuthorized) {
     return json({ error: "Forbidden." }, 403);
   }
 
-  const client = createClient(supabaseUrl, serviceRoleKey, {
+  const requestServiceRoleKey = schedulerAuthorized
+    ? (request.headers.get("apikey") ?? serviceRoleKey)
+    : serviceRoleKey;
+  const client = createClient(supabaseUrl, requestServiceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
-  const { data: claimed, error: claimError } = await client.rpc("claim_application_notifications", {
-    _limit: 50,
-  });
-  if (claimError) {
-    console.error("Could not claim admission notifications:", claimError.message);
-    return json({ error: "Could not claim admission notifications." }, 500);
+  let claimed: ApplicationNotification[] = [];
+  if (!learningEmailOnly) {
+    const { data, error } = await client.rpc("claim_application_notifications", { _limit: 50 });
+    if (error) {
+      console.error("Could not claim admission notifications:", error.message);
+      return json({ error: "Could not claim admission notifications." }, 500);
+    }
+    claimed = (data ?? []) as ApplicationNotification[];
   }
 
   let sent = 0;
   let failed = 0;
   const failures: { id: string; channel: string; error: string }[] = [];
-  for (const notification of (claimed ?? []) as ApplicationNotification[]) {
+  for (const notification of claimed) {
     let deliveryError: string | null = null;
     try {
       if (notification.channel === "email") {
@@ -100,7 +113,7 @@ Deno.serve(async (request: Request) => {
     console.error("Could not claim student learning notifications:", learningClaimError.message);
     return json(
       {
-        claimed: claimed?.length ?? 0,
+        claimed: claimed.length,
         sent,
         failed,
         failures,
@@ -151,7 +164,7 @@ Deno.serve(async (request: Request) => {
 
   return json(
     {
-      claimed: (claimed?.length ?? 0) + (learningNotifications?.length ?? 0),
+      claimed: claimed.length + (learningNotifications?.length ?? 0),
       sent,
       failed,
       failures,
@@ -300,19 +313,28 @@ async function sendStudentLearningEmail(notification: StudentLearningNotificatio
   const course = payloadText(notification.payload, "course_title");
   const portalUrl = new URL(payloadText(notification.payload, "portal_path"), siteUrl).toString();
   const schedule = learningSchedule(notification.payload);
-  const typeLabel = notificationType === "cat" ? "CAT" : "assignment";
+  const announcement = learningAnnouncement(
+    notificationType,
+    title,
+    course,
+    payloadOptionalText(notification.payload, "unit_title"),
+    payloadOptionalText(notification.payload, "score"),
+    payloadOptionalText(notification.payload, "grade"),
+  );
   const text = [
     `Hello ${name},`,
     "",
-    `A new ${typeLabel} has been published for ${course}: ${title}.`,
+    announcement,
     schedule,
     "",
     `Open your student portal: ${portalUrl}`,
-  ].join("\n");
+  ]
+    .filter(Boolean)
+    .join("\n");
   const html = [
     `<p>Hello ${escapeHtml(name)},</p>`,
-    `<p>A new ${escapeHtml(typeLabel)} has been published for <strong>${escapeHtml(course)}</strong>: <strong>${escapeHtml(title)}</strong>.</p>`,
-    `<p>${escapeHtml(schedule)}</p>`,
+    `<p>${escapeHtml(announcement)}</p>`,
+    schedule ? `<p>${escapeHtml(schedule)}</p>` : "",
     `<p><a href="${escapeHtml(portalUrl)}">Open your student portal</a></p>`,
   ].join("");
 
@@ -356,7 +378,7 @@ async function sendStudentLearningWhatsApp(notification: StudentLearningNotifica
   const portalUrl = new URL(payloadText(notification.payload, "portal_path"), siteUrl).toString();
   const parameters = [
     payloadText(notification.payload, "student_name"),
-    notificationType === "cat" ? "CAT" : "Assignment",
+    notificationType === "cat" || notificationType === "cat_open" ? "CAT" : "Assignment",
     payloadText(notification.payload, "content_title"),
     payloadText(notification.payload, "course_title"),
     learningSchedule(notification.payload),
@@ -400,12 +422,38 @@ function learningSchedule(payload: Record<string, unknown>) {
   const notificationType = payloadText(payload, "notification_type");
   const opensAt = payloadOptionalText(payload, "opens_at");
   const closesAt = payloadOptionalText(payload, "closes_at");
+  if (notificationType === "result") return "";
+  if (notificationType === "cat_open") {
+    return `The CAT is now open${closesAt ? ` and closes ${formatKenyaDateTime(closesAt)}` : ""}.`;
+  }
   if (notificationType === "cat") {
     return `Opens ${formatKenyaDateTime(opensAt)} and closes ${formatKenyaDateTime(closesAt)}.`;
   }
   return closesAt
     ? `Submission deadline: ${formatKenyaDateTime(closesAt)}.`
     : "Check the student portal for the submission deadline.";
+}
+
+function learningAnnouncement(
+  notificationType: string,
+  title: string,
+  course: string,
+  unit: string | null,
+  score: string | null,
+  grade: string | null,
+) {
+  if (notificationType === "cat_open") return `Your CAT "${title}" is now open for ${course}.`;
+  if (notificationType === "cat") {
+    return `A new CAT "${title}" has been uploaded for ${course}${unit ? `, unit ${unit}` : ""}.`;
+  }
+  if (notificationType === "result") {
+    const resultDetails = [
+      score === null ? null : `Score: ${score}%`,
+      grade === null ? null : `Grade: ${grade}`,
+    ].filter((value): value is string => value !== null);
+    return `Your results for ${unit ?? title} in ${course} are available.${resultDetails.length ? ` ${resultDetails.join(". ")}.` : ""}`;
+  }
+  return `A new assignment "${title}" has been published for ${course}${unit ? `, unit ${unit}` : ""}.`;
 }
 
 function formatKenyaDateTime(value: string | null) {

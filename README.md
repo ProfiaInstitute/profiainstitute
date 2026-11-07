@@ -2585,12 +2585,15 @@ Delivery attempts are recorded and retried automatically by the notification
 worker.
 
 Apply `drizzle/migrations/0037_student_learning_notifications.sql` after
-migration `0036_immediate_cats_and_shuffled_options.sql`. Publishing an
-assignment (including publishing a saved draft) or creating a CAT queues an
-email and WhatsApp notification for each active student enrolled in a targeted
-course and level. The message includes the item title, course, due/opening
-time, and student portal link. Notifications are deduplicated per student,
-channel, and published item. Delivery failures are retried up to five times.
+migration `0036_immediate_cats_and_shuffled_options.sql`, then apply
+`drizzle/migrations/0052_unit_scoped_learning_emails.sql` and
+`drizzle/migrations/0053_learning_email_only_delivery.sql`. Publishing an
+assignment or creating a CAT queues notifications only for active enrollments
+in the matching course, unit, and level. CAT opening emails are scheduled for
+the configured opening time; results are emailed only to the student whose
+matching unit result is published. Student learning notifications are
+email-only and deduplicated per event, student, and channel. Delivery failures
+are retried up to five times.
 
 Deploy `supabase/functions/send-application-notifications` and configure these
 Edge Function secrets: `RESEND_API_KEY`, `SCHOOL_EMAIL_FROM`,
@@ -2623,6 +2626,14 @@ service-role key in the website. Email delivery uses Resend, and WhatsApp
 delivery uses the WhatsApp Cloud API. Missing provider configuration or
 unapproved templates are reported as failed deliveries and retried up to five
 times.
+
+For an email-only learning-notification schedule, include the
+`x-notification-scope: learning-email-only` header and the
+`x-notification-scheduler-secret` header matching the
+`LEARNING_NOTIFICATIONS_CRON_SECRET` Edge Function secret. Use that secret as
+the bearer authorization and send the service-role key in the `apikey` header.
+This limits the worker to CAT, assignment, and result emails; it leaves
+WhatsApp rows and the separate admissions queue untouched.
 
 To bootstrap the first Super Admin:
 
@@ -2900,6 +2911,18 @@ key in Supabase Vault or the scheduler's encrypted secret store. The function
 rejects requests without the service-role authorization. Verify the sender
 domain before enabling the schedule; until then, queued messages remain
 undelivered.
+
+### Admin email file sharing
+
+Apply `drizzle/migrations/0050_admission_letter_data.sql` and
+`drizzle/migrations/0051_admin_email_sharing.sql`, then deploy the
+`supabase/functions/admin-send-email` Edge Function. It uses the existing
+`RESEND_API_KEY` and `SCHOOL_EMAIL_FROM` secrets. Super Admins and Admissions
+Admins can send an email to one address with selected application/student
+documents, admission letters, fee statements, receipts, and up to 10 files
+from their computer (5 MB each, 15 MB total). Attachments are staged in a
+private bucket and removed after the send attempt. Keep provider and
+service-role credentials out of the browser and source control.
 
 ### Profia-branded authentication emails
 

@@ -24,6 +24,9 @@ verify_jwt = true
 [functions.generate-fee-receipt]
 verify_jwt = true
 
+[functions.admin-send-email]
+verify_jwt = true
+
 [functions.generate-fee-statement-template]
 verify_jwt = true
 
