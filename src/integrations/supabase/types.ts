@@ -1186,6 +1186,56 @@ export type Database = {
           updated_at?: string;
         }
       >;
+      holiday_program_payments: TableShape<
+        {
+          amount: number;
+          application_id: string;
+          created_at: string;
+          id: string;
+          mpesa_receipt_number: string | null;
+          paid_at: string | null;
+          payer_phone: string;
+          provider: string;
+          provider_checkout_id: string | null;
+          provider_reference: string | null;
+          raw: Json;
+          reference: string;
+          status: string;
+          updated_at: string;
+        },
+        {
+          amount: number;
+          application_id: string;
+          created_at?: string;
+          id?: string;
+          mpesa_receipt_number?: string | null;
+          paid_at?: string | null;
+          payer_phone: string;
+          provider?: string;
+          provider_checkout_id?: string | null;
+          provider_reference?: string | null;
+          raw?: Json;
+          reference: string;
+          status?: string;
+          updated_at?: string;
+        },
+        {
+          amount?: number;
+          application_id?: string;
+          created_at?: string;
+          id?: string;
+          mpesa_receipt_number?: string | null;
+          paid_at?: string | null;
+          payer_phone?: string;
+          provider?: string;
+          provider_checkout_id?: string | null;
+          provider_reference?: string | null;
+          raw?: Json;
+          reference?: string;
+          status?: string;
+          updated_at?: string;
+        }
+      >;
       holiday_program_application_history: TableShape<
         {
           application_id: string;
@@ -2727,6 +2777,14 @@ export type Database = {
       };
       set_student_status: {
         Args: { _status: string; _student_id: string };
+        Returns: undefined;
+      };
+      confirm_holiday_program_payment: {
+        Args: {
+          p_mpesa_receipt_number?: string | null;
+          p_payment_id: string;
+          p_verified_status: string;
+        };
         Returns: undefined;
       };
       set_holiday_program_period_modules: {

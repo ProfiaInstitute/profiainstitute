@@ -35,6 +35,11 @@ export function HolidayProgramPage({
   const [periodId, setPeriodId] = useState("");
   const [moduleIds, setModuleIds] = useState<string[]>([]);
   const [confirmationCode, setConfirmationCode] = useState("");
+  const [applicantContactPhone, setApplicantContactPhone] = useState("");
+  const [paymentPhone, setPaymentPhone] = useState("");
+  const [paymentType, setPaymentType] = useState<"deposit" | "custom">("deposit");
+  const [customPaymentAmount, setCustomPaymentAmount] = useState("");
+  const [paymentReference, setPaymentReference] = useState("");
   const query = useQuery({
     queryKey: ["public-holiday-program", trackKey],
     queryFn: async () => {
@@ -92,21 +97,118 @@ export function HolidayProgramPage({
     setPeriodId("");
     setModuleIds([]);
     setConfirmationCode("");
+    setApplicantContactPhone("");
+    setPaymentPhone("");
+    setPaymentReference("");
+    setPaymentType("deposit");
+    setCustomPaymentAmount("");
   }, [trackKey]);
 
   const submitMutation = useMutation({
-    mutationFn: async (payload: Json) => {
+    mutationFn: async (variables: { payload: Json; contactPhone: string }) => {
       const { data, error } = await supabase.rpc("submit_holiday_program_application", {
-        p: payload,
+        p: variables.payload,
       });
       if (error) throw error;
-      return data;
+      return { confirmationCode: data, contactPhone: variables.contactPhone };
     },
-    onSuccess: (code) => {
+    onSuccess: ({ confirmationCode: code, contactPhone }) => {
       setConfirmationCode(code);
+      setApplicantContactPhone(contactPhone);
+      setPaymentPhone(contactPhone);
+      setPaymentType(Number(selectedPeriod?.deposit_amount ?? 0) > 0 ? "deposit" : "custom");
       toast.success("Your holiday program application has been received");
     },
     onError: (error) => toast.error(error.message),
+  });
+
+  const paymentMutation = useMutation({
+    mutationFn: async () => {
+      if (!confirmationCode || !applicantContactPhone) {
+        throw new Error("Submit the holiday program application before paying.");
+      }
+      const { data, error } = await supabase.functions.invoke("create-holiday-payment", {
+        body: {
+          action: "initiate",
+          confirmationCode,
+          contactPhone: applicantContactPhone,
+          paymentPhone,
+          paymentType,
+          ...(paymentType === "custom" ? { amount: Number(customPaymentAmount) } : {}),
+        },
+      });
+      if (error) {
+        if ("context" in error && error.context instanceof Response) {
+          const response = await error.context
+            .clone()
+            .json()
+            .catch(() => null);
+          if (
+            typeof response === "object" &&
+            response !== null &&
+            "error" in response &&
+            typeof response.error === "string"
+          ) {
+            throw new Error(response.error);
+          }
+        }
+        throw error;
+      }
+      if (!data?.success || typeof data.reference !== "string") {
+        throw new Error(data?.error ?? "Could not start the payment request.");
+      }
+      return data as { reference: string; amount: number; status: string };
+    },
+    onSuccess: (payment) => {
+      setPaymentReference(payment.reference);
+      toast.success("M-Pesa prompt sent", {
+        description: `Approve the KES ${payment.amount} prompt on your phone. We’ll update your application after PayHero confirms payment.`,
+      });
+    },
+    onError: (error) => toast.error("Could not start payment", { description: error.message }),
+  });
+
+  const paymentStatusQuery = useQuery({
+    queryKey: ["holiday-program", "payment-status", confirmationCode, paymentReference],
+    enabled: Boolean(confirmationCode && applicantContactPhone && paymentReference),
+    queryFn: async () => {
+      const { data, error } = await supabase.functions.invoke("create-holiday-payment", {
+        body: {
+          action: "status",
+          confirmationCode,
+          contactPhone: applicantContactPhone,
+          reference: paymentReference,
+        },
+      });
+      if (error) {
+        if ("context" in error && error.context instanceof Response) {
+          const response = await error.context
+            .clone()
+            .json()
+            .catch(() => null);
+          if (
+            typeof response === "object" &&
+            response !== null &&
+            "error" in response &&
+            typeof response.error === "string"
+          ) {
+            throw new Error(response.error);
+          }
+        }
+        throw error;
+      }
+      if (!data?.success) throw new Error(data?.error ?? "Could not check payment status.");
+      return data as {
+        amount: number;
+        amountDue: number;
+        remaining: number;
+        status: "pending" | "confirmed" | "failed";
+        receipt: string | null;
+        totalPaid: number;
+        applicationPaymentStatus: string;
+      };
+    },
+    refetchInterval: (query) => (query.state.data?.status === "pending" ? 4000 : false),
   });
 
   function submitApplication(event: React.FormEvent<HTMLFormElement>) {
@@ -120,11 +222,12 @@ export function HolidayProgramPage({
       return;
     }
     const formData = new FormData(event.currentTarget);
+    const contactPhone = String(formData.get("phone") ?? "").trim();
     const payload: Json = {
       period_id: selectedPeriod.id,
       applicant_name: String(formData.get("applicant-name") ?? "").trim(),
       applicant_age: track.track_key === "kids" ? Number(formData.get("applicant-age")) : null,
-      phone: String(formData.get("phone") ?? "").trim(),
+      phone: contactPhone,
       email: String(formData.get("email") ?? "").trim() || null,
       location: String(formData.get("location") ?? "").trim(),
       guardian_name: String(formData.get("guardian-name") ?? "").trim() || null,
@@ -135,7 +238,7 @@ export function HolidayProgramPage({
       guardian_consent: formData.get("guardian-consent") === "on",
       module_ids: moduleIds,
     };
-    submitMutation.mutate(payload);
+    submitMutation.mutate({ payload, contactPhone });
   }
 
   const today = nairobiDate();
@@ -146,6 +249,12 @@ export function HolidayProgramPage({
   const amountDue = selectedPeriod
     ? selectedPeriod.fee_amount * (offerActive ? 1 - selectedPeriod.discount_percent / 100 : 1)
     : 0;
+  const totalPaid = paymentStatusQuery.data?.totalPaid ?? 0;
+  const remainingAmount = paymentStatusQuery.data?.remaining ?? amountDue;
+  const remainingDeposit = Math.ceil(
+    Math.max(0, Number(selectedPeriod?.deposit_amount ?? 0) - totalPaid),
+  );
+  const maxPaymentAmount = Math.floor(remainingAmount);
 
   return (
     <div>
@@ -275,29 +384,174 @@ export function HolidayProgramPage({
 
             <div className="rounded-2xl border bg-card p-5 shadow-card sm:p-7">
               {confirmationCode ? (
-                <div className="py-6 text-center">
+                <div className="py-6">
                   <CheckCircle2 className="mx-auto h-12 w-12 text-emerald-600" />
-                  <h2 className="mt-4 text-2xl font-bold text-brand">Application received</h2>
-                  <p className="mt-2 text-sm text-muted-foreground">
-                    Keep this confirmation code and contact the Institute to arrange your deposit.
-                  </p>
-                  <p className="mt-4 inline-block rounded-lg bg-muted px-4 py-3 font-mono text-lg font-bold tracking-wider">
-                    {confirmationCode}
-                  </p>
-                  <p className="mt-4 text-sm">
-                    Fee: {formatKES(amountDue)} · Deposit:{" "}
-                    {formatKES(selectedPeriod?.deposit_amount ?? 0)}
-                  </p>
-                  <Button
-                    className="mt-6"
-                    variant="outline"
-                    onClick={() => {
-                      setConfirmationCode("");
-                      setModuleIds([]);
-                    }}
-                  >
-                    Submit another application
-                  </Button>
+                  <div className="mx-auto max-w-lg">
+                    <h2 className="mt-4 text-center text-2xl font-bold text-brand">
+                      Application received
+                    </h2>
+                    <p className="mt-2 text-center text-sm text-muted-foreground">
+                      Keep your confirmation code. Pay the deposit or choose another amount using
+                      M-Pesa.
+                    </p>
+                    <p className="mt-4 text-center">
+                      <span className="inline-block rounded-lg bg-muted px-4 py-3 font-mono text-lg font-bold tracking-wider">
+                        {confirmationCode}
+                      </span>
+                    </p>
+                    <div className="mt-5 rounded-lg bg-muted/70 p-4 text-sm">
+                      <p className="font-semibold">Program fee: {formatKES(amountDue)}</p>
+                      <p className="mt-1 text-muted-foreground">
+                        Deposit: {formatKES(selectedPeriod?.deposit_amount ?? 0)}
+                      </p>
+                    </div>
+                    {paymentStatusQuery.data?.status === "pending" && (
+                      <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
+                        <p className="font-semibold">Payment awaiting confirmation</p>
+                        <p className="mt-1">
+                          Approve the M-Pesa prompt for {formatKES(paymentStatusQuery.data.amount)}.
+                          This page will update automatically when PayHero confirms it.
+                        </p>
+                      </div>
+                    )}
+                    {paymentStatusQuery.data?.status === "confirmed" && (
+                      <div className="mt-4 rounded-lg border border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-950">
+                        <p className="font-semibold">
+                          Payment confirmed · {formatKES(paymentStatusQuery.data.amount)}
+                        </p>
+                        {paymentStatusQuery.data.receipt && (
+                          <p className="mt-1">M-Pesa receipt: {paymentStatusQuery.data.receipt}</p>
+                        )}
+                        <p className="mt-1">
+                          Total paid: {formatKES(paymentStatusQuery.data.totalPaid)} · Balance:{" "}
+                          {formatKES(paymentStatusQuery.data.remaining)}
+                        </p>
+                      </div>
+                    )}
+                    {paymentStatusQuery.data?.status === "failed" && (
+                      <div className="mt-4 rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm">
+                        <p className="font-semibold text-destructive">Payment not completed</p>
+                        <p className="mt-1 text-muted-foreground">
+                          Try again with this or another M-Pesa number.
+                        </p>
+                      </div>
+                    )}
+                    {paymentStatusQuery.isError && (
+                      <p className="mt-3 text-sm text-destructive">
+                        {paymentStatusQuery.error.message}
+                      </p>
+                    )}
+                    {maxPaymentAmount > 0 &&
+                      paymentStatusQuery.data?.status !== "pending" &&
+                      paymentStatusQuery.data?.remaining !== 0 && (
+                        <form
+                          className="mt-6 space-y-4 border-t pt-5"
+                          onSubmit={(event) => {
+                            event.preventDefault();
+                            setPaymentReference("");
+                            paymentMutation.mutate();
+                          }}
+                        >
+                          <div>
+                            <h3 className="font-semibold text-brand">Pay with M-Pesa</h3>
+                            <p className="mt-1 text-sm text-muted-foreground">
+                              A secure STK prompt will be sent to the number you enter.
+                            </p>
+                          </div>
+                          <fieldset className="space-y-2">
+                            <legend className="text-sm font-medium">Payment amount</legend>
+                            <label className="flex items-start gap-3 rounded-lg border p-3 text-sm">
+                              <input
+                                type="radio"
+                                name="payment-type"
+                                checked={paymentType === "deposit"}
+                                disabled={remainingDeposit <= 0}
+                                onChange={() => setPaymentType("deposit")}
+                              />
+                              <span>
+                                <span className="font-semibold">Pay deposit</span>
+                                <span className="block text-muted-foreground">
+                                  {formatKES(remainingDeposit)} remaining to meet the deposit
+                                </span>
+                              </span>
+                            </label>
+                            <label className="flex items-start gap-3 rounded-lg border p-3 text-sm">
+                              <input
+                                type="radio"
+                                name="payment-type"
+                                checked={paymentType === "custom"}
+                                onChange={() => setPaymentType("custom")}
+                              />
+                              <span className="font-semibold">Enter another amount</span>
+                            </label>
+                            {paymentType === "custom" && (
+                              <label className={fieldClass}>
+                                Amount (KES)
+                                <Input
+                                  type="number"
+                                  min="1"
+                                  max={maxPaymentAmount}
+                                  step="1"
+                                  required
+                                  value={customPaymentAmount}
+                                  onChange={(event) => setCustomPaymentAmount(event.target.value)}
+                                />
+                                <span className="font-normal text-muted-foreground">
+                                  Maximum payable now: {formatKES(maxPaymentAmount)}
+                                </span>
+                              </label>
+                            )}
+                          </fieldset>
+                          <label className={fieldClass}>
+                            M-Pesa number to prompt
+                            <Input
+                              type="tel"
+                              autoComplete="tel"
+                              placeholder="07XX XXX XXX"
+                              required
+                              value={paymentPhone}
+                              onChange={(event) => setPaymentPhone(event.target.value)}
+                            />
+                          </label>
+                          <Button
+                            type="submit"
+                            className="w-full"
+                            disabled={
+                              paymentMutation.isPending ||
+                              (paymentType === "deposit" && remainingDeposit <= 0) ||
+                              (paymentType === "custom" &&
+                                (!Number.isSafeInteger(Number(customPaymentAmount)) ||
+                                  Number(customPaymentAmount) <= 0 ||
+                                  Number(customPaymentAmount) > maxPaymentAmount))
+                            }
+                          >
+                            {paymentMutation.isPending
+                              ? "Sending M-Pesa prompt…"
+                              : "Pay with M-Pesa"}
+                          </Button>
+                        </form>
+                      )}
+                    {paymentStatusQuery.data?.remaining === 0 && (
+                      <p className="mt-5 rounded-lg bg-emerald-50 p-4 text-center text-sm font-semibold text-emerald-900">
+                        This application is fully paid.
+                      </p>
+                    )}
+                    <Button
+                      className="mt-6 w-full"
+                      variant="outline"
+                      disabled={paymentStatusQuery.data?.status === "pending"}
+                      onClick={() => {
+                        setConfirmationCode("");
+                        setApplicantContactPhone("");
+                        setPaymentReference("");
+                        setPaymentType("deposit");
+                        setCustomPaymentAmount("");
+                        setModuleIds([]);
+                      }}
+                    >
+                      Submit another application
+                    </Button>
+                  </div>
                 </div>
               ) : (
                 <form className="space-y-5" onSubmit={submitApplication}>

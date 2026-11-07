@@ -2551,11 +2551,17 @@ number, student name, course, level, and marks.
 ### Holiday program applications
 
 Apply `drizzle/migrations/0047_holiday_program.sql` and, after the intervening
-migrations, `drizzle/migrations/0054_holiday_applications_without_modules.sql`.
+migrations, `drizzle/migrations/0054_holiday_applications_without_modules.sql`
+and `drizzle/migrations/0055_holiday_program_payments.sql`.
 Published tracks accept applications during open, in-date registration periods.
 Applicants select a module when one is offered; they can still apply when a
 period has no active modules assigned. Module duration is not collected when
-creating holiday program modules.
+creating holiday program modules. After submitting an application, applicants
+can send the configured deposit or a whole-KES custom amount to any valid
+Kenyan M-Pesa number using PayHero STK Push. The payment remains pending until
+the PayHero callback verifies its provider reference and amount; only then is
+it recorded as paid against the application. Deploy the
+`create-holiday-payment` function alongside `payhero-callback`.
 
 ### Student profile photos
 
