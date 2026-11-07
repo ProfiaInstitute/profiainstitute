@@ -311,32 +311,36 @@ async function sendStudentLearningEmail(notification: StudentLearningNotificatio
   const notificationType = payloadText(notification.payload, "notification_type");
   const title = payloadText(notification.payload, "content_title");
   const course = payloadText(notification.payload, "course_title");
+  const unit = payloadOptionalText(notification.payload, "unit_title");
+  const score = payloadOptionalText(notification.payload, "score");
+  const grade = payloadOptionalText(notification.payload, "grade");
   const portalUrl = new URL(payloadText(notification.payload, "portal_path"), siteUrl).toString();
   const schedule = learningSchedule(notification.payload);
-  const announcement = learningAnnouncement(
+  const announcement = learningAnnouncement(notificationType, title, course, unit, score, grade);
+  const emailTemplate = renderStudentLearningEmail({
+    name,
     notificationType,
     title,
     course,
-    payloadOptionalText(notification.payload, "unit_title"),
-    payloadOptionalText(notification.payload, "score"),
-    payloadOptionalText(notification.payload, "grade"),
-  );
+    unit,
+    score,
+    grade,
+    schedule,
+    portalUrl,
+  });
   const text = [
     `Hello ${name},`,
     "",
     announcement,
+    unit ? `Unit: ${unit}` : "",
     schedule,
+    notificationType === "result" && score !== null ? `Score: ${score}%` : "",
+    notificationType === "result" && grade !== null ? `Grade: ${grade}` : "",
     "",
-    `Open your student portal: ${portalUrl}`,
+    `${emailTemplate.action}: ${portalUrl}`,
   ]
     .filter(Boolean)
     .join("\n");
-  const html = [
-    `<p>Hello ${escapeHtml(name)},</p>`,
-    `<p>${escapeHtml(announcement)}</p>`,
-    schedule ? `<p>${escapeHtml(schedule)}</p>` : "",
-    `<p><a href="${escapeHtml(portalUrl)}">Open your student portal</a></p>`,
-  ].join("");
 
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
@@ -350,13 +354,127 @@ async function sendStudentLearningEmail(notification: StudentLearningNotificatio
       to: [notification.recipient],
       subject: notification.subject,
       text,
-      html,
+      html: emailTemplate.html,
     }),
   });
   if (!response.ok) {
     throw new Error(
       `Email provider returned ${response.status}: ${(await response.text()).slice(0, 500)}`,
     );
+  }
+}
+
+function renderStudentLearningEmail(details: {
+  name: string;
+  notificationType: string;
+  title: string;
+  course: string;
+  unit: string | null;
+  score: string | null;
+  grade: string | null;
+  schedule: string;
+  portalUrl: string;
+}) {
+  const template = learningEmailPresentation(details.notificationType);
+  const e = escapeHtml;
+  const logoUrl = "https://www.profiainstitute.com/_next/static/media/logo.0114ddc1.png";
+  const detailRows = [
+    `<tr><td style="padding:12px 0;color:#6b7280;font-size:13px;border-bottom:1px solid #eee8e8">Course</td><td align="right" style="padding:12px 0;color:#29232a;font-size:14px;font-weight:600;border-bottom:1px solid #eee8e8">${e(details.course)}</td></tr>`,
+    details.unit
+      ? `<tr><td style="padding:12px 0;color:#6b7280;font-size:13px;border-bottom:1px solid #eee8e8">Unit</td><td align="right" style="padding:12px 0;color:#29232a;font-size:14px;font-weight:600;border-bottom:1px solid #eee8e8">${e(details.unit)}</td></tr>`
+      : "",
+    details.schedule
+      ? `<tr><td style="padding:12px 0;color:#6b7280;font-size:13px${details.notificationType === "result" ? "" : ";border-bottom:1px solid #eee8e8"}">${e(template.scheduleLabel)}</td><td align="right" style="padding:12px 0;color:#29232a;font-size:14px;font-weight:600${details.notificationType === "result" ? "" : ";border-bottom:1px solid #eee8e8"}">${e(details.schedule.replace(/\.$/, ""))}</td></tr>`
+      : "",
+  ].filter(Boolean);
+  const resultSummary =
+    details.notificationType === "result" && (details.score !== null || details.grade !== null)
+      ? `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:20px 0 0;background:#f6f3ee;border:1px solid #e8e1dc;border-radius:10px"><tr>${details.score !== null ? `<td width="${details.grade !== null ? "50%" : "100%"}" style="padding:16px 18px"><div style="font-size:12px;color:#625b58;text-transform:uppercase;letter-spacing:1px">Score</div><div style="margin-top:5px;font-size:24px;line-height:30px;font-weight:700;color:#680915">${e(details.score)}%</div></td>` : ""}${details.grade !== null ? `<td width="${details.score !== null ? "50%" : "100%"}" style="padding:16px 18px;${details.score !== null ? "border-left:1px solid #e8e1dc;" : ""}"><div style="font-size:12px;color:#625b58;text-transform:uppercase;letter-spacing:1px">Grade</div><div style="margin-top:5px;font-size:24px;line-height:30px;font-weight:700;color:#680915">${e(details.grade)}</div></td>` : ""}</tr></table>`
+      : "";
+  const previewText = `${template.heading} — ${details.title}`;
+  const html = `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="x-apple-disable-message-reformatting">
+    <title>${e(template.heading)}</title>
+  </head>
+  <body style="margin:0;padding:0;background:#f6f3ee;font-family:Arial,Helvetica,sans-serif;color:#282525">
+    <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent">${e(previewText)}&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;</div>
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f6f3ee;padding:32px 12px">
+      <tr><td align="center">
+        <table role="presentation" width="600" cellspacing="0" cellpadding="0" style="max-width:600px;width:100%;background:#fff;border:1px solid #e8e1dc;border-radius:12px;overflow:hidden">
+          <tr><td align="center" style="padding:28px 24px 20px;border-bottom:4px solid #e56b32">
+            <a href="https://www.profiainstitute.com" style="text-decoration:none"><img src="${e(logoUrl)}" width="150" alt="Profia Institute" style="display:block;width:150px;height:auto;border:0"></a>
+          </td></tr>
+          <tr><td style="padding:32px 32px 36px">
+            <p style="margin:0 0 16px;font-size:16px;line-height:1.6">Hello ${e(details.name)},</p>
+            <h1 style="margin:0 0 16px;color:#680915;font-size:24px;line-height:1.3">${e(template.heading)}</h1>
+            <p style="margin:0 0 24px;font-size:16px;line-height:1.6">${e(template.description)}</p>
+            <div style="margin:0 0 24px;padding:16px 18px;border-left:3px solid #e56b32;background:#f6f3ee">
+              <div style="font-size:11px;line-height:16px;color:#625b58;text-transform:uppercase;letter-spacing:1px">${e(template.itemLabel)}</div>
+              <div style="margin-top:5px;color:#282525;font-size:17px;line-height:24px;font-weight:700">${e(details.title)}</div>
+            </div>
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-top:16px">${detailRows.join("")}</table>
+            ${resultSummary}
+            <table role="presentation" cellspacing="0" cellpadding="0" style="margin:28px 0 0"><tr><td align="center" bgcolor="#680915" style="border-radius:6px">
+              <a href="${e(details.portalUrl)}" style="display:inline-block;padding:14px 24px;border:1px solid #680915;border-radius:6px;color:#ffffff;text-decoration:none;font-size:14px;line-height:18px;font-weight:700">${e(template.action)}</a>
+            </td></tr></table>
+            <p style="margin:24px 0 0;color:#625b58;font-size:13px;line-height:1.6">If the button does not work, copy and paste this link into your browser:</p>
+            <p style="margin:8px 0 0;overflow-wrap:anywhere;font-size:13px;line-height:1.6"><a href="${e(details.portalUrl)}" style="color:#680915">${e(details.portalUrl)}</a></p>
+          </td></tr>
+          <tr><td align="center" style="padding:18px 24px;background:#680915;color:#fff;font-size:12px;line-height:1.6">
+            Profia Institute · Homa Bay, Kenya<br><a href="https://www.profiainstitute.com" style="color:#fff">www.profiainstitute.com</a><br>This is an automated learning notification.
+          </td></tr>
+        </table>
+      </td></tr>
+    </table>
+  </body>
+</html>`;
+  return { html, action: template.action };
+}
+
+function learningEmailPresentation(notificationType: string) {
+  switch (notificationType) {
+    case "cat":
+      return {
+        eyebrow: "NEW CAT",
+        heading: "A new CAT is available",
+        description: "A continuous assessment test has been added to your course.",
+        itemLabel: "Assessment",
+        scheduleLabel: "Schedule",
+        action: "Open student portal",
+      };
+    case "cat_open":
+      return {
+        eyebrow: "CAT NOW OPEN",
+        heading: "Your CAT is now open",
+        description: "You can now access and complete this continuous assessment test.",
+        itemLabel: "Assessment",
+        scheduleLabel: "Closes",
+        action: "Open CAT",
+      };
+    case "result":
+      return {
+        eyebrow: "RESULTS",
+        heading: "Your results are ready",
+        description: "Your published assessment result is now available in the student portal.",
+        itemLabel: "Assessment result",
+        scheduleLabel: "Unit",
+        action: "View results",
+      };
+    case "assignment":
+      return {
+        eyebrow: "NEW ASSIGNMENT",
+        heading: "A new assignment is available",
+        description: "A new assignment has been published for your course.",
+        itemLabel: "Assignment",
+        scheduleLabel: "Deadline",
+        action: "View assignment",
+      };
+    default:
+      throw new Error(`Unsupported learning email notification type: ${notificationType}`);
   }
 }
 
