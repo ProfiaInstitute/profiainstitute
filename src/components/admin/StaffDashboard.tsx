@@ -3283,6 +3283,9 @@ function AuditLogPanel() {
 
 function DataDirectory({ section }: { section: DashboardSection }) {
   const queryClient = useQueryClient();
+  const [assignmentView, setAssignmentView] = useState<"cats" | "submissions" | "assignments">(
+    "cats",
+  );
   const [savingRecord, setSavingRecord] = useState(false);
   const [editingContentId, setEditingContentId] = useState<string | null>(null);
   const [editingFee, setEditingFee] = useState<{
@@ -3603,48 +3606,78 @@ function DataDirectory({ section }: { section: DashboardSection }) {
     <section className="space-y-4 rounded-xl border bg-card p-5 shadow-card">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="font-semibold text-brand">{config.label}</h2>
+          <h2 className="font-semibold text-brand">
+            {section === "assignments" ? "Assignments & CATs" : config.label}
+          </h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Latest {Math.min(query.data?.length ?? 0, 200)} records
+            {section === "assignments"
+              ? "Manage CATs, assignment submissions, and published assignments."
+              : `Latest ${Math.min(query.data?.length ?? 0, 200)} records`}
           </p>
         </div>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            onClick={() =>
-              exportCsv(`${section}.csv`, directoryExportRows(section, query.data ?? []))
-            }
-          >
-            <ArrowDownToLine /> Export CSV
-          </Button>
-          <Button
-            variant="outline"
-            onClick={() =>
-              exportExcel(`${section}.xlsx`, directoryExportRows(section, query.data ?? []))
-            }
-          >
-            <ArrowDownToLine /> Export Excel
-          </Button>
-        </div>
+        {section !== "assignments" || assignmentView === "assignments" ? (
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() =>
+                exportCsv(`${section}.csv`, directoryExportRows(section, query.data ?? []))
+              }
+            >
+              <ArrowDownToLine /> Export CSV
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() =>
+                exportExcel(`${section}.xlsx`, directoryExportRows(section, query.data ?? []))
+              }
+            >
+              <ArrowDownToLine /> Export Excel
+            </Button>
+          </div>
+        ) : null}
       </div>
-      {["schools", "academics", "results", "fees", "materials", "assignments"].includes(
-        section,
-      ) && (
-        <DirectoryCreateForm
-          section={section}
-          onSaved={() => {
-            void queryClient.invalidateQueries({ queryKey: ["admin", "directory", section] });
-            void queryClient.invalidateQueries({ queryKey: ["admin", "overview"] });
-            if (section === "fees") {
-              void queryClient.invalidateQueries({ queryKey: ["admin", "fee-management"] });
-              void queryClient.invalidateQueries({ queryKey: ["student", "fees"] });
-              void queryClient.invalidateQueries({ queryKey: ["student", "fee-total"] });
-            }
-          }}
-          setSaving={setSavingRecord}
-          saving={savingRecord}
-        />
+      {section === "assignments" && (
+        <div className="grid gap-2 rounded-lg bg-muted/40 p-1 sm:grid-cols-3">
+          {(
+            [
+              ["cats", "CAT management"],
+              ["submissions", "Assignment submissions"],
+              ["assignments", "Assignment list"],
+            ] as const
+          ).map(([view, label]) => (
+            <button
+              key={view}
+              type="button"
+              aria-pressed={assignmentView === view}
+              className={`min-h-10 rounded-md px-3 py-2 text-sm font-medium transition ${
+                assignmentView === view
+                  ? "bg-background text-brand shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+              onClick={() => setAssignmentView(view)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       )}
+      {["schools", "academics", "results", "fees", "materials", "assignments"].includes(section) &&
+        (section !== "assignments" || assignmentView === "assignments") && (
+          <DirectoryCreateForm
+            section={section}
+            onSaved={() => {
+              void queryClient.invalidateQueries({ queryKey: ["admin", "directory", section] });
+              void queryClient.invalidateQueries({ queryKey: ["admin", "overview"] });
+              if (section === "fees") {
+                void queryClient.invalidateQueries({ queryKey: ["admin", "fee-management"] });
+                void queryClient.invalidateQueries({ queryKey: ["student", "fees"] });
+                void queryClient.invalidateQueries({ queryKey: ["student", "fee-total"] });
+              }
+            }}
+            setSaving={setSavingRecord}
+            saving={savingRecord}
+          />
+        )}
       {["articles", "announcements", "memos", "media"].includes(section) && (
         <ContentCreateForm
           section={section}
@@ -3656,237 +3689,238 @@ function DataDirectory({ section }: { section: DashboardSection }) {
           }
         />
       )}
-      {section === "assignments" && (
-        <>
+      {section === "assignments" &&
+        (assignmentView === "cats" ? (
           <CatManagementPanel />
+        ) : assignmentView === "submissions" ? (
           <AssignmentSubmissionsPanel />
-        </>
-      )}
-      {query.data?.length ? (
-        <div className="mt-4 overflow-x-auto">
-          <table className="w-full min-w-[640px] border-collapse text-left text-sm">
-            <thead>
-              <tr>
-                {getRowEntries(query.data[0] ?? {}).map(([key]) => (
-                  <th
-                    key={key}
-                    className="border-b px-3 py-2 text-xs font-semibold uppercase text-muted-foreground"
-                  >
-                    {key === "student" ? "Student" : key.replaceAll("_", " ")}
-                  </th>
-                ))}
-                {[
-                  "schools",
-                  "results",
-                  "materials",
-                  "assignments",
-                  "articles",
-                  "announcements",
-                  "memos",
-                  "media",
-                  "messages",
-                  "fees",
-                ].includes(section) && (
-                  <th className="border-b px-3 py-2 text-xs font-semibold uppercase text-muted-foreground">
-                    Action
-                  </th>
-                )}
-              </tr>
-            </thead>
-            <tbody>
-              {query.data.map((row, i) => (
-                <Fragment key={String(row["id"] ?? i)}>
-                  <tr className="border-b last:border-0">
-                    {getRowEntries(row).map(([key, value]) => (
-                      <td key={key} className="max-w-64 truncate px-3 py-2.5">
-                        {section === "fees" &&
-                        editingFee?.id === String(row["id"]) &&
-                        key === "description" ? (
-                          <Input
-                            aria-label="Fee charge description"
-                            value={editingFee.description}
-                            onChange={(event) =>
-                              setEditingFee({ ...editingFee, description: event.target.value })
-                            }
-                          />
-                        ) : section === "fees" &&
+        ) : null)}
+      {(section !== "assignments" || assignmentView === "assignments") &&
+        (query.data?.length ? (
+          <div className="mt-4 overflow-x-auto">
+            <table className="w-full min-w-[640px] border-collapse text-left text-sm">
+              <thead>
+                <tr>
+                  {getRowEntries(query.data[0] ?? {}).map(([key]) => (
+                    <th
+                      key={key}
+                      className="border-b px-3 py-2 text-xs font-semibold uppercase text-muted-foreground"
+                    >
+                      {key === "student" ? "Student" : key.replaceAll("_", " ")}
+                    </th>
+                  ))}
+                  {[
+                    "schools",
+                    "results",
+                    "materials",
+                    "assignments",
+                    "articles",
+                    "announcements",
+                    "memos",
+                    "media",
+                    "messages",
+                    "fees",
+                  ].includes(section) && (
+                    <th className="border-b px-3 py-2 text-xs font-semibold uppercase text-muted-foreground">
+                      Action
+                    </th>
+                  )}
+                </tr>
+              </thead>
+              <tbody>
+                {query.data.map((row, i) => (
+                  <Fragment key={String(row["id"] ?? i)}>
+                    <tr className="border-b last:border-0">
+                      {getRowEntries(row).map(([key, value]) => (
+                        <td key={key} className="max-w-64 truncate px-3 py-2.5">
+                          {section === "fees" &&
                           editingFee?.id === String(row["id"]) &&
-                          key === "amount" ? (
-                          <Input
-                            aria-label="Fee charge amount"
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            value={editingFee.amount}
-                            onChange={(event) =>
-                              setEditingFee({ ...editingFee, amount: event.target.value })
-                            }
-                          />
-                        ) : section === "fees" && key === "student" ? (
-                          feeStudentLabel(value)
-                        ) : (
-                          formatValue(value)
-                        )}
-                      </td>
-                    ))}
-                    {[
-                      "schools",
-                      "results",
-                      "materials",
-                      "assignments",
-                      "articles",
-                      "announcements",
-                      "memos",
-                      "media",
-                      "messages",
-                      "fees",
-                    ].includes(section) && (
-                      <td className="px-3 py-2.5">
-                        <div className="flex flex-wrap items-center gap-2">
-                          {(section === "materials" || section === "assignments") &&
-                            typeof row["file_path"] === "string" && (
-                              <AdminCourseFile path={row["file_path"]} />
-                            )}
-                          {(section === "articles" ||
-                            section === "announcements" ||
-                            section === "memos") &&
-                            typeof row["attachment_url"] === "string" && (
-                              <ContentAttachmentDownload
-                                url={row["attachment_url"]}
-                                filename={
-                                  typeof row["attachment_file_name"] === "string"
-                                    ? row["attachment_file_name"]
-                                    : String(row["title"] ?? "attachment")
-                                }
-                              />
-                            )}
-                          {(section === "articles" ||
-                            section === "announcements" ||
-                            section === "memos") && (
-                            <>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() =>
-                                  setEditingContentId(
-                                    editingContentId === String(row["id"])
-                                      ? null
-                                      : String(row["id"]),
-                                  )
-                                }
-                              >
-                                {editingContentId === String(row["id"]) ? "Close edit" : "Edit"}
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="destructive"
-                                disabled={savingRecord}
-                                onClick={() => void deleteContentRecord(row)}
-                              >
-                                Delete
-                              </Button>
-                            </>
+                          key === "description" ? (
+                            <Input
+                              aria-label="Fee charge description"
+                              value={editingFee.description}
+                              onChange={(event) =>
+                                setEditingFee({ ...editingFee, description: event.target.value })
+                              }
+                            />
+                          ) : section === "fees" &&
+                            editingFee?.id === String(row["id"]) &&
+                            key === "amount" ? (
+                            <Input
+                              aria-label="Fee charge amount"
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={editingFee.amount}
+                              onChange={(event) =>
+                                setEditingFee({ ...editingFee, amount: event.target.value })
+                              }
+                            />
+                          ) : section === "fees" && key === "student" ? (
+                            feeStudentLabel(value)
+                          ) : (
+                            formatValue(value)
                           )}
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            disabled={savingRecord || updateFeeMutation.isPending}
-                            onClick={() => {
-                              if (section !== "fees") {
-                                void updateRecord(row);
-                                return;
-                              }
-                              if (editingFee?.id !== String(row["id"])) {
-                                setEditingFee({
-                                  id: String(row["id"]),
-                                  description: String(row["description"] ?? ""),
-                                  amount: String(row["amount"] ?? ""),
-                                });
-                                return;
-                              }
-                              const amount = Number(editingFee.amount);
-                              if (
-                                !editingFee.description.trim() ||
-                                !Number.isFinite(amount) ||
-                                amount < 0
-                              ) {
-                                toast.error(
-                                  "Enter a description and a valid non-negative fee amount.",
-                                );
-                                return;
-                              }
-                              updateFeeMutation.mutate({
-                                id: editingFee.id,
-                                description: editingFee.description.trim(),
-                                amount,
-                              });
-                            }}
-                          >
-                            {section === "fees"
-                              ? editingFee?.id === String(row["id"])
-                                ? updateFeeMutation.isPending
-                                  ? "Saving…"
-                                  : "Save charge"
-                                : "Edit charge"
-                              : section === "messages"
-                                ? row["status"] === "new"
-                                  ? "Mark responded"
-                                  : "Reopen"
-                                : section === "articles"
-                                  ? row["status"] === "published"
-                                    ? "Unpublish"
-                                    : "Publish"
-                                  : row["published"]
-                                    ? "Deactivate"
-                                    : "Activate"}
-                          </Button>
-                          {section === "fees" && editingFee?.id === String(row["id"]) && (
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="ghost"
-                              disabled={updateFeeMutation.isPending}
-                              onClick={() => setEditingFee(null)}
-                            >
-                              Cancel
-                            </Button>
-                          )}
-                        </div>
-                      </td>
-                    )}
-                  </tr>
-                  {editingContentId === String(row["id"]) &&
-                    (section === "articles" ||
-                      section === "announcements" ||
-                      section === "memos") && (
-                      <tr>
-                        <td colSpan={getRowEntries(row).length + 1} className="bg-muted/20 p-3">
-                          <ContentEditForm
-                            section={section}
-                            record={row}
-                            onCancel={() => setEditingContentId(null)}
-                            onSaved={async () => {
-                              setEditingContentId(null);
-                              await queryClient.invalidateQueries({
-                                queryKey: ["admin", "directory", section],
-                              });
-                              await invalidatePublicContent();
-                            }}
-                          />
                         </td>
-                      </tr>
-                    )}
-                </Fragment>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        <EmptyPanel
-          title={`No ${config.label} yet`}
-          detail="Records will appear here as they are created."
-        />
-      )}
+                      ))}
+                      {[
+                        "schools",
+                        "results",
+                        "materials",
+                        "assignments",
+                        "articles",
+                        "announcements",
+                        "memos",
+                        "media",
+                        "messages",
+                        "fees",
+                      ].includes(section) && (
+                        <td className="px-3 py-2.5">
+                          <div className="flex flex-wrap items-center gap-2">
+                            {(section === "materials" || section === "assignments") &&
+                              typeof row["file_path"] === "string" && (
+                                <AdminCourseFile path={row["file_path"]} />
+                              )}
+                            {(section === "articles" ||
+                              section === "announcements" ||
+                              section === "memos") &&
+                              typeof row["attachment_url"] === "string" && (
+                                <ContentAttachmentDownload
+                                  url={row["attachment_url"]}
+                                  filename={
+                                    typeof row["attachment_file_name"] === "string"
+                                      ? row["attachment_file_name"]
+                                      : String(row["title"] ?? "attachment")
+                                  }
+                                />
+                              )}
+                            {(section === "articles" ||
+                              section === "announcements" ||
+                              section === "memos") && (
+                              <>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() =>
+                                    setEditingContentId(
+                                      editingContentId === String(row["id"])
+                                        ? null
+                                        : String(row["id"]),
+                                    )
+                                  }
+                                >
+                                  {editingContentId === String(row["id"]) ? "Close edit" : "Edit"}
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="destructive"
+                                  disabled={savingRecord}
+                                  onClick={() => void deleteContentRecord(row)}
+                                >
+                                  Delete
+                                </Button>
+                              </>
+                            )}
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={savingRecord || updateFeeMutation.isPending}
+                              onClick={() => {
+                                if (section !== "fees") {
+                                  void updateRecord(row);
+                                  return;
+                                }
+                                if (editingFee?.id !== String(row["id"])) {
+                                  setEditingFee({
+                                    id: String(row["id"]),
+                                    description: String(row["description"] ?? ""),
+                                    amount: String(row["amount"] ?? ""),
+                                  });
+                                  return;
+                                }
+                                const amount = Number(editingFee.amount);
+                                if (
+                                  !editingFee.description.trim() ||
+                                  !Number.isFinite(amount) ||
+                                  amount < 0
+                                ) {
+                                  toast.error(
+                                    "Enter a description and a valid non-negative fee amount.",
+                                  );
+                                  return;
+                                }
+                                updateFeeMutation.mutate({
+                                  id: editingFee.id,
+                                  description: editingFee.description.trim(),
+                                  amount,
+                                });
+                              }}
+                            >
+                              {section === "fees"
+                                ? editingFee?.id === String(row["id"])
+                                  ? updateFeeMutation.isPending
+                                    ? "Saving…"
+                                    : "Save charge"
+                                  : "Edit charge"
+                                : section === "messages"
+                                  ? row["status"] === "new"
+                                    ? "Mark responded"
+                                    : "Reopen"
+                                  : section === "articles"
+                                    ? row["status"] === "published"
+                                      ? "Unpublish"
+                                      : "Publish"
+                                    : row["published"]
+                                      ? "Deactivate"
+                                      : "Activate"}
+                            </Button>
+                            {section === "fees" && editingFee?.id === String(row["id"]) && (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                disabled={updateFeeMutation.isPending}
+                                onClick={() => setEditingFee(null)}
+                              >
+                                Cancel
+                              </Button>
+                            )}
+                          </div>
+                        </td>
+                      )}
+                    </tr>
+                    {editingContentId === String(row["id"]) &&
+                      (section === "articles" ||
+                        section === "announcements" ||
+                        section === "memos") && (
+                        <tr>
+                          <td colSpan={getRowEntries(row).length + 1} className="bg-muted/20 p-3">
+                            <ContentEditForm
+                              section={section}
+                              record={row}
+                              onCancel={() => setEditingContentId(null)}
+                              onSaved={async () => {
+                                setEditingContentId(null);
+                                await queryClient.invalidateQueries({
+                                  queryKey: ["admin", "directory", section],
+                                });
+                                await invalidatePublicContent();
+                              }}
+                            />
+                          </td>
+                        </tr>
+                      )}
+                  </Fragment>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <EmptyPanel
+            title={`No ${config.label} yet`}
+            detail="Records will appear here as they are created."
+          />
+        ))}
     </section>
   );
 }

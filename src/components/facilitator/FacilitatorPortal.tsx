@@ -18,10 +18,12 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
 import { PasswordResetPage } from "@/components/auth/PasswordResetPage";
 import { LevelTargetPicker } from "@/components/academics/LevelTargetPicker";
 import { CatQuestionImporter } from "@/components/academics/CatQuestionImporter";
 import { CatQuestionPreview } from "@/components/academics/CatQuestionPreview";
+import { FacilitatorCatPerformance } from "@/components/facilitator/FacilitatorCatPerformance";
 import { SubmissionFileDownloads } from "@/components/academics/SubmissionFileDownloads";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -743,6 +745,9 @@ function FacilitatorWorkspace({ userId, email }: { userId: string; email: string
     ...(permissions.can_manage_cats
       ? [{ id: "facilitator-cats", title: "CATs", icon: FileText }]
       : []),
+    ...(permissions.can_manage_cats || permissions.can_manage_results
+      ? [{ id: "facilitator-cat-performance", title: "CAT performance", icon: GraduationCap }]
+      : []),
     ...(permissions.can_manage_materials
       ? [{ id: "facilitator-materials", title: "Materials", icon: Video }]
       : []),
@@ -1045,308 +1050,441 @@ function FacilitatorWorkspace({ userId, email }: { userId: string; email: string
             {permissions.can_manage_assignments && activeSection === "facilitator-assignments" && (
               <section
                 id="facilitator-assignments"
-                className="rounded-xl border bg-card p-5 shadow-card"
+                className="space-y-4 rounded-xl border bg-card p-5 shadow-card"
               >
-                <h2 className="font-semibold text-brand">Assignments and marking</h2>
-                <form
-                  className="mt-3 grid gap-3"
-                  onSubmit={(event) => void createAssignment(event)}
-                >
-                  <Input
-                    required
-                    maxLength={160}
-                    placeholder="Assignment title"
-                    value={assignmentDraft.title}
-                    onChange={(event) =>
-                      setAssignmentDraft({ ...assignmentDraft, title: event.target.value })
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h2 className="font-semibold text-brand">Assignments and marking</h2>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {assignmentsQuery.data?.length ?? 0} assignments for {activeUnit.unit.title}
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() =>
+                      document
+                        .getElementById("facilitator-create-assignment")
+                        ?.toggleAttribute("open", true)
                     }
-                  />
-                  <LevelTargetPicker
-                    courseId={activeUnit.unit.course_id}
-                    selectedLevelIds={assignmentDraft.levelIds}
-                    onChange={(levelIds) => setAssignmentDraft({ ...assignmentDraft, levelIds })}
-                    allowedLevelId={activeUnit.unit.level_id}
-                  />
-                  <Textarea
-                    rows={3}
-                    placeholder="Instructions"
-                    value={assignmentDraft.instructions}
-                    onChange={(event) =>
-                      setAssignmentDraft({
-                        ...assignmentDraft,
-                        instructions: event.target.value,
-                      })
-                    }
-                  />
-                  <label className="grid max-w-sm gap-1 text-sm font-medium">
-                    Due date
-                    <Input
-                      type="datetime-local"
-                      value={assignmentDraft.dueDate}
-                      onChange={(event) =>
-                        setAssignmentDraft({ ...assignmentDraft, dueDate: event.target.value })
-                      }
-                    />
-                  </label>
-                  <Button className="justify-self-start" disabled={busy} loading={busy}>
-                    {busy ? "Publishing…" : "Publish assignment"}
+                  >
+                    <Plus className="mr-1 h-4 w-4" />
+                    Create assignment
                   </Button>
-                </form>
-                <ul className="mt-4 divide-y">
-                  {(assignmentsQuery.data ?? []).map((assignment) => (
-                    <li
-                      key={assignment.id}
-                      className="flex flex-wrap justify-between gap-2 py-3 text-sm"
-                    >
-                      <span className="font-medium">
-                        {assignment.title}
-                        <span className="ml-2 text-xs text-muted-foreground">
-                          {assignment.due_date
-                            ? new Date(assignment.due_date).toLocaleString("en-KE")
-                            : "No due date"}
-                        </span>
-                      </span>
-                      <span>{assignment.published ? "Published" : "Draft"}</span>
-                    </li>
-                  ))}
-                </ul>
+                </div>
+                <details
+                  id="facilitator-create-assignment"
+                  className="rounded-lg border bg-muted/20 p-4"
+                >
+                  <summary className="cursor-pointer text-sm font-semibold text-brand">
+                    Assignment details
+                  </summary>
+                  <form
+                    className="mt-4 grid gap-4 sm:grid-cols-2"
+                    onSubmit={(event) => void createAssignment(event)}
+                  >
+                    <label className="grid gap-1.5 text-sm font-medium sm:col-span-2">
+                      Assignment title
+                      <Input
+                        required
+                        maxLength={160}
+                        value={assignmentDraft.title}
+                        onChange={(event) =>
+                          setAssignmentDraft({ ...assignmentDraft, title: event.target.value })
+                        }
+                      />
+                    </label>
+                    <div className="sm:col-span-2">
+                      <LevelTargetPicker
+                        courseId={activeUnit.unit.course_id}
+                        selectedLevelIds={assignmentDraft.levelIds}
+                        onChange={(levelIds) =>
+                          setAssignmentDraft({ ...assignmentDraft, levelIds })
+                        }
+                        allowedLevelId={activeUnit.unit.level_id}
+                      />
+                    </div>
+                    <label className="grid gap-1.5 text-sm font-medium sm:col-span-2">
+                      Instructions
+                      <Textarea
+                        rows={3}
+                        value={assignmentDraft.instructions}
+                        onChange={(event) =>
+                          setAssignmentDraft({
+                            ...assignmentDraft,
+                            instructions: event.target.value,
+                          })
+                        }
+                      />
+                    </label>
+                    <label className="grid max-w-sm gap-1.5 text-sm font-medium">
+                      Due date
+                      <Input
+                        type="datetime-local"
+                        value={assignmentDraft.dueDate}
+                        onChange={(event) =>
+                          setAssignmentDraft({ ...assignmentDraft, dueDate: event.target.value })
+                        }
+                      />
+                    </label>
+                    <div className="flex items-end">
+                      <Button disabled={busy} loading={busy}>
+                        {busy ? "Publishing…" : "Publish assignment"}
+                      </Button>
+                    </div>
+                  </form>
+                </details>
+                <div className="rounded-lg border">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3">
+                    <h3 className="text-sm font-semibold text-brand">Published assignments</h3>
+                    <span className="text-xs text-muted-foreground">
+                      {assignmentsQuery.data?.length ?? 0} total
+                    </span>
+                  </div>
+                  <ul className="divide-y px-4">
+                    {(assignmentsQuery.data ?? []).map((assignment) => (
+                      <li
+                        key={assignment.id}
+                        className="flex flex-wrap items-center justify-between gap-2 py-3 text-sm"
+                      >
+                        <div>
+                          <p className="font-medium">{assignment.title}</p>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            Due{" "}
+                            {assignment.due_date
+                              ? new Date(assignment.due_date).toLocaleString("en-KE")
+                              : "date not set"}
+                          </p>
+                        </div>
+                        <Badge variant={assignment.published ? "default" : "secondary"}>
+                          {assignment.published ? "Published" : "Draft"}
+                        </Badge>
+                      </li>
+                    ))}
+                    {!assignmentsQuery.isLoading && !assignmentsQuery.data?.length && (
+                      <li className="py-4 text-sm text-muted-foreground">
+                        No assignments published for this unit yet.
+                      </li>
+                    )}
+                  </ul>
+                </div>
                 {assignmentsQuery.error && (
                   <p role="alert" className="mt-2 text-sm text-destructive">
                     {assignmentsQuery.error.message}
                   </p>
                 )}
-                <SubmissionsList assignments={assignmentsQuery.data ?? []} />
+                <details className="rounded-lg border bg-muted/20 p-4">
+                  <summary className="cursor-pointer text-sm font-semibold text-brand">
+                    Student submissions and marking
+                  </summary>
+                  <SubmissionsList assignments={assignmentsQuery.data ?? []} />
+                </details>
               </section>
             )}
             {permissions.can_manage_cats && activeSection === "facilitator-cats" && (
-              <section id="facilitator-cats" className="rounded-xl border bg-card p-5 shadow-card">
-                <h2 className="font-semibold text-brand">Create a CAT</h2>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Times use your device's local time zone. Set the closing time at least one minute
-                  after now or the scheduled opening.
-                </p>
-                <form className="mt-3 space-y-3" onSubmit={(event) => void createCat(event)}>
-                  <Input
-                    required
-                    maxLength={160}
-                    placeholder="CAT title"
-                    value={catDraft.title}
-                    onChange={(event) => setCatDraft({ ...catDraft, title: event.target.value })}
-                  />
-                  <Input
-                    required
-                    maxLength={160}
-                    placeholder="CAT download name (e.g. CAT 1 Financial Accounting)"
-                    value={catDraft.name}
-                    onChange={(event) => setCatDraft({ ...catDraft, name: event.target.value })}
-                  />
-                  <LevelTargetPicker
-                    courseId={activeUnit.unit.course_id}
-                    selectedLevelIds={catDraft.levelIds}
-                    onChange={(levelIds) => setCatDraft({ ...catDraft, levelIds })}
-                    allowedLevelId={activeUnit.unit.level_id}
-                  />
-                  <label className="grid gap-1 text-sm font-medium">
-                    Optional CAT download file
-                    <input
-                      ref={catDownloadInputRef}
-                      type="file"
-                      accept=".pdf,.doc,.docx,.odt,.rtf"
-                      className="w-full min-w-0 max-w-full text-xs"
-                      onChange={(event) =>
-                        setCatDraft({
-                          ...catDraft,
-                          downloadFile: event.target.files?.[0] ?? null,
-                        })
-                      }
-                    />
-                    <span className="text-xs text-muted-foreground">
-                      Maximum file size: 50 MB. The timed online CAT remains available separately.
-                    </span>
-                  </label>
-                  <Textarea
-                    rows={2}
-                    placeholder="Instructions"
-                    value={catDraft.instructions}
-                    onChange={(event) =>
-                      setCatDraft({ ...catDraft, instructions: event.target.value })
-                    }
-                  />
-                  <label className="flex items-center gap-2 text-sm font-medium">
-                    <input
-                      type="checkbox"
-                      checked={catDraft.openImmediately}
-                      onChange={(event) =>
-                        setCatDraft({ ...catDraft, openImmediately: event.target.checked })
-                      }
-                      className="accent-primary"
-                    />
-                    Open immediately when published
-                  </label>
-                  <div className="grid gap-3 sm:grid-cols-3">
-                    <label className="grid gap-1 text-sm">
-                      Duration (minutes)
-                      <Input
-                        type="number"
-                        min="1"
-                        max="360"
-                        required
-                        value={catDraft.duration}
-                        onChange={(event) =>
-                          setCatDraft({ ...catDraft, duration: event.target.value })
-                        }
-                      />
-                    </label>
-                    {!catDraft.openImmediately && (
-                      <label className="grid gap-1 text-sm">
-                        Opens at
+              <section
+                id="facilitator-cats"
+                className="space-y-4 rounded-xl border bg-card p-5 shadow-card"
+              >
+                <div>
+                  <h2 className="font-semibold text-brand">CATs</h2>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Create and schedule timed assessments for {activeUnit.unit.title}.
+                  </p>
+                </div>
+                <details className="rounded-lg border bg-muted/20 p-4">
+                  <summary className="cursor-pointer text-sm font-semibold text-brand">
+                    Create a CAT · {questions.length} question{questions.length === 1 ? "" : "s"}
+                  </summary>
+                  <form className="mt-4 space-y-5" onSubmit={(event) => void createCat(event)}>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <label className="grid gap-1.5 text-sm font-medium">
+                        CAT title
                         <Input
-                          type="datetime-local"
                           required
-                          min={getDateTimeLocalMinimum()}
-                          value={catDraft.opensAt}
+                          maxLength={160}
+                          value={catDraft.title}
                           onChange={(event) =>
-                            setCatDraft({ ...catDraft, opensAt: event.target.value })
+                            setCatDraft({ ...catDraft, title: event.target.value })
                           }
                         />
                       </label>
-                    )}
-                    <label className="grid gap-1 text-sm">
-                      Closes at
-                      <Input
-                        type="datetime-local"
-                        required
-                        min={getDateTimeLocalMinimum(
-                          catDraft.openImmediately ? undefined : catDraft.opensAt,
-                        )}
-                        value={catDraft.closesAt}
+                      <label className="grid gap-1.5 text-sm font-medium">
+                        Student download name
+                        <Input
+                          required
+                          maxLength={160}
+                          value={catDraft.name}
+                          onChange={(event) =>
+                            setCatDraft({ ...catDraft, name: event.target.value })
+                          }
+                        />
+                      </label>
+                      <LevelTargetPicker
+                        courseId={activeUnit.unit.course_id}
+                        selectedLevelIds={catDraft.levelIds}
+                        onChange={(levelIds) => setCatDraft({ ...catDraft, levelIds })}
+                        allowedLevelId={activeUnit.unit.level_id}
+                      />
+                      <label className="grid gap-1.5 text-sm font-medium">
+                        Time limit (minutes)
+                        <Input
+                          type="number"
+                          min="1"
+                          max="360"
+                          required
+                          value={catDraft.duration}
+                          onChange={(event) =>
+                            setCatDraft({ ...catDraft, duration: event.target.value })
+                          }
+                        />
+                      </label>
+                    </div>
+                    <details className="rounded-lg border p-3">
+                      <summary className="cursor-pointer text-sm font-medium">
+                        Optional downloadable CAT file
+                      </summary>
+                      <label className="grid gap-1 text-sm font-medium">
+                        <input
+                          ref={catDownloadInputRef}
+                          type="file"
+                          accept=".pdf,.doc,.docx,.odt,.rtf"
+                          className="w-full min-w-0 max-w-full text-xs"
+                          onChange={(event) =>
+                            setCatDraft({
+                              ...catDraft,
+                              downloadFile: event.target.files?.[0] ?? null,
+                            })
+                          }
+                        />
+                        <span className="text-xs text-muted-foreground">
+                          Maximum file size: 50 MB. The timed online CAT remains available
+                          separately.
+                        </span>
+                      </label>
+                    </details>
+                    <label className="grid gap-1.5 text-sm font-medium">
+                      Instructions
+                      <Textarea
+                        rows={2}
+                        value={catDraft.instructions}
                         onChange={(event) =>
-                          setCatDraft({ ...catDraft, closesAt: event.target.value })
+                          setCatDraft({ ...catDraft, instructions: event.target.value })
                         }
                       />
                     </label>
-                  </div>
-                  <CatQuestionImporter onImport={importCatQuestions} />
-                  <CatQuestionPreview
-                    questions={questions.map((question) => ({
-                      prompt: question.prompt,
-                      options: {
-                        A: question.option_a,
-                        B: question.option_b,
-                        C: question.option_c,
-                        D: question.option_d,
-                      },
-                    }))}
-                  />
-                  {questions.map((question, index) => (
-                    <fieldset key={index} className="grid gap-2 rounded-lg border p-3">
-                      <legend className="px-1 text-sm font-semibold">Question {index + 1}</legend>
-                      <Textarea
-                        required
-                        placeholder="Question prompt"
-                        value={question.prompt}
-                        onChange={(event) =>
-                          setQuestions(
-                            questions.map((item, i) =>
-                              i === index ? { ...item, prompt: event.target.value } : item,
-                            ),
-                          )
-                        }
-                      />
-                      <div className="grid gap-2 sm:grid-cols-2">
-                        {(["option_a", "option_b", "option_c", "option_d"] as const).map(
-                          (field) => (
-                            <Input
-                              key={field}
-                              required
-                              placeholder={`Option ${field.slice(-1).toUpperCase()}`}
-                              value={question[field]}
-                              onChange={(event) =>
-                                setQuestions(
-                                  questions.map((item, i) =>
-                                    i === index ? { ...item, [field]: event.target.value } : item,
-                                  ),
-                                )
-                              }
-                            />
-                          ),
-                        )}
-                      </div>
-                      <div className="flex flex-wrap items-end gap-3">
-                        <label className="grid gap-1 text-xs">
-                          Correct option
-                          <select
-                            required
-                            className="h-9 rounded-md border bg-background px-2"
-                            value={question.correct_option}
-                            onChange={(event) =>
-                              setQuestions(
-                                questions.map((item, i) =>
-                                  i === index
-                                    ? { ...item, correct_option: event.target.value }
-                                    : item,
-                                ),
-                              )
-                            }
-                          >
-                            <option value="" disabled>
-                              Select correct answer
-                            </option>
-                            <option>A</option>
-                            <option>B</option>
-                            <option>C</option>
-                            <option>D</option>
-                          </select>
-                        </label>
-                        <label className="grid gap-1 text-xs">
-                          Points
+                    <div className="rounded-lg border p-4">
+                      <h3 className="text-sm font-semibold text-brand">Schedule</h3>
+                      <label className="flex items-center gap-2 text-sm font-medium">
+                        <input
+                          type="checkbox"
+                          checked={catDraft.openImmediately}
+                          onChange={(event) =>
+                            setCatDraft({ ...catDraft, openImmediately: event.target.checked })
+                          }
+                          className="accent-primary"
+                        />
+                        Open immediately when published
+                      </label>
+                      <div className="grid gap-3 sm:grid-cols-3">
+                        <label className="grid gap-1 text-sm">
+                          Duration (minutes)
                           <Input
                             type="number"
                             min="1"
-                            max="100"
-                            className="w-24"
-                            value={question.points}
+                            max="360"
+                            required
+                            value={catDraft.duration}
                             onChange={(event) =>
-                              setQuestions(
-                                questions.map((item, i) =>
-                                  i === index
-                                    ? { ...item, points: Number(event.target.value) }
-                                    : item,
-                                ),
-                              )
+                              setCatDraft({ ...catDraft, duration: event.target.value })
                             }
                           />
                         </label>
-                        {questions.length > 1 && (
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            onClick={() => setQuestions(questions.filter((_, i) => i !== index))}
-                          >
-                            Remove question
-                          </Button>
+                        {!catDraft.openImmediately && (
+                          <label className="grid gap-1 text-sm">
+                            Opens at
+                            <Input
+                              type="datetime-local"
+                              required
+                              min={getDateTimeLocalMinimum()}
+                              value={catDraft.opensAt}
+                              onChange={(event) =>
+                                setCatDraft({ ...catDraft, opensAt: event.target.value })
+                              }
+                            />
+                          </label>
                         )}
+                        <label className="grid gap-1 text-sm">
+                          Closes at
+                          <Input
+                            type="datetime-local"
+                            required
+                            min={getDateTimeLocalMinimum(
+                              catDraft.openImmediately ? undefined : catDraft.opensAt,
+                            )}
+                            value={catDraft.closesAt}
+                            onChange={(event) =>
+                              setCatDraft({ ...catDraft, closesAt: event.target.value })
+                            }
+                          />
+                        </label>
                       </div>
-                    </fieldset>
-                  ))}
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      disabled={questions.length >= 100}
-                      onClick={() => setQuestions([...questions, initialQuestion()])}
-                    >
-                      <Plus className="mr-1 h-4 w-4" />
-                      Add question
-                    </Button>
-                    <Button disabled={busy} loading={busy}>
-                      {busy ? "Creating…" : "Schedule CAT"}
-                    </Button>
-                  </div>
-                </form>
+                    </div>
+                    <details className="rounded-lg border p-4">
+                      <summary className="cursor-pointer text-sm font-semibold text-brand">
+                        Questions and answer key · {questions.length}
+                      </summary>
+                      <div className="mt-4 space-y-3">
+                        <CatQuestionImporter onImport={importCatQuestions} />
+                        <CatQuestionPreview
+                          questions={questions.map((question) => ({
+                            prompt: question.prompt,
+                            options: {
+                              A: question.option_a,
+                              B: question.option_b,
+                              C: question.option_c,
+                              D: question.option_d,
+                            },
+                          }))}
+                        />
+                        {questions.map((question, index) => (
+                          <details key={index} className="rounded-lg border bg-background p-3">
+                            <summary className="cursor-pointer text-sm font-semibold">
+                              Question {index + 1}
+                            </summary>
+                            <fieldset className="mt-3 grid gap-2">
+                              <legend className="px-1 text-sm font-semibold">
+                                Question {index + 1}
+                              </legend>
+                              <Textarea
+                                required
+                                placeholder="Question prompt"
+                                value={question.prompt}
+                                onChange={(event) =>
+                                  setQuestions(
+                                    questions.map((item, i) =>
+                                      i === index ? { ...item, prompt: event.target.value } : item,
+                                    ),
+                                  )
+                                }
+                              />
+                              <div className="grid gap-2 sm:grid-cols-2">
+                                {(["option_a", "option_b", "option_c", "option_d"] as const).map(
+                                  (field) => (
+                                    <Input
+                                      key={field}
+                                      required
+                                      placeholder={`Option ${field.slice(-1).toUpperCase()}`}
+                                      value={question[field]}
+                                      onChange={(event) =>
+                                        setQuestions(
+                                          questions.map((item, i) =>
+                                            i === index
+                                              ? { ...item, [field]: event.target.value }
+                                              : item,
+                                          ),
+                                        )
+                                      }
+                                    />
+                                  ),
+                                )}
+                              </div>
+                              <div className="flex flex-wrap items-end gap-3">
+                                <label className="grid gap-1 text-xs">
+                                  Correct option
+                                  <select
+                                    required
+                                    className="h-9 rounded-md border bg-background px-2"
+                                    value={question.correct_option}
+                                    onChange={(event) =>
+                                      setQuestions(
+                                        questions.map((item, i) =>
+                                          i === index
+                                            ? { ...item, correct_option: event.target.value }
+                                            : item,
+                                        ),
+                                      )
+                                    }
+                                  >
+                                    <option value="" disabled>
+                                      Select correct answer
+                                    </option>
+                                    <option>A</option>
+                                    <option>B</option>
+                                    <option>C</option>
+                                    <option>D</option>
+                                  </select>
+                                </label>
+                                <label className="grid gap-1 text-xs">
+                                  Points
+                                  <Input
+                                    type="number"
+                                    min="1"
+                                    max="100"
+                                    className="w-24"
+                                    value={question.points}
+                                    onChange={(event) =>
+                                      setQuestions(
+                                        questions.map((item, i) =>
+                                          i === index
+                                            ? { ...item, points: Number(event.target.value) }
+                                            : item,
+                                        ),
+                                      )
+                                    }
+                                  />
+                                </label>
+                                {questions.length > 1 && (
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() =>
+                                      setQuestions(questions.filter((_, i) => i !== index))
+                                    }
+                                  >
+                                    Remove question
+                                  </Button>
+                                )}
+                              </div>
+                            </fieldset>
+                          </details>
+                        ))}
+                      </div>
+                    </details>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        disabled={questions.length >= 100}
+                        onClick={() => setQuestions([...questions, initialQuestion()])}
+                      >
+                        <Plus className="mr-1 h-4 w-4" />
+                        Add question
+                      </Button>
+                      <Button disabled={busy} loading={busy}>
+                        {busy ? "Creating…" : "Schedule CAT"}
+                      </Button>
+                    </div>
+                  </form>
+                </details>
               </section>
             )}
+            {(permissions.can_manage_cats || permissions.can_manage_results) &&
+              activeSection === "facilitator-cat-performance" && (
+                <section
+                  id="facilitator-cat-performance"
+                  className="space-y-4 rounded-xl border bg-card p-5 shadow-card"
+                >
+                  <div>
+                    <h2 className="font-semibold text-brand">CAT performance</h2>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Review attempts and marks for students taking CATs in {activeUnit.unit.title}.
+                    </p>
+                  </div>
+                  <FacilitatorCatPerformance unitId={activeUnit.unit_id} />
+                </section>
+              )}
             {permissions.can_manage_materials && activeSection === "facilitator-materials" && (
               <section
                 id="facilitator-materials"

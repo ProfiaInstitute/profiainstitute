@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   Clock3,
   ChevronDown,
+  ExternalLink,
   GraduationCap,
   MapPin,
   MessageCircle,
@@ -877,6 +878,19 @@ export function ArticlesPage() {
       return data;
     },
   });
+  const feedsQuery = useQuery({
+    queryKey: ["regulatory-feeds", "public-updates"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("regulatory_source_updates")
+        .select("id,source_name,title,article_url,summary,published_at,fetched_at")
+        .order("published_at", { ascending: false, nullsFirst: false })
+        .order("fetched_at", { ascending: false })
+        .limit(30);
+      if (error) throw error;
+      return data;
+    },
+  });
   return (
     <>
       <PageHero
@@ -949,6 +963,61 @@ export function ArticlesPage() {
             text="News from Profia Institute will be shared here."
           />
         )}
+      </section>
+      <section className="bg-muted/40 py-12">
+        <div className="container-site">
+          <SectionTitle
+            title="Official feeds"
+            subtitle="Recent updates fetched from official KASNEB, TVETA, HELB, and ICPAK sources. Select a headline to read the original on its source website."
+          />
+          {feedsQuery.isLoading ? (
+            <CardGridSkeleton n={3} />
+          ) : feedsQuery.error ? (
+            <div
+              role="status"
+              className="rounded-xl border bg-card p-5 text-sm text-muted-foreground"
+            >
+              Official feed updates are temporarily unavailable.
+            </div>
+          ) : feedsQuery.data?.length ? (
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {feedsQuery.data.map((item) => (
+                <article key={item.id} className="rounded-xl border bg-card p-5 shadow-card">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">
+                      {item.source_name}
+                    </span>
+                    <time className="text-xs text-muted-foreground">
+                      {new Date(item.published_at ?? item.fetched_at).toLocaleDateString("en-KE", {
+                        dateStyle: "medium",
+                      })}
+                    </time>
+                  </div>
+                  <h3 className="mt-3 font-semibold leading-snug text-brand">{item.title}</h3>
+                  {item.summary && (
+                    <p className="mt-2 line-clamp-4 text-sm leading-6 text-muted-foreground">
+                      {item.summary}
+                    </p>
+                  )}
+                  <a
+                    className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-primary hover:underline"
+                    href={item.article_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    Read on {item.source_name}
+                    <ExternalLink aria-hidden="true" className="h-3.5 w-3.5" />
+                  </a>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <EmptyState
+              title="No official feed updates yet"
+              text="Updates fetched by the Institute will appear here."
+            />
+          )}
+        </div>
       </section>
     </>
   );
