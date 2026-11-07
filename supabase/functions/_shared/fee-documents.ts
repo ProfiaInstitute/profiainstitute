@@ -1,4 +1,4 @@
-import { PDFDocument, rgb, StandardFonts } from "https://esm.sh/pdf-lib@1.17.1";
+import { degrees, PDFDocument, rgb, StandardFonts } from "https://esm.sh/pdf-lib@1.17.1";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { loadPayHeroCredentials, type PayHeroCredentials } from "./payhero.ts";
 import { officialFaviconBase64 } from "./receipt-brand.ts";
@@ -42,7 +42,11 @@ type Payment = {
 
 type AdminClient = ReturnType<typeof createClient>;
 
-export async function createFeeReceipt(supabase: AdminClient, paymentId: string) {
+export async function createFeeReceipt(
+  supabase: AdminClient,
+  paymentId: string,
+  options: { notifyStudent?: boolean } = {},
+) {
   const { data: payment, error: paymentError } = await supabase
     .from("payments")
     .select("id,student_id,amount,method,provider,reference,paid_at,status,raw")
@@ -134,7 +138,7 @@ export async function createFeeReceipt(supabase: AdminClient, paymentId: string)
   if (documentError)
     throw new Error(`Could not register payment receipt: ${documentError.message}`);
 
-  if (student.user_id) {
+  if (options.notifyStudent !== false && student.user_id) {
     const reference = mpesaReference ? ` M-Pesa reference: ${mpesaReference}.` : "";
     const { error: notificationError } = await supabase.from("notifications").upsert(
       {
@@ -291,6 +295,7 @@ async function buildFeePdf({
   const brand = rgb(0.408, 0.035, 0.082);
   const brandDeep = rgb(0.278, 0.024, 0.051);
   const accent = rgb(0.92, 0.31, 0.13);
+  const maroon = brand;
   const cream = rgb(0.99, 0.975, 0.945);
   const muted = rgb(0.42, 0.36, 0.36);
   const black = rgb(0.16, 0.13, 0.14);
@@ -437,8 +442,283 @@ async function buildFeePdf({
     y -= 19;
   };
 
-  drawHeader();
-  if (type !== "template") {
+  const drawReceiptPage = (receiptPayment: Payment & { receipt_reference?: string | null }) => {
+    const studentName = [student.first_name, student.middle_name, student.last_name]
+      .filter(Boolean)
+      .join(" ");
+    const receiptNumber =
+      receiptPayment.receipt_reference ?? receiptPayment.reference ?? receiptPayment.id;
+    const transactionReference =
+      receiptPayment.receipt_reference ??
+      (receiptPayment.provider === "payhero" ? "Not available" : (receiptPayment.reference ?? "—"));
+    const billed = fees.reduce((sum, fee) => sum + Number(fee.amount), 0);
+    const chronologicalPayments = [...payments].sort(
+      (left, right) =>
+        new Date(left.paid_at).getTime() - new Date(right.paid_at).getTime() ||
+        left.id.localeCompare(right.id),
+    );
+    const paymentIndex = chronologicalPayments.findIndex((item) => item.id === receiptPayment.id);
+    if (paymentIndex < 0)
+      throw new Error("The confirmed payment is missing from its account ledger.");
+    const paidAtReceipt = chronologicalPayments
+      .slice(0, paymentIndex + 1)
+      .reduce((sum, item) => sum + Number(item.amount), 0);
+    const balanceAfterPayment = Math.max(0, billed - paidAtReceipt);
+    const method = receiptPayment.provider === "payhero" ? "M-Pesa" : receiptPayment.method;
+    const paymentDate = formatSchoolDateTime(new Date(receiptPayment.paid_at));
+    const institutionContacts = [
+      documentSettings.address,
+      documentSettings.phones.join(" / "),
+      documentSettings.email,
+      documentSettings.websiteUrl || officialWebsiteUrl,
+    ]
+      .map((value) => safeText(value.trim()))
+      .filter(Boolean)
+      .join("  |  ");
+
+    page.drawRectangle({ x: 0, y: 730, width: pageSize[0], height: 112, color: brand });
+    page.drawRectangle({ x: 0, y: 838, width: pageSize[0], height: 4, color: brandDeep });
+    page.drawRectangle({ x: 0, y: 730, width: pageSize[0], height: 4, color: accent });
+    if (logo) {
+      const logoSize = 46;
+      const scale = Math.min(logoSize / logo.width, logoSize / logo.height);
+      page.drawRectangle({ x: 38, y: 762, width: 54, height: 54, color: cream });
+      page.drawImage(logo, {
+        x: 42 + (logoSize - logo.width * scale) / 2,
+        y: 766 + (logoSize - logo.height * scale) / 2,
+        width: logo.width * scale,
+        height: logo.height * scale,
+      });
+    }
+    page.drawText(safeText(documentSettings.institutionName), {
+      x: 108,
+      y: 805,
+      size: 16,
+      font: bold,
+      color: rgb(1, 1, 1),
+    });
+    page.drawText("OFFICIAL FEE PAYMENT RECEIPT", {
+      x: 108,
+      y: 785,
+      size: 8,
+      font: bold,
+      color: cream,
+    });
+    for (const [index, contactLine] of wrapText(institutionContacts, font, 6.5, 365)
+      .slice(0, 2)
+      .entries()) {
+      page.drawText(contactLine, {
+        x: 108,
+        y: 767 - index * 10,
+        size: 6.5,
+        font,
+        color: cream,
+      });
+    }
+    page.drawEllipse({
+      x: 515,
+      y: 790,
+      xScale: 34,
+      yScale: 27,
+      borderColor: accent,
+      borderWidth: 1.5,
+    });
+    page.drawEllipse({
+      x: 515,
+      y: 790,
+      xScale: 29,
+      yScale: 22,
+      borderColor: cream,
+      borderWidth: 0.7,
+    });
+    page.drawText("PAID", {
+      x: 500,
+      y: 789,
+      size: 13,
+      font: bold,
+      color: cream,
+      rotate: degrees(-7),
+    });
+    page.drawText("VERIFIED", { x: 500, y: 776, size: 5, font, color: cream });
+
+    page.drawText("FEE PAYMENT RECEIPT", {
+      x: 42,
+      y: 700,
+      size: 17,
+      font: bold,
+      color: brand,
+    });
+    page.drawText(`Receipt no. ${safeText(receiptNumber)}`, {
+      x: 42,
+      y: 679,
+      size: 8,
+      font,
+      color: muted,
+    });
+    const dateLabel = `Payment date: ${safeText(paymentDate)}`;
+    const dateWidth = font.widthOfTextAtSize(dateLabel, 8);
+    page.drawText(dateLabel, {
+      x: pageSize[0] - 42 - dateWidth,
+      y: 679,
+      size: 8,
+      font,
+      color: muted,
+    });
+
+    page.drawRectangle({
+      x: 42,
+      y: 555,
+      width: 511,
+      height: 98,
+      color: cream,
+      borderColor: rgb(0.9, 0.86, 0.82),
+      borderWidth: 0.7,
+    });
+    page.drawText("STUDENT", { x: 58, y: 633, size: 7, font: bold, color: muted });
+    page.drawText(safeText(studentName), { x: 58, y: 614, size: 12, font: bold, color: black });
+    page.drawText("ADMISSION NUMBER", { x: 323, y: 633, size: 7, font: bold, color: muted });
+    page.drawText(safeText(student.student_number), {
+      x: 323,
+      y: 614,
+      size: 10,
+      font: bold,
+      color: black,
+    });
+    page.drawText("EMAIL", { x: 58, y: 589, size: 7, font: bold, color: muted });
+    page.drawText(safeText(student.email || "—"), {
+      x: 58,
+      y: 571,
+      size: 9,
+      font,
+      color: black,
+    });
+    page.drawText("PAYMENT METHOD", { x: 323, y: 589, size: 7, font: bold, color: muted });
+    page.drawText(safeText(method), { x: 323, y: 571, size: 9, font, color: black });
+
+    page.drawText("PAYMENT DETAILS", { x: 42, y: 527, size: 10, font: bold, color: brand });
+    page.drawRectangle({ x: 42, y: 492, width: 511, height: 25, color: rgb(0.96, 0.94, 0.92) });
+    page.drawText("DESCRIPTION", { x: 56, y: 501, size: 7, font: bold, color: muted });
+    page.drawText("TRANSACTION REFERENCE", { x: 254, y: 501, size: 7, font: bold, color: muted });
+    page.drawText("AMOUNT (KES)", { x: 455, y: 501, size: 7, font: bold, color: muted });
+    page.drawText("School fees payment", { x: 56, y: 470, size: 9, font, color: black });
+    page.drawText(safeText(transactionReference).slice(0, 32), {
+      x: 254,
+      y: 470,
+      size: 8,
+      font,
+      color: black,
+    });
+    const paymentAmount = formatAmount(receiptPayment.amount);
+    const paymentAmountWidth = bold.widthOfTextAtSize(paymentAmount, 10);
+    page.drawText(paymentAmount, {
+      x: 539 - paymentAmountWidth,
+      y: 468,
+      size: 10,
+      font: bold,
+      color: black,
+    });
+    page.drawLine({
+      start: { x: 42, y: 451 },
+      end: { x: 553, y: 451 },
+      thickness: 0.7,
+      color: rgb(0.86, 0.82, 0.79),
+    });
+
+    page.drawRectangle({ x: 42, y: 394, width: 511, height: 42, color: brand });
+    page.drawText("TOTAL AMOUNT RECEIVED", {
+      x: 58,
+      y: 410,
+      size: 8,
+      font: bold,
+      color: cream,
+    });
+    const amountLabel = `KES ${paymentAmount}`;
+    const amountLabelWidth = bold.widthOfTextAtSize(amountLabel, 15);
+    page.drawText(amountLabel, {
+      x: 537 - amountLabelWidth,
+      y: 406,
+      size: 15,
+      font: bold,
+      color: rgb(1, 1, 1),
+    });
+    page.drawText(safeText(amountInWords(receiptPayment.amount)), {
+      x: 58,
+      y: 398,
+      size: 6,
+      font,
+      color: cream,
+    });
+
+    page.drawText("ACCOUNT SUMMARY AFTER THIS PAYMENT", {
+      x: 42,
+      y: 369,
+      size: 9,
+      font: bold,
+      color: brand,
+    });
+    const summary = [
+      ["TOTAL FEES BILLED", `KES ${formatAmount(billed)}`],
+      ["PAID TO DATE", `KES ${formatAmount(paidAtReceipt)}`],
+      [
+        "BALANCE AFTER PAYMENT",
+        balanceAfterPayment === 0 ? "PAID IN FULL" : `KES ${formatAmount(balanceAfterPayment)}`,
+      ],
+    ];
+    summary.forEach(([label, value], index) => {
+      const x = 42 + index * 171;
+      page.drawRectangle({
+        x,
+        y: 291,
+        width: 163,
+        height: 62,
+        color: index === 2 ? rgb(0.98, 0.95, 0.93) : rgb(0.97, 0.97, 0.96),
+        borderColor: rgb(0.9, 0.86, 0.82),
+        borderWidth: 0.6,
+      });
+      page.drawText(label, { x: x + 10, y: 333, size: 6, font: bold, color: muted });
+      const summaryValue = safeText(value);
+      const valueFontSize = bold.widthOfTextAtSize(summaryValue, 9) > 143 ? 7 : 9;
+      page.drawText(summaryValue, {
+        x: x + 10,
+        y: 312,
+        size: valueFontSize,
+        font: bold,
+        color: index === 2 ? brand : black,
+      });
+    });
+
+    page.drawLine({
+      start: { x: 42, y: 259 },
+      end: { x: 553, y: 259 },
+      thickness: 0.7,
+      color: rgb(0.86, 0.82, 0.79),
+    });
+    page.drawText("Payment received and recorded in the Profia Institute fee ledger.", {
+      x: 42,
+      y: 236,
+      size: 9,
+      font: bold,
+      color: black,
+    });
+    page.drawText(
+      "This is an electronically generated receipt. Contact the institute if any detail needs correction.",
+      { x: 42, y: 219, size: 8, font, color: muted },
+    );
+    page.drawText(`Generated ${formatSchoolDateTime(generatedAt)} EAT`, {
+      x: 42,
+      y: 198,
+      size: 7,
+      font,
+      color: muted,
+    });
+  };
+
+  if (type === "receipt" && payment) {
+    drawReceiptPage(payment);
+  } else {
+    drawHeader();
+  }
+  if (type !== "template" && type !== "receipt") {
     const studentName = [student.first_name, student.middle_name, student.last_name]
       .filter(Boolean)
       .join(" ");
@@ -464,45 +744,7 @@ async function buildFeePdf({
     section("Account balance");
     line("Total paid", "[Total paid]");
     line("Outstanding balance", "[Balance]");
-  } else if (type === "receipt" && payment) {
-    line("Payment date", formatSchoolDateTime(new Date(payment.paid_at)));
-    line("Receipt generated", formatSchoolDateTime(generatedAt));
-    const transactionReference =
-      payment.receipt_reference ??
-      (payment.provider === "payhero" ? "Not available" : (payment.reference ?? payment.id));
-    line(
-      payment.provider === "payhero" ? "M-Pesa transaction reference" : "Transaction reference",
-      transactionReference,
-    );
-    line("Payment method", payment.provider === "payhero" ? "M-Pesa" : payment.method);
-    section("Payment details");
-    tableRow("Description", "Amount (KES)", true);
-    tableRow("School fees payment", formatAmount(payment.amount));
-    y -= 5;
-    section("Account summary");
-    const billed = fees.reduce((sum, fee) => sum + Number(fee.amount), 0);
-    const paid = payments.reduce((sum, item) => sum + Number(item.amount), 0);
-    const chronologicalPayments = [...payments].sort(
-      (left, right) =>
-        new Date(left.paid_at).getTime() - new Date(right.paid_at).getTime() ||
-        left.id.localeCompare(right.id),
-    );
-    const paymentIndex = chronologicalPayments.findIndex((item) => item.id === payment.id);
-    if (paymentIndex < 0)
-      throw new Error("The confirmed payment is missing from its account ledger.");
-    const paidAtReceipt = chronologicalPayments
-      .slice(0, paymentIndex + 1)
-      .reduce((sum, item) => sum + Number(item.amount), 0);
-    const remainingBalance = Math.max(0, billed - paidAtReceipt);
-    line("Total billed", `KES ${formatAmount(billed)}`);
-    line("Total paid", `KES ${formatAmount(paid)}`);
-    line(
-      "Balance after payment",
-      remainingBalance === 0 ? "PAID IN FULL" : `KES ${formatAmount(remainingBalance)}`,
-    );
-    line("Payment status", "PAID");
-    line("Amount paid", `KES ${formatAmount(payment.amount)}`);
-  } else {
+  } else if (type !== "receipt") {
     line(
       "Statement generated",
       generatedAt.toLocaleString("en-KE", { timeZone: "Africa/Nairobi" }),
@@ -581,6 +823,73 @@ function formatSchoolDateTime(value: Date) {
     timeStyle: "short",
     timeZone: "Africa/Nairobi",
   }).format(value);
+}
+
+function amountInWords(value: number): string {
+  const totalCents = Math.round(Math.abs(value) * 100);
+  const shillings = Math.floor(totalCents / 100);
+  const cents = totalCents % 100;
+  const shillingText = integerInWords(shillings);
+  const centsText = cents ? ` and ${integerInWords(cents)} cents` : "";
+  return `Kenya shillings ${shillingText}${centsText} only`;
+}
+
+function integerInWords(value: number): string {
+  const units = [
+    "zero",
+    "one",
+    "two",
+    "three",
+    "four",
+    "five",
+    "six",
+    "seven",
+    "eight",
+    "nine",
+    "ten",
+    "eleven",
+    "twelve",
+    "thirteen",
+    "fourteen",
+    "fifteen",
+    "sixteen",
+    "seventeen",
+    "eighteen",
+    "nineteen",
+  ];
+  const tens = [
+    "",
+    "",
+    "twenty",
+    "thirty",
+    "forty",
+    "fifty",
+    "sixty",
+    "seventy",
+    "eighty",
+    "ninety",
+  ];
+  if (value < 20) return units[value] ?? String(value);
+  if (value < 100) {
+    const remainder = value % 10;
+    return `${tens[Math.floor(value / 10)]}${remainder ? `-${units[remainder]}` : ""}`;
+  }
+  if (value < 1_000) {
+    const remainder = value % 100;
+    return `${integerInWords(Math.floor(value / 100))} hundred${remainder ? ` and ${integerInWords(remainder)}` : ""}`;
+  }
+  for (const [divisor, label] of [
+    [1_000_000_000, "billion"],
+    [1_000_000, "million"],
+    [1_000, "thousand"],
+  ] as const) {
+    if (value >= divisor) {
+      const remainder = value % divisor;
+      const separator = divisor === 1_000 && remainder > 0 && remainder < 100 ? " and " : " ";
+      return `${integerInWords(Math.floor(value / divisor))} ${label}${remainder ? `${separator}${integerInWords(remainder)}` : ""}`;
+    }
+  }
+  return String(value);
 }
 
 async function loadPdfLogo(

@@ -39,6 +39,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { LevelTargetPicker } from "@/components/academics/LevelTargetPicker";
+import { AdmissionLetterDownload } from "@/components/academics/AdmissionLetterDownload";
+import { EmailFileShareDialog } from "@/components/admin/EmailFileShareDialog";
 import { ProfilePhotoAvatar } from "@/components/profile/ProfilePhotoAvatar";
 import { ManagementPanel } from "@/components/admin/ManagementPanel";
 import { FaqManagementPanel } from "@/components/admin/FaqManagementPanel";
@@ -1802,6 +1804,13 @@ function StudentsPanel({
                               {status.replaceAll("_", " ")}
                             </Badge>
                           ))}
+                          {(canViewDocuments || canViewAcademicRecords) &&
+                            course.statuses.includes("active") && (
+                              <AdmissionLetterDownload
+                                studentId={student.id}
+                                courseId={course.course_id}
+                              />
+                            )}
                         </li>
                       ))}
                     </ul>
@@ -1836,9 +1845,12 @@ function StudentsPanel({
               )}
               {canViewDocuments && (
                 <div className="mt-3 border-t pt-3">
-                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Student documents
-                  </p>
+                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Student documents
+                    </p>
+                    <EmailFileShareDialog studentId={student.id} studentEmail={student.email} />
+                  </div>
                   {enrolledStudentDocumentsQuery.isLoading ? (
                     <p className="text-xs text-muted-foreground">Loading student documents…</p>
                   ) : enrolledStudentDocumentsQuery.error ? (
@@ -3947,7 +3959,7 @@ function DirectoryCreateForm({
         needsStudents
           ? supabase
               .from("students")
-              .select("id,student_number,first_name,last_name")
+              .select("id,student_number,first_name,last_name,course_id,level_id")
               .order("last_name")
           : Promise.resolve({ data: [], error: null }),
         needsCourses
@@ -3965,6 +3977,7 @@ function DirectoryCreateForm({
     description: "",
     course_id: "",
     student_id: "",
+    unit_id: "",
     code: "",
     semester: "",
     score: "",
@@ -3974,6 +3987,59 @@ function DirectoryCreateForm({
     due_date: "",
     url: "",
     file: null as File | null,
+  });
+  const assignmentUnitsQuery = useQuery({
+    queryKey: ["admin", "assignment-unit-options", values.course_id],
+    enabled: section === "assignments" && Boolean(values.course_id),
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("course_units")
+        .select("id,title,code,level_id")
+        .eq("course_id", values.course_id)
+        .order("sort_order");
+      if (error) throw error;
+      return data;
+    },
+  });
+  const resultUnitsQuery = useQuery({
+    queryKey: ["admin", "result-unit-options", values.student_id],
+    enabled: section === "results" && Boolean(values.student_id),
+    queryFn: async () => {
+      const student = optionsQuery.data?.students.find((item) => item.id === values.student_id);
+      if (!student) return [];
+      const [enrollments, onlineEnrollments] = await Promise.all([
+        supabase
+          .from("enrollments")
+          .select("course_id,level_id")
+          .eq("student_id", student.id)
+          .eq("status", "active"),
+        supabase
+          .from("online_course_enrollments")
+          .select("course_id,level_id")
+          .eq("student_id", student.id)
+          .eq("status", "active"),
+      ]);
+      if (enrollments.error) throw enrollments.error;
+      if (onlineEnrollments.error) throw onlineEnrollments.error;
+      const activeEnrollments = [...(enrollments.data ?? []), ...(onlineEnrollments.data ?? [])];
+      const courseIds = [...new Set(activeEnrollments.map((enrollment) => enrollment.course_id))];
+      if (!courseIds.length) return [];
+      const { data, error } = await supabase
+        .from("course_units")
+        .select("id,title,code,course_id,level_id")
+        .in("course_id", courseIds)
+        .order("sort_order");
+      if (error) throw error;
+      return (data ?? []).filter((unit) =>
+        activeEnrollments.some((enrollment) => {
+          if (enrollment.course_id !== unit.course_id) return false;
+          const levelId =
+            enrollment.level_id ??
+            (student.course_id === enrollment.course_id ? student.level_id : null);
+          return unit.level_id === null || unit.level_id === levelId;
+        }),
+      );
+    },
   });
   const [selectedLevelIds, setSelectedLevelIds] = useState<string[]>([]);
   const formTitle: Partial<Record<DashboardSection, string>> = {
@@ -3997,10 +4063,25 @@ function DirectoryCreateForm({
         toast.error("Set a valid assignment submission deadline.");
         return;
       }
+      if (!values.unit_id) {
+        toast.error("Select the course unit this assignment is for.");
+        return;
+      }
       if (!selectedLevelIds.length) {
         toast.error("Select at least one course level for this assignment.");
         return;
       }
+    }
+    if (section === "results" && !values.unit_id) {
+      toast.error("Select an enrolled course unit for this result.");
+      return;
+    }
+    if (
+      section === "results" &&
+      !resultUnitsQuery.data?.some((unit) => unit.id === values.unit_id)
+    ) {
+      toast.error("Choose a course unit from the student's active enrollment.");
+      return;
     }
     const fileType = values.file ? supportedContentType(values.file) : null;
     if (values.file && (!fileType || values.file.size > MAX_CONTENT_UPLOAD_SIZE)) {
@@ -4057,9 +4138,15 @@ function DirectoryCreateForm({
         break;
       }
       case "results": {
+        const unit = resultUnitsQuery.data?.find((item) => item.id === values.unit_id);
+        if (!unit) {
+          error = { message: "Select a valid unit for this student's active enrollment." };
+          break;
+        }
         const result = await supabase.from("results").insert({
           student_id: values.student_id,
-          unit_name: values.title.trim(),
+          unit_id: unit.id,
+          unit_name: unit.title,
           score: values.score === "" ? null : Number(values.score),
           grade: values.grade.trim() || null,
           semester: values.semester.trim() || null,
@@ -4097,6 +4184,7 @@ function DirectoryCreateForm({
       case "assignments": {
         const result = await supabase.from("assignments").insert({
           course_id: values.course_id,
+          unit_id: values.unit_id,
           title: values.title.trim(),
           instructions: values.description.trim() || null,
           due_date: values.due_date ? new Date(values.due_date).toISOString() : null,
@@ -4129,6 +4217,7 @@ function DirectoryCreateForm({
         description: "",
         course_id: "",
         student_id: "",
+        unit_id: "",
         code: "",
         semester: "",
         score: "",
@@ -4157,7 +4246,6 @@ function DirectoryCreateForm({
       <form className="mt-4 grid gap-3 sm:grid-cols-2" onSubmit={submit}>
         {(section === "schools" ||
           section === "academics" ||
-          section === "results" ||
           section === "fees" ||
           section === "materials" ||
           section === "assignments") && (
@@ -4166,11 +4254,9 @@ function DirectoryCreateForm({
             placeholder={
               section === "schools"
                 ? "School name"
-                : section === "results"
-                  ? "Unit name"
-                  : section === "fees"
-                    ? "Fee description"
-                    : "Title"
+                : section === "fees"
+                  ? "Fee description"
+                  : "Title"
             }
             value={values.title}
             onChange={(e) => setValues({ ...values, title: e.target.value })}
@@ -4226,7 +4312,13 @@ function DirectoryCreateForm({
             required
             className={selectClass}
             value={values.student_id}
-            onChange={(e) => setValues({ ...values, student_id: e.target.value })}
+            onChange={(e) =>
+              setValues({
+                ...values,
+                student_id: e.target.value,
+                unit_id: "",
+              })
+            }
           >
             <option value="">Select student</option>
             {optionsQuery.data?.students.map((student) => (
@@ -4238,6 +4330,35 @@ function DirectoryCreateForm({
         )}
         {section === "results" && (
           <>
+            <select
+              required
+              className={selectClass}
+              value={values.unit_id}
+              onChange={(e) => {
+                const unit = resultUnitsQuery.data?.find((item) => item.id === e.target.value);
+                setValues({
+                  ...values,
+                  unit_id: e.target.value,
+                  title: unit?.title ?? "",
+                });
+              }}
+              disabled={!values.student_id || resultUnitsQuery.isLoading}
+            >
+              <option value="">
+                {resultUnitsQuery.isLoading ? "Loading enrolled units…" : "Select enrolled unit"}
+              </option>
+              {resultUnitsQuery.data?.map((unit) => (
+                <option key={unit.id} value={unit.id}>
+                  {unit.code ? `${unit.code} · ` : ""}
+                  {unit.title}
+                </option>
+              ))}
+            </select>
+            {resultUnitsQuery.error && (
+              <p role="alert" className="text-sm text-destructive sm:col-span-2">
+                Could not load the student's enrolled units: {resultUnitsQuery.error.message}
+              </p>
+            )}
             <Input
               type="number"
               min="0"
@@ -4295,7 +4416,7 @@ function DirectoryCreateForm({
               className={selectClass}
               value={values.course_id}
               onChange={(e) => {
-                setValues({ ...values, course_id: e.target.value });
+                setValues({ ...values, course_id: e.target.value, unit_id: "" });
                 setSelectedLevelIds([]);
               }}
             >
@@ -4306,6 +4427,36 @@ function DirectoryCreateForm({
                 </option>
               ))}
             </select>
+            {section === "assignments" && (
+              <select
+                required
+                className={selectClass}
+                value={values.unit_id}
+                onChange={(e) => {
+                  const unit = assignmentUnitsQuery.data?.find(
+                    (item) => item.id === e.target.value,
+                  );
+                  setValues({ ...values, unit_id: e.target.value });
+                  setSelectedLevelIds(unit?.level_id ? [unit.level_id] : []);
+                }}
+                disabled={!values.course_id || assignmentUnitsQuery.isLoading}
+              >
+                <option value="">
+                  {assignmentUnitsQuery.isLoading ? "Loading units…" : "Select course unit"}
+                </option>
+                {assignmentUnitsQuery.data?.map((unit) => (
+                  <option key={unit.id} value={unit.id}>
+                    {unit.code ? `${unit.code} · ` : ""}
+                    {unit.title}
+                  </option>
+                ))}
+              </select>
+            )}
+            {section === "assignments" && assignmentUnitsQuery.error && (
+              <p role="alert" className="text-sm text-destructive sm:col-span-2">
+                Could not load course units: {assignmentUnitsQuery.error.message}
+              </p>
+            )}
             <Textarea
               className="sm:col-span-2"
               placeholder={section === "assignments" ? "Instructions" : "Description"}
@@ -4335,6 +4486,10 @@ function DirectoryCreateForm({
               courseId={values.course_id}
               selectedLevelIds={selectedLevelIds}
               onChange={setSelectedLevelIds}
+              allowedLevelId={
+                assignmentUnitsQuery.data?.find((unit) => unit.id === values.unit_id)?.level_id ??
+                null
+              }
             />
             <label className="space-y-1 text-sm font-medium sm:col-span-2">
               Submission deadline (local date and time)
@@ -4352,7 +4507,15 @@ function DirectoryCreateForm({
             />
           </>
         )}
-        <Button className="sm:col-span-2" disabled={saving || optionsQuery.isLoading}>
+        <Button
+          className="sm:col-span-2"
+          disabled={
+            saving ||
+            optionsQuery.isLoading ||
+            (section === "results" && resultUnitsQuery.isLoading) ||
+            (section === "assignments" && assignmentUnitsQuery.isLoading)
+          }
+        >
           {saving ? "Saving…" : "Save record"}
         </Button>
       </form>
