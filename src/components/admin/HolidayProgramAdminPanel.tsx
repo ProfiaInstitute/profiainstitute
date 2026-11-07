@@ -127,7 +127,6 @@ export function HolidayProgramAdminPanel() {
       id?: string;
       title: string;
       description: string;
-      duration: string;
       active?: boolean;
     }) => {
       if (!track) throw new Error("Select a program track first.");
@@ -411,7 +410,6 @@ export function HolidayProgramAdminPanel() {
                   ...(moduleDraft ? { id: moduleDraft.id } : {}),
                   title: String(data.get("module-title") ?? "").trim(),
                   description: String(data.get("module-description") ?? "").trim(),
-                  duration: String(data.get("module-duration") ?? "").trim(),
                 })
                 .then(
                   () => form.reset(),
@@ -422,19 +420,12 @@ export function HolidayProgramAdminPanel() {
             <h2 className="font-semibold text-brand">
               {trackKey === "kids" ? "Kids modules" : "Program modules"}
             </h2>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Input
-                name="module-title"
-                required
-                placeholder="Module name"
-                defaultValue={moduleDraft?.title ?? ""}
-              />
-              <Input
-                name="module-duration"
-                placeholder="Duration (e.g. 1 week)"
-                defaultValue={moduleDraft?.duration ?? ""}
-              />
-            </div>
+            <Input
+              name="module-title"
+              required
+              placeholder="Module name"
+              defaultValue={moduleDraft?.title ?? ""}
+            />
             <Textarea
               name="module-description"
               placeholder="What participants will learn"
@@ -458,7 +449,7 @@ export function HolidayProgramAdminPanel() {
                       {module.title} {!module.active && <Badge variant="secondary">Inactive</Badge>}
                     </p>
                     <p className="text-muted-foreground">
-                      {module.duration || module.description || "No details added."}
+                      {module.description || "No details added."}
                     </p>
                   </div>
                   <div className="flex shrink-0 gap-2">
@@ -479,7 +470,6 @@ export function HolidayProgramAdminPanel() {
                           id: module.id,
                           title: module.title,
                           description: module.description,
-                          duration: module.duration,
                           active: !module.active,
                         })
                       }

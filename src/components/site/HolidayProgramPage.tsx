@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 import type { Json, Tables } from "@/integrations/supabase/types";
+import { hasValidHolidayModuleSelection } from "@/lib/holiday-program";
 import { formatKES } from "@/lib/site";
 
 type Track = Tables<"holiday_program_tracks">;
@@ -52,6 +53,7 @@ export function HolidayProgramPage({
           .eq("track_id", track.id)
           .eq("status", "open")
           .gte("ends_on", nairobiDate())
+          .or(`registration_deadline.is.null,registration_deadline.gte.${nairobiDate()}`)
           .order("starts_on"),
         supabase
           .from("holiday_program_modules")
@@ -109,8 +111,12 @@ export function HolidayProgramPage({
 
   function submitApplication(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!track || !selectedPeriod || !availableModules.length || !moduleIds.length) {
-      toast.error("Choose an open period and at least one available module.");
+    if (
+      !track ||
+      !selectedPeriod ||
+      !hasValidHolidayModuleSelection(availableModules.length, moduleIds.length)
+    ) {
+      toast.error("Choose an open period and at least one available module, if offered.");
       return;
     }
     const formData = new FormData(event.currentTarget);
@@ -365,12 +371,6 @@ export function HolidayProgramPage({
                               />
                               <span>
                                 <span className="font-semibold">{module.title}</span>
-                                {module.duration && (
-                                  <span className="text-muted-foreground">
-                                    {" "}
-                                    · {module.duration}
-                                  </span>
-                                )}
                                 {module.description && (
                                   <span className="mt-1 block text-muted-foreground">
                                     {module.description}
@@ -382,7 +382,7 @@ export function HolidayProgramPage({
                         ) : (
                           <p className="text-sm text-muted-foreground">
                             {selectedPeriod
-                              ? "Modules for this period will be posted soon."
+                              ? "No modules are listed for this period yet. You can still submit your application."
                               : "Choose a period to see its modules."}
                           </p>
                         )}
@@ -456,8 +456,7 @@ export function HolidayProgramPage({
                         disabled={
                           submitMutation.isPending ||
                           periods.length === 0 ||
-                          !availableModules.length ||
-                          !moduleIds.length
+                          !hasValidHolidayModuleSelection(availableModules.length, moduleIds.length)
                         }
                       >
                         {submitMutation.isPending ? "Submitting…" : "Submit application"}
