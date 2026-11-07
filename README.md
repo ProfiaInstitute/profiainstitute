@@ -2548,6 +2548,15 @@ their first CAT. The number is saved to the student record and reused for later
 CATs. Academic admins can export submitted CAT results to Excel with KASNEB
 number, student name, course, level, and marks.
 
+### Holiday program applications
+
+Apply `drizzle/migrations/0047_holiday_program.sql` and, after the intervening
+migrations, `drizzle/migrations/0054_holiday_applications_without_modules.sql`.
+Published tracks accept applications during open, in-date registration periods.
+Applicants select a module when one is offered; they can still apply when a
+period has no active modules assigned. Module duration is not collected when
+creating holiday program modules.
+
 ### Student profile photos
 
 Apply `drizzle/migrations/0024_student_profile_photos.sql` after the existing
