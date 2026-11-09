@@ -2547,6 +2547,16 @@ migrations to collect each student's KASNEB registration number once, before
 their first CAT. The number is saved to the student record and reused for later
 CATs. Academic admins can export submitted CAT results to Excel with KASNEB
 number, student name, course, level, and marks.
+Apply `drizzle/migrations/0056_admin_edit_cat_assessments.sql` to enable CAT
+editing for academic admins and Super Admins. If a student has started an
+attempt, questions, answer keys, schedule, and time limit are locked; descriptive
+details and downloadable files can still be updated.
+Both academic admins and facilitators with CAT permissions can import numbered
+questions from Word, text-based PDF, or plain text, then import a separate
+numbered marking scheme. Marking-scheme entries accept forms such as `1.A`,
+`1 a`, and `1 A: explanation`; explanation text is ignored. The admin CAT list
+can be searched by CAT, course, unit, or student and filtered by scheduled,
+open, or closed status.
 
 ### Holiday program applications
 

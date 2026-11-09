@@ -34,7 +34,7 @@ import { downloadContentAttachment } from "@/lib/content-download";
 import { PROFILE_PHOTO_MAX_BYTES, PROFILE_PHOTO_TYPES } from "@/lib/profile-photos";
 import { signOutWithAudit, useRoles, useUser } from "@/lib/auth";
 import { submissionFilePaths } from "@/lib/assignments";
-import type { ImportedCatQuestion } from "@/lib/cat-import-format";
+import type { ImportedCatAnswer, ImportedCatQuestion } from "@/lib/cat-import-format";
 import { getDateTimeLocalMinimum } from "@/lib/cats";
 import {
   contentKind,
@@ -693,10 +693,27 @@ function FacilitatorWorkspace({ userId, email }: { userId: string; email: string
       correct_option: question.correctOption ?? "",
       points: 1,
     }));
+    const questionOffset = starterIsBlank ? 0 : questions.length;
     setQuestions((current) =>
       starterIsBlank ? importedQuestions : [...current, ...importedQuestions],
     );
     toast.success(`${imported.length} question${imported.length === 1 ? "" : "s"} imported`);
+    return questionOffset;
+  }
+
+  function applyCatMarkingScheme(answers: ImportedCatAnswer[], questionOffset: number) {
+    const answersByIndex = new Map(
+      answers.map((answer) => [questionOffset + answer.questionNumber - 1, answer.correctOption]),
+    );
+    setQuestions((current) =>
+      current.map((question, index) => {
+        const correct_option = answersByIndex.get(index);
+        return correct_option ? { ...question, correct_option } : question;
+      }),
+    );
+    toast.success(
+      `${answers.length} marking-scheme answer${answers.length === 1 ? "" : "s"} applied`,
+    );
   }
 
   async function signOut() {
@@ -1335,7 +1352,10 @@ function FacilitatorWorkspace({ userId, email }: { userId: string; email: string
                         Questions and answer key · {questions.length}
                       </summary>
                       <div className="mt-4 space-y-3">
-                        <CatQuestionImporter onImport={importCatQuestions} />
+                        <CatQuestionImporter
+                          onImport={importCatQuestions}
+                          onApplyMarkingScheme={applyCatMarkingScheme}
+                        />
                         <CatQuestionPreview
                           questions={questions.map((question) => ({
                             prompt: question.prompt,

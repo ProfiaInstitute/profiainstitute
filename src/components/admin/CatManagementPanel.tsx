@@ -1,6 +1,6 @@
 import { useRef, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowDownToLine, Plus, Trash2 } from "lucide-react";
+import { ArrowDownToLine, Plus, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -25,7 +25,7 @@ import {
   type AdminCat,
   type CatOptionKey,
 } from "@/lib/cats";
-import type { ImportedCatQuestion } from "@/lib/cat-import-format";
+import type { ImportedCatAnswer, ImportedCatQuestion } from "@/lib/cat-import-format";
 
 type QuestionDraft = {
   id: string;
@@ -36,6 +36,20 @@ type QuestionDraft = {
   optionD: string;
   correctOption: CatOptionKey | "";
   points: string;
+};
+
+type EditableCatQuestion = Omit<QuestionDraft, "id"> & { id: string };
+
+type CatEditValues = {
+  title: string;
+  name: string;
+  instructions: string;
+  durationMinutes: number;
+  opensAt: string;
+  closesAt: string;
+  downloadFile: File | null;
+  removeDownload: boolean;
+  questions: EditableCatQuestion[] | null;
 };
 
 const selectClass = "h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm";
@@ -55,6 +69,10 @@ function newQuestion(): QuestionDraft {
 
 export function CatManagementPanel() {
   const queryClient = useQueryClient();
+  const [catSearch, setCatSearch] = useState("");
+  const [catStatusFilter, setCatStatusFilter] = useState<"all" | "scheduled" | "open" | "closed">(
+    "all",
+  );
   const [title, setTitle] = useState("");
   const [name, setName] = useState("");
   const [courseId, setCourseId] = useState("");
@@ -110,6 +128,105 @@ export function CatManagementPanel() {
       return data;
     },
   });
+  const filteredCats = (query.data?.cats ?? [])
+    .filter((cat) => {
+      const now = Date.now();
+      const state =
+        now < Date.parse(cat.opensAt)
+          ? "scheduled"
+          : now < Date.parse(cat.closesAt)
+            ? "open"
+            : "closed";
+      if (catStatusFilter !== "all" && state !== catStatusFilter) return false;
+      const unit = (linkedUnitsQuery.data ?? []).find((item) => item.id === cat.unitId);
+      const searchText = [
+        cat.title,
+        cat.name,
+        cat.courseTitle,
+        unit?.title,
+        unit?.code,
+        ...cat.attempts.flatMap((attempt) => [attempt.studentName, attempt.studentNumber]),
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLocaleLowerCase();
+      return searchText.includes(catSearch.trim().toLocaleLowerCase());
+    })
+    .sort((a, b) => Date.parse(b.opensAt) - Date.parse(a.opensAt));
+
+  async function updateCat(cat: AdminCat, values: CatEditValues) {
+    if (values.downloadFile && values.downloadFile.size > 50 * 1024 * 1024) {
+      throw new Error("CAT download files must be 50 MB or smaller.");
+    }
+
+    let uploadedPath: string | null = null;
+    if (values.downloadFile) {
+      uploadedPath = `${cat.courseId}/cat-downloads/${crypto.randomUUID()}-${safeUploadFileName(values.downloadFile.name)}`;
+      const { error } = await supabase.storage
+        .from("learning")
+        .upload(uploadedPath, values.downloadFile, {
+          contentType: values.downloadFile.type || "application/octet-stream",
+          upsert: false,
+        });
+      if (error) throw error;
+    }
+
+    const downloadFilePath = values.removeDownload ? null : (uploadedPath ?? cat.downloadFilePath);
+    const downloadFileName = values.removeDownload
+      ? null
+      : (values.downloadFile?.name ?? cat.downloadFileName);
+
+    try {
+      const { error } = await supabase.rpc("update_cat_assessment", {
+        _assessment_id: cat.id,
+        _title: values.title.trim(),
+        _name: values.name.trim(),
+        _instructions: values.instructions.trim() || null,
+        _duration_minutes: values.durationMinutes,
+        _opens_at: values.opensAt,
+        _closes_at: values.closesAt,
+        _download_file_path: downloadFilePath,
+        _download_file_name: downloadFileName,
+        _questions:
+          values.questions === null
+            ? null
+            : values.questions.map((question) => ({
+                prompt: question.prompt.trim(),
+                option_a: question.optionA.trim(),
+                option_b: question.optionB.trim(),
+                option_c: question.optionC.trim(),
+                option_d: question.optionD.trim(),
+                correct_option: question.correctOption,
+                points: Number(question.points),
+              })),
+      });
+      if (error) throw error;
+    } catch (error) {
+      if (uploadedPath) {
+        const { error: cleanupError } = await supabase.storage
+          .from("learning")
+          .remove([uploadedPath]);
+        if (cleanupError) {
+          const message = error instanceof Error ? error.message : "The CAT could not be updated.";
+          throw new Error(
+            `${message} The new CAT download could not be cleaned up: ${cleanupError.message}`,
+          );
+        }
+      }
+      throw error;
+    }
+
+    if (cat.downloadFilePath && cat.downloadFilePath !== downloadFilePath) {
+      const { error } = await supabase.storage.from("learning").remove([cat.downloadFilePath]);
+      if (error) {
+        toast.error("CAT updated, but the previous download could not be removed.", {
+          description: error.message,
+        });
+      }
+    }
+    await queryClient.invalidateQueries({ queryKey: ["admin", "cat-assessments"] });
+  }
+
   const createMutation = useMutation({
     mutationFn: async () => {
       const now = new Date();
@@ -245,8 +362,25 @@ export function CatManagementPanel() {
       correctOption: question.correctOption ?? "",
       points: "1",
     }));
+    const questionOffset = starterIsBlank ? 0 : questions.length;
     setQuestions((current) => (starterIsBlank ? importedDrafts : [...current, ...importedDrafts]));
     toast.success(`${imported.length} question${imported.length === 1 ? "" : "s"} imported`);
+    return questionOffset;
+  }
+
+  function applyMarkingScheme(answers: ImportedCatAnswer[], questionOffset: number) {
+    const answersByIndex = new Map(
+      answers.map((answer) => [questionOffset + answer.questionNumber - 1, answer.correctOption]),
+    );
+    setQuestions((current) =>
+      current.map((question, index) => {
+        const correctOption = answersByIndex.get(index);
+        return correctOption ? { ...question, correctOption } : question;
+      }),
+    );
+    toast.success(
+      `${answers.length} marking-scheme answer${answers.length === 1 ? "" : "s"} applied`,
+    );
   }
 
   return (
@@ -411,7 +545,10 @@ export function CatManagementPanel() {
                 <Plus /> Add question
               </Button>
             </div>
-            <CatQuestionImporter onImport={importQuestions} />
+            <CatQuestionImporter
+              onImport={importQuestions}
+              onApplyMarkingScheme={applyMarkingScheme}
+            />
             <CatQuestionPreview
               questions={questions.map((question) => ({
                 prompt: question.prompt,
@@ -543,28 +680,71 @@ export function CatManagementPanel() {
           </Button>
         </div>
       ) : query.data?.cats.length ? (
-        <div className="space-y-3">
-          {query.data.cats.map((cat) => (
-            <CatResultCard
-              key={cat.id}
-              cat={cat}
-              units={(linkedUnitsQuery.data ?? []).filter(
-                (unit) => unit.course_id === cat.courseId,
-              )}
-              onUnitChanged={async (assessmentId, nextUnitId) => {
-                const { error } = await supabase.rpc("set_cat_assessment_unit", {
-                  _assessment_id: assessmentId,
-                  _unit_id: nextUnitId,
-                });
-                if (error) {
-                  toast.error("Could not link CAT to course unit", { description: error.message });
-                  return;
+        <div className="space-y-4">
+          <div className="grid gap-3 rounded-lg border bg-muted/20 p-3 sm:grid-cols-[minmax(0,1fr)_12rem]">
+            <label className="relative block">
+              <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                aria-label="Search CATs"
+                placeholder="Search title, course, unit, or student"
+                className="pl-9"
+                value={catSearch}
+                onChange={(event) => setCatSearch(event.target.value)}
+              />
+            </label>
+            <label className="grid gap-1 text-xs font-medium">
+              CAT status
+              <select
+                aria-label="Filter CATs by status"
+                className={selectClass}
+                value={catStatusFilter}
+                onChange={(event) =>
+                  setCatStatusFilter(event.target.value as "all" | "scheduled" | "open" | "closed")
                 }
-                toast.success("CAT linked to course unit");
-                await queryClient.invalidateQueries({ queryKey: ["admin", "cat-assessments"] });
-              }}
-            />
-          ))}
+              >
+                <option value="all">All statuses</option>
+                <option value="open">Open</option>
+                <option value="scheduled">Scheduled</option>
+                <option value="closed">Closed</option>
+              </select>
+            </label>
+            <p className="text-xs text-muted-foreground sm:col-span-2" aria-live="polite">
+              Showing {filteredCats.length} of {query.data.cats.length} CAT
+              {query.data.cats.length === 1 ? "" : "s"} · sorted by opening date, newest first
+            </p>
+          </div>
+          {filteredCats.length ? (
+            <div className="space-y-3">
+              {filteredCats.map((cat) => (
+                <CatResultCard
+                  key={cat.id}
+                  cat={cat}
+                  units={(linkedUnitsQuery.data ?? []).filter(
+                    (unit) => unit.course_id === cat.courseId,
+                  )}
+                  onSaveChanges={(values) => updateCat(cat, values)}
+                  onUnitChanged={async (assessmentId, nextUnitId) => {
+                    const { error } = await supabase.rpc("set_cat_assessment_unit", {
+                      _assessment_id: assessmentId,
+                      _unit_id: nextUnitId,
+                    });
+                    if (error) {
+                      toast.error("Could not link CAT to course unit", {
+                        description: error.message,
+                      });
+                      return;
+                    }
+                    toast.success("CAT linked to course unit");
+                    await queryClient.invalidateQueries({ queryKey: ["admin", "cat-assessments"] });
+                  }}
+                />
+              ))}
+            </div>
+          ) : (
+            <p className="rounded-lg bg-muted/40 p-4 text-sm text-muted-foreground">
+              No CATs match this search and status filter.
+            </p>
+          )}
         </div>
       ) : (
         <p className="rounded-lg bg-muted/40 p-4 text-sm text-muted-foreground">
@@ -575,9 +755,360 @@ export function CatManagementPanel() {
   );
 }
 
+function dateTimeLocalValue(value: string) {
+  const date = new Date(value);
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+}
+
+function CatEditForm({
+  cat,
+  onSaveChanges,
+}: {
+  cat: AdminCat;
+  onSaveChanges: (values: CatEditValues) => Promise<void>;
+}) {
+  const hasAttempts = cat.attempts.length > 0;
+  const [title, setTitle] = useState(cat.title);
+  const [name, setName] = useState(cat.name);
+  const [instructions, setInstructions] = useState(cat.instructions ?? "");
+  const [durationMinutes, setDurationMinutes] = useState(String(cat.durationMinutes));
+  const [opensAt, setOpensAt] = useState(() => dateTimeLocalValue(cat.opensAt));
+  const [closesAt, setClosesAt] = useState(() => dateTimeLocalValue(cat.closesAt));
+  const [downloadFile, setDownloadFile] = useState<File | null>(null);
+  const [removeDownload, setRemoveDownload] = useState(false);
+  const [questions, setQuestions] = useState<EditableCatQuestion[]>(() =>
+    cat.questions.map((question) => ({
+      id: question.id,
+      prompt: question.prompt,
+      optionA: question.options.A,
+      optionB: question.options.B,
+      optionC: question.options.C,
+      optionD: question.options.D,
+      correctOption: question.correctOption,
+      points: String(question.points),
+    })),
+  );
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError("");
+    const duration = Number(durationMinutes);
+    if (!Number.isInteger(duration) || duration < 1 || duration > 360) {
+      setError("CAT duration must be from 1 to 360 minutes.");
+      return;
+    }
+    if (questions.length < 1 || questions.length > 100) {
+      setError("A CAT must contain between 1 and 100 questions.");
+      return;
+    }
+    if (
+      !hasAttempts &&
+      (!Number.isFinite(new Date(opensAt).getTime()) ||
+        !Number.isFinite(new Date(closesAt).getTime()) ||
+        new Date(closesAt) <= new Date(opensAt))
+    ) {
+      setError("Choose a closing time later than the opening time.");
+      return;
+    }
+    if (
+      !hasAttempts &&
+      questions.some(
+        (question) =>
+          !question.prompt.trim() ||
+          !question.optionA.trim() ||
+          !question.optionB.trim() ||
+          !question.optionC.trim() ||
+          !question.optionD.trim() ||
+          !question.correctOption ||
+          !Number.isInteger(Number(question.points)) ||
+          Number(question.points) < 1 ||
+          Number(question.points) > 100,
+      )
+    ) {
+      setError("Complete each question, all four choices, a correct answer, and valid marks.");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await onSaveChanges({
+        title,
+        name,
+        instructions,
+        durationMinutes: duration,
+        opensAt: hasAttempts ? cat.opensAt : new Date(opensAt).toISOString(),
+        closesAt: hasAttempts ? cat.closesAt : new Date(closesAt).toISOString(),
+        downloadFile,
+        removeDownload: removeDownload && !downloadFile,
+        questions: hasAttempts ? null : questions,
+      });
+      toast.success("CAT updated");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "The CAT could not be updated.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <details className="rounded-lg border bg-muted/20 p-3">
+      <summary className="cursor-pointer text-sm font-semibold text-brand">
+        Edit published CAT
+      </summary>
+      <form className="mt-4 space-y-4" onSubmit={(event) => void submit(event)}>
+        {hasAttempts && (
+          <p className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
+            Students have started this CAT. Questions, answer keys, schedule, and time limit are
+            locked to protect existing attempts and scores. You can still update its title, download
+            name, instructions, or downloadable file.
+          </p>
+        )}
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="grid gap-1 text-sm font-medium">
+            CAT title
+            <Input
+              required
+              maxLength={160}
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+            />
+          </label>
+          <label className="grid gap-1 text-sm font-medium">
+            Student download name
+            <Input
+              required
+              maxLength={160}
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+            />
+          </label>
+          <label className="grid gap-1 text-sm font-medium">
+            Time limit (minutes)
+            <Input
+              required
+              type="number"
+              min={1}
+              max={360}
+              step={1}
+              disabled={hasAttempts}
+              value={durationMinutes}
+              onChange={(event) => setDurationMinutes(event.target.value)}
+            />
+          </label>
+          <label className="grid gap-1 text-sm font-medium sm:col-span-2">
+            Instructions
+            <Textarea
+              rows={2}
+              value={instructions}
+              onChange={(event) => setInstructions(event.target.value)}
+            />
+          </label>
+          <label className="grid gap-1 text-sm font-medium">
+            Opens at
+            <Input
+              required
+              type="datetime-local"
+              disabled={hasAttempts}
+              value={opensAt}
+              onChange={(event) => setOpensAt(event.target.value)}
+            />
+          </label>
+          <label className="grid gap-1 text-sm font-medium">
+            Closes at
+            <Input
+              required
+              type="datetime-local"
+              disabled={hasAttempts}
+              value={closesAt}
+              onChange={(event) => setClosesAt(event.target.value)}
+            />
+          </label>
+          {!hasAttempts && (
+            <div className="space-y-3 sm:col-span-2">
+              <div className="flex items-center justify-between gap-2">
+                <h4 className="text-sm font-semibold">Questions and answer key</h4>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={questions.length >= 100}
+                  onClick={() =>
+                    setQuestions((current) => [
+                      ...current,
+                      {
+                        id: crypto.randomUUID(),
+                        prompt: "",
+                        optionA: "",
+                        optionB: "",
+                        optionC: "",
+                        optionD: "",
+                        correctOption: "",
+                        points: "1",
+                      },
+                    ])
+                  }
+                >
+                  <Plus /> Add question
+                </Button>
+              </div>
+              {questions.map((question, index) => (
+                <fieldset
+                  key={question.id}
+                  className="grid gap-2 rounded-md border bg-background p-3"
+                >
+                  <legend className="px-1 text-sm font-semibold">Question {index + 1}</legend>
+                  <div className="flex justify-end">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      disabled={questions.length <= 1}
+                      aria-label={`Remove question ${index + 1}`}
+                      onClick={() =>
+                        setQuestions((current) => current.filter((item) => item.id !== question.id))
+                      }
+                    >
+                      <Trash2 /> Remove
+                    </Button>
+                  </div>
+                  <Textarea
+                    required
+                    maxLength={4000}
+                    rows={2}
+                    aria-label={`Question ${index + 1} prompt`}
+                    value={question.prompt}
+                    onChange={(event) =>
+                      setQuestions((current) =>
+                        current.map((item) =>
+                          item.id === question.id ? { ...item, prompt: event.target.value } : item,
+                        ),
+                      )
+                    }
+                  />
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {(["A", "B", "C", "D"] as const).map((option) => {
+                      const field: Record<CatOptionKey, keyof EditableCatQuestion> = {
+                        A: "optionA",
+                        B: "optionB",
+                        C: "optionC",
+                        D: "optionD",
+                      };
+                      return (
+                        <Input
+                          key={option}
+                          required
+                          maxLength={1000}
+                          aria-label={`Question ${index + 1}, choice ${option}`}
+                          placeholder={`Choice ${option}`}
+                          value={question[field[option]]}
+                          onChange={(event) =>
+                            setQuestions((current) =>
+                              current.map((item) =>
+                                item.id === question.id
+                                  ? { ...item, [field[option]]: event.target.value }
+                                  : item,
+                              ),
+                            )
+                          }
+                        />
+                      );
+                    })}
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <label className="grid gap-1 text-sm">
+                      Correct answer
+                      <select
+                        required
+                        className={selectClass}
+                        value={question.correctOption}
+                        onChange={(event) =>
+                          setQuestions((current) =>
+                            current.map((item) =>
+                              item.id === question.id
+                                ? { ...item, correctOption: event.target.value as CatOptionKey }
+                                : item,
+                            ),
+                          )
+                        }
+                      >
+                        <option value="" disabled>
+                          Select correct answer
+                        </option>
+                        {(["A", "B", "C", "D"] as const).map((option) => (
+                          <option key={option}>{option}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="grid gap-1 text-sm">
+                      Marks
+                      <Input
+                        required
+                        type="number"
+                        min={1}
+                        max={100}
+                        step={1}
+                        value={question.points}
+                        onChange={(event) =>
+                          setQuestions((current) =>
+                            current.map((item) =>
+                              item.id === question.id
+                                ? { ...item, points: event.target.value }
+                                : item,
+                            ),
+                          )
+                        }
+                      />
+                    </label>
+                  </div>
+                </fieldset>
+              ))}
+            </div>
+          )}
+          <div className="space-y-2 sm:col-span-2">
+            <label className="grid gap-1 text-sm font-medium">
+              Replace downloadable CAT file
+              <input
+                type="file"
+                accept=".pdf,.doc,.docx,.odt,.rtf"
+                className="w-full min-w-0 text-xs"
+                onChange={(event) => {
+                  setDownloadFile(event.target.files?.[0] ?? null);
+                  if (event.target.files?.[0]) setRemoveDownload(false);
+                }}
+              />
+            </label>
+            {cat.downloadFileName && (
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={removeDownload}
+                  disabled={Boolean(downloadFile)}
+                  onChange={(event) => setRemoveDownload(event.target.checked)}
+                />
+                Remove current file: {cat.downloadFileName}
+              </label>
+            )}
+          </div>
+        </div>
+        {error && (
+          <p role="alert" className="text-sm text-destructive">
+            {error}
+          </p>
+        )}
+        <Button type="submit" disabled={saving} loading={saving}>
+          {saving ? "Saving CAT…" : "Save CAT changes"}
+        </Button>
+      </form>
+    </details>
+  );
+}
+
 function CatResultCard({
   cat,
   units,
+  onSaveChanges,
   onUnitChanged,
 }: {
   cat: AdminCat;
@@ -589,6 +1120,7 @@ function CatResultCard({
     level_id: string | null;
     level: { name: string } | null;
   }[];
+  onSaveChanges: (values: CatEditValues) => Promise<void>;
   onUnitChanged: (assessmentId: string, unitId: string) => Promise<void>;
 }) {
   const now = Date.now();
@@ -664,6 +1196,11 @@ function CatResultCard({
         <span>Opens {catDateTimeLabel(cat.opensAt)}</span>
         <span>Closes {catDateTimeLabel(cat.closesAt)}</span>
       </div>
+      <CatEditForm
+        key={`${cat.id}-${cat.title}-${cat.name}-${cat.opensAt}-${cat.closesAt}`}
+        cat={cat}
+        onSaveChanges={onSaveChanges}
+      />
       {cat.instructions && <p className="whitespace-pre-wrap text-sm">{cat.instructions}</p>}
       {cat.downloadFilePath && cat.downloadFileName && (
         <CatDownloadButton
