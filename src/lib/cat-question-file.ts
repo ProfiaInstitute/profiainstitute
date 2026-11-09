@@ -1,13 +1,27 @@
 import type { ImportedCatQuestion } from "@/lib/cat-import-format";
-import { parseCatQuestionsFromText } from "@/lib/cat-import-format";
+import {
+  parseCatMarkingSchemeFromText,
+  parseCatQuestionsFromText,
+  type ImportedCatAnswer,
+} from "@/lib/cat-import-format";
 
 const MAX_IMPORT_SIZE = 20 * 1024 * 1024;
 
 export async function readCatQuestionsFile(file: File): Promise<ImportedCatQuestion[]> {
-  if (file.size > MAX_IMPORT_SIZE) {
-    throw new Error("Question files must be 20 MB or smaller.");
-  }
+  return parseCatQuestionsFromText(await readCatDocumentText(file, "question"));
+}
 
+export async function readCatMarkingSchemeFile(file: File): Promise<ImportedCatAnswer[]> {
+  return parseCatMarkingSchemeFromText(await readCatDocumentText(file, "marking-scheme"));
+}
+
+async function readCatDocumentText(
+  file: File,
+  purpose: "question" | "marking-scheme",
+): Promise<string> {
+  if (file.size > MAX_IMPORT_SIZE) {
+    throw new Error("CAT import files must be 20 MB or smaller.");
+  }
   const extension = file.name.split(".").pop()?.toLowerCase();
   let text: string;
 
@@ -33,8 +47,14 @@ export async function readCatQuestionsFile(file: File): Promise<ImportedCatQuest
       );
     }
     text = pageTexts.join("\n");
+  } else if (extension === "txt") {
+    text = await file.text();
   } else {
-    throw new Error("Import a Word .docx file or a text-based PDF.");
+    throw new Error(
+      purpose === "question"
+        ? "Import a Word .docx file, a text-based PDF, or a plain-text file."
+        : "Import a Word .docx file, a text-based PDF, or a plain-text marking scheme.",
+    );
   }
 
   if (!text.trim()) {
@@ -42,5 +62,5 @@ export async function readCatQuestionsFile(file: File): Promise<ImportedCatQuest
       "No selectable text was found. Scanned/image-only PDFs are not supported; use a text-based PDF or Word document.",
     );
   }
-  return parseCatQuestionsFromText(text);
+  return text;
 }

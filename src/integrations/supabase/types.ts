@@ -2779,6 +2779,21 @@ export type Database = {
         Args: { _status: string; _student_id: string };
         Returns: undefined;
       };
+      update_cat_assessment: {
+        Args: {
+          _assessment_id: string;
+          _closes_at: string;
+          _download_file_name: string | null;
+          _download_file_path: string | null;
+          _duration_minutes: number;
+          _instructions: string | null;
+          _name: string;
+          _opens_at: string;
+          _questions?: Json | null;
+          _title: string;
+        };
+        Returns: undefined;
+      };
       confirm_holiday_program_payment: {
         Args: {
           p_mpesa_receipt_number?: string | null;

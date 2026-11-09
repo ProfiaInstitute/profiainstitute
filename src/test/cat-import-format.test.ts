@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseCatQuestionsFromText } from "@/lib/cat-import-format";
+import { parseCatMarkingSchemeFromText, parseCatQuestionsFromText } from "@/lib/cat-import-format";
 
 describe("CAT document question parsing", () => {
   it("parses numbered questions, A-D choices, and an inline answer", () => {
@@ -32,6 +32,25 @@ describe("CAT document question parsing", () => {
     );
 
     expect(questions[0]?.correctOption).toBe("C");
+  });
+
+  it("parses separate marking schemes with optional explanation text", () => {
+    expect(
+      parseCatMarkingSchemeFromText(["1.A", "2 a", "3 A: explanation for the answer"].join("\n")),
+    ).toEqual([
+      { questionNumber: 1, correctOption: "A" },
+      { questionNumber: 2, correctOption: "A" },
+      { questionNumber: 3, correctOption: "A" },
+    ]);
+  });
+
+  it("rejects duplicate or malformed marking-scheme entries", () => {
+    expect(() => parseCatMarkingSchemeFromText(["1.A", "1.B"].join("\n"))).toThrow(
+      "appears more than once",
+    );
+    expect(() => parseCatMarkingSchemeFromText("2: maybe")).toThrow(
+      "Could not read marking-scheme line",
+    );
   });
 
   it("leaves unkeyed correct answers for staff to select", () => {
