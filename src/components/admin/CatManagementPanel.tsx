@@ -52,6 +52,8 @@ type CatEditValues = {
   questions: EditableCatQuestion[] | null;
 };
 
+type CatAudience = "course_level" | "individual_students";
+
 const selectClass = "h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm";
 
 function newQuestion(): QuestionDraft {
@@ -78,6 +80,9 @@ export function CatManagementPanel() {
   const [courseId, setCourseId] = useState("");
   const [unitId, setUnitId] = useState("");
   const [levelIds, setLevelIds] = useState<string[]>([]);
+  const [catAudience, setCatAudience] = useState<CatAudience>("course_level");
+  const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
+  const [studentSearch, setStudentSearch] = useState("");
   const [downloadFile, setDownloadFile] = useState<File | null>(null);
   const downloadFileInputRef = useRef<HTMLInputElement>(null);
   const [instructions, setInstructions] = useState("");
@@ -114,6 +119,68 @@ export function CatManagementPanel() {
       return data;
     },
   });
+  const targetStudentsQuery = useQuery({
+    queryKey: ["admin", "cat-target-students", courseId, levelIds],
+    enabled: Boolean(courseId && levelIds.length),
+    queryFn: async () => {
+      const [legacyStudents, enrollments, onlineEnrollments] = await Promise.all([
+        supabase
+          .from("students")
+          .select("id,level_id")
+          .eq("course_id", courseId)
+          .eq("status", "active"),
+        supabase
+          .from("enrollments")
+          .select("student_id,level_id")
+          .eq("course_id", courseId)
+          .eq("status", "active"),
+        supabase
+          .from("online_course_enrollments")
+          .select("student_id,level_id")
+          .eq("course_id", courseId)
+          .eq("status", "active"),
+      ]);
+      if (legacyStudents.error) throw legacyStudents.error;
+      if (enrollments.error) throw enrollments.error;
+      if (onlineEnrollments.error) throw onlineEnrollments.error;
+
+      const assignedLevelStudentIds = new Set(
+        [...enrollments.data, ...onlineEnrollments.data]
+          .filter((enrollment) => enrollment.level_id)
+          .map((enrollment) => enrollment.student_id),
+      );
+      const studentIds = [
+        ...new Set([
+          ...enrollments.data
+            .filter((enrollment) => enrollment.level_id && levelIds.includes(enrollment.level_id))
+            .map((enrollment) => enrollment.student_id),
+          ...onlineEnrollments.data
+            .filter((enrollment) => enrollment.level_id && levelIds.includes(enrollment.level_id))
+            .map((enrollment) => enrollment.student_id),
+          ...legacyStudents.data
+            .filter(
+              (student) =>
+                student.level_id &&
+                levelIds.includes(student.level_id) &&
+                !assignedLevelStudentIds.has(student.id),
+            )
+            .map((student) => student.id),
+        ]),
+      ];
+      if (!studentIds.length) return [];
+
+      const { data, error } = await supabase
+        .from("students")
+        .select("id,student_number,first_name,middle_name,last_name")
+        .in("id", studentIds)
+        .eq("status", "active")
+        .order("last_name")
+        .order("first_name");
+      if (error) throw error;
+      return data;
+    },
+  });
+  const targetStudents = targetStudentsQuery.data ?? [];
   const linkedUnitsQuery = useQuery({
     queryKey: ["admin", "cat-linked-unit-options", query.data?.cats.map((cat) => cat.courseId)],
     enabled: Boolean(query.data?.cats.length),
@@ -145,6 +212,7 @@ export function CatManagementPanel() {
         cat.courseTitle,
         unit?.title,
         unit?.code,
+        ...cat.targetStudents.flatMap((student) => [student.studentName, student.studentNumber]),
         ...cat.attempts.flatMap((attempt) => [attempt.studentName, attempt.studentNumber]),
       ]
         .filter(Boolean)
@@ -251,6 +319,9 @@ export function CatManagementPanel() {
       if (!name.trim() || !levelIds.length) {
         throw new Error("Enter a CAT download name and select at least one course level.");
       }
+      if (catAudience === "individual_students" && !selectedStudentIds.length) {
+        throw new Error("Select at least one student for this CAT.");
+      }
       if (!unitId) throw new Error("Select the course unit this CAT assesses.");
       const selectedUnit = courseUnitsQuery.data?.find((unit) => unit.id === unitId);
       if (!selectedUnit?.code?.trim()) {
@@ -273,7 +344,7 @@ export function CatManagementPanel() {
       }
 
       try {
-        const { error } = await supabase.rpc("create_cat_assessment", {
+        const { error } = await supabase.rpc("create_targeted_cat_assessment", {
           _course_id: courseId,
           _title: title.trim(),
           _name: name.trim(),
@@ -294,6 +365,7 @@ export function CatManagementPanel() {
           _download_file_path: downloadFilePath,
           _download_file_name: downloadFile?.name ?? null,
           _unit_id: unitId,
+          _student_ids: catAudience === "individual_students" ? selectedStudentIds : [],
         });
         if (error) throw error;
       } catch (error) {
@@ -318,6 +390,9 @@ export function CatManagementPanel() {
       setCourseId("");
       setUnitId("");
       setLevelIds([]);
+      setCatAudience("course_level");
+      setSelectedStudentIds([]);
+      setStudentSearch("");
       setDownloadFile(null);
       if (downloadFileInputRef.current) downloadFileInputRef.current.value = "";
       setInstructions("");
@@ -419,6 +494,8 @@ export function CatManagementPanel() {
                 setCourseId(event.target.value);
                 setUnitId("");
                 setLevelIds([]);
+                setSelectedStudentIds([]);
+                setCatAudience("course_level");
               }}
             >
               <option value="">Select course</option>
@@ -431,7 +508,10 @@ export function CatManagementPanel() {
             <LevelTargetPicker
               courseId={courseId}
               selectedLevelIds={levelIds}
-              onChange={setLevelIds}
+              onChange={(nextLevelIds) => {
+                setLevelIds(nextLevelIds);
+                setSelectedStudentIds([]);
+              }}
             />
             <label className="grid gap-1 text-sm font-medium sm:col-span-2">
               Course unit
@@ -447,6 +527,7 @@ export function CatManagementPanel() {
                     (unit) => unit.id === nextUnitId,
                   );
                   if (selectedUnit?.level_id) setLevelIds([selectedUnit.level_id]);
+                  setSelectedStudentIds([]);
                 }}
               >
                 <option value="">
@@ -468,6 +549,109 @@ export function CatManagementPanel() {
                 The answer sheet uses this unit’s exact system name and unit code.
               </span>
             </label>
+            <fieldset className="space-y-3 sm:col-span-2">
+              <legend className="text-sm font-medium">Who can take this CAT?</legend>
+              <div className="flex flex-wrap gap-4">
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="radio"
+                    name="cat-audience"
+                    value="course_level"
+                    checked={catAudience === "course_level"}
+                    onChange={() => setCatAudience("course_level")}
+                  />
+                  Everyone in selected course levels
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="radio"
+                    name="cat-audience"
+                    value="individual_students"
+                    checked={catAudience === "individual_students"}
+                    onChange={() => setCatAudience("individual_students")}
+                  />
+                  Selected students only
+                </label>
+              </div>
+              {catAudience === "individual_students" && (
+                <div className="space-y-2 rounded-md border bg-background p-3">
+                  <Input
+                    aria-label="Search eligible students"
+                    placeholder="Search students by name or student number"
+                    value={studentSearch}
+                    onChange={(event) => setStudentSearch(event.target.value)}
+                    disabled={!courseId || !levelIds.length}
+                  />
+                  {!courseId || !levelIds.length ? (
+                    <p className="text-sm text-muted-foreground">
+                      Select a course and at least one course level to view eligible students.
+                    </p>
+                  ) : targetStudentsQuery.isLoading ? (
+                    <p className="text-sm text-muted-foreground">Loading eligible students…</p>
+                  ) : targetStudentsQuery.error ? (
+                    <p role="alert" className="text-sm text-destructive">
+                      Could not load eligible students: {targetStudentsQuery.error.message}
+                    </p>
+                  ) : targetStudents.length ? (
+                    <>
+                      <div className="max-h-56 space-y-1 overflow-y-auto">
+                        {targetStudents
+                          .filter((student) =>
+                            [
+                              student.student_number,
+                              student.first_name,
+                              student.middle_name,
+                              student.last_name,
+                            ]
+                              .filter(Boolean)
+                              .join(" ")
+                              .toLocaleLowerCase()
+                              .includes(studentSearch.trim().toLocaleLowerCase()),
+                          )
+                          .map((student) => {
+                            const studentName = [
+                              student.first_name,
+                              student.middle_name,
+                              student.last_name,
+                            ]
+                              .filter(Boolean)
+                              .join(" ");
+                            return (
+                              <label
+                                key={student.id}
+                                className="flex items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted"
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={selectedStudentIds.includes(student.id)}
+                                  onChange={(event) =>
+                                    setSelectedStudentIds((current) =>
+                                      event.target.checked
+                                        ? [...new Set([...current, student.id])]
+                                        : current.filter((id) => id !== student.id),
+                                    )
+                                  }
+                                />
+                                <span>
+                                  {studentName} · {student.student_number}
+                                </span>
+                              </label>
+                            );
+                          })}
+                      </div>
+                      <p className="text-xs text-muted-foreground" aria-live="polite">
+                        {selectedStudentIds.length} selected of {targetStudents.length} eligible
+                        students. Only selected students will see this CAT.
+                      </p>
+                    </>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      No active students are enrolled in the selected course levels.
+                    </p>
+                  )}
+                </div>
+              )}
+            </fieldset>
             <label className="grid gap-1 text-sm font-medium sm:col-span-2">
               Optional downloadable CAT file
               <input
@@ -1141,6 +1325,15 @@ function CatResultCard({
           <h3 className="font-semibold text-brand">{cat.title}</h3>
           <p className="mt-1 text-sm text-muted-foreground">{cat.courseTitle}</p>
           <p className="mt-1 text-sm">Student download name: {cat.name}</p>
+          {cat.targetStudents.length > 0 && (
+            <p className="mt-1 text-sm text-muted-foreground">
+              Assigned to {cat.targetStudents.length} selected student
+              {cat.targetStudents.length === 1 ? "" : "s"}:{" "}
+              {cat.targetStudents
+                .map((student) => `${student.studentName} (${student.studentNumber})`)
+                .join(", ")}
+            </p>
+          )}
           <div className="mt-2 flex flex-wrap items-end gap-2">
             <label className="grid gap-1 text-xs font-medium">
               Answer-sheet unit

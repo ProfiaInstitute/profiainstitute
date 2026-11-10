@@ -2557,6 +2557,10 @@ numbered marking scheme. Marking-scheme entries accept forms such as `1.A`,
 `1 a`, and `1 A: explanation`; explanation text is ignored. The admin CAT list
 can be searched by CAT, course, unit, or student and filtered by scheduled,
 open, or closed status.
+Apply `drizzle/migrations/0057_individual_cat_targets.sql` to allow admins to
+create a CAT for selected active students instead of the full selected course
+levels. Individual recipients are checked against active course and level
+enrolments; only selected students can see or start the CAT in the portal.
 
 ### Holiday program applications
 

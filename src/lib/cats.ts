@@ -64,6 +64,12 @@ export type AdminCatAttempt = {
   answers: { questionId: string; selectedOption: CatOptionKey }[];
 };
 
+export type AdminCatTargetStudent = {
+  id: string;
+  studentNumber: string;
+  studentName: string;
+};
+
 export type AdminCat = {
   id: string;
   courseId: string;
@@ -72,6 +78,7 @@ export type AdminCat = {
   title: string;
   name: string;
   levelIds: string[];
+  targetStudents: AdminCatTargetStudent[];
   downloadFilePath: string | null;
   downloadFileName: string | null;
   instructions: string | null;
@@ -237,6 +244,16 @@ export function parseAdminCats(value: Json | null): AdminCat[] {
         }),
       };
     });
+    const targetStudents = (
+      cat["target_students"] === undefined ? [] : arrayValue(cat["target_students"])
+    ).map((studentEntry) => {
+      const student = objectValue(studentEntry);
+      return {
+        id: stringValue(student["id"], "target student id"),
+        studentNumber: stringValue(student["student_number"], "target student number"),
+        studentName: stringValue(student["student_name"], "target student name"),
+      };
+    });
     return {
       id: stringValue(cat["id"], "CAT id"),
       courseId: stringValue(cat["course_id"], "course id"),
@@ -251,6 +268,7 @@ export function parseAdminCats(value: Json | null): AdminCat[] {
         cat["level_ids"] === null || cat["level_ids"] === undefined
           ? []
           : arrayValue(cat["level_ids"]).map((levelId) => stringValue(levelId, "course level id")),
+      targetStudents,
       downloadFilePath: nullableString(cat["download_file_path"]),
       downloadFileName: nullableString(cat["download_file_name"]),
       instructions: nullableString(cat["instructions"]),
