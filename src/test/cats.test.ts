@@ -103,6 +103,13 @@ describe("CAT response parsing", () => {
         title: "Unit CAT",
         name: "CAT 1 Financial Accounting",
         level_ids: ["level-1", "level-2"],
+        target_students: [
+          {
+            id: "student-1",
+            student_number: "PRF/2026/0001",
+            student_name: "Student Name",
+          },
+        ],
         download_file_path: "course-1/cat-downloads/cat-file.pdf",
         download_file_name: "cat-file.pdf",
         instructions: null,
@@ -141,6 +148,13 @@ describe("CAT response parsing", () => {
     const [cat] = parseAdminCats(value);
     expect(cat?.name).toBe("CAT 1 Financial Accounting");
     expect(cat?.levelIds).toEqual(["level-1", "level-2"]);
+    expect(cat?.targetStudents).toEqual([
+      {
+        id: "student-1",
+        studentNumber: "PRF/2026/0001",
+        studentName: "Student Name",
+      },
+    ]);
     expect(cat?.downloadFileName).toBe("cat-file.pdf");
     expect(cat?.questions[0]?.correctOption).toBe("C");
     expect(cat?.attempts[0]?.kasnebNumber).toBe("1234567890");

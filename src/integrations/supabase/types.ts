@@ -2544,6 +2544,24 @@ export type Database = {
         };
         Returns: string;
       };
+      create_targeted_cat_assessment: {
+        Args: {
+          _closes_at: string;
+          _course_id: string;
+          _download_file_name: string | null;
+          _download_file_path: string | null;
+          _duration_minutes: number;
+          _instructions: string | null;
+          _level_ids: string[];
+          _name: string;
+          _opens_at: string | null;
+          _questions: Json;
+          _student_ids: string[];
+          _title: string;
+          _unit_id: string;
+        };
+        Returns: string;
+      };
       set_cat_assessment_unit: {
         Args: { _assessment_id: string; _unit_id: string };
         Returns: undefined;
