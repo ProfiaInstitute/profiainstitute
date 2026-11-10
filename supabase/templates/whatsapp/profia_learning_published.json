@@ -1,0 +1,23 @@
+{
+  "name": "profia_learning_published",
+  "language": "en",
+  "category": "UTILITY",
+  "components": [
+    {
+      "type": "BODY",
+      "text": "Hello {{1}}, a new {{2}} \"{{3}}\" has been published for {{4}}. {{5}} Open your student portal to view it: {{6}}.",
+      "example": {
+        "body_text": [
+          [
+            "Jane Student",
+            "CAT",
+            "CAT 1 Financial Accounting",
+            "Certificate in Business Management",
+            "Opens 31 Oct 2026, 10:00 and closes 31 Oct 2026, 11:00.",
+            "https://www.profiainstitute.com/student"
+          ]
+        ]
+      }
+    }
+  ]
+}

@@ -1,9 +1,23 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowRight, Check, Megaphone, Newspaper, Phone, Wallet, MapPin } from "lucide-react";
+import { useEffect, useState } from "react";
+import {
+  ArrowRight,
+  CalendarDays,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  GraduationCap,
+  Megaphone,
+  Newspaper,
+  Pause,
+  Phone,
+  Play,
+  UserRound,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
-import { SCHOOL_ROUTES, seo, useActiveIntake, useSchools, useSetting } from "@/lib/site";
+import { SCHOOL_ROUTES, seo, useActiveIntake, useMedia, useSchools, useSetting } from "@/lib/site";
 import {
   CardGridSkeleton,
   EmptyState,
@@ -23,17 +37,6 @@ export const Route = createFileRoute("/")({
 });
 
 function Home() {
-  type CbcSettings = {
-    enabled: boolean;
-    badge?: string;
-    title?: string;
-    items: string[];
-    cta?: string;
-    phone?: string;
-    price?: string;
-    schedule?: string;
-    location?: string;
-  };
   type WebSettings = {
     enabled: boolean;
     badge?: string;
@@ -42,116 +45,306 @@ function Home() {
     image?: string;
   };
   const activeIntake = useActiveIntake();
+  const heroMedia = useMedia("hero");
+  const [slideIndex, setSlideIndex] = useState(0);
+  const [carouselPaused, setCarouselPaused] = useState(false);
+  const [carouselHovered, setCarouselHovered] = useState(false);
+  const [reducedMotion, setReducedMotion] = useState(false);
   const hero = useSetting("content.hero", {
     title: "Become a Certified Public Accountant at Profia Institute",
     cta: "Apply now",
     image: "/images/profia_school.webp",
   });
-  const intakeBadge = activeIntake.data ? `${activeIntake.data.name} now open` : null;
-  const intakeDetails = [
-    activeIntake.data?.start_date
-      ? `Starts ${new Date(`${activeIntake.data.start_date}T00:00:00`).toLocaleDateString("en-KE", { dateStyle: "medium" })}`
-      : null,
-    activeIntake.data?.application_deadline
-      ? `Apply by ${new Date(`${activeIntake.data.application_deadline}T00:00:00`).toLocaleDateString("en-KE", { dateStyle: "medium" })}`
-      : null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
-  const cbc = useSetting<CbcSettings>("content.cbc", { enabled: true, items: [] });
+  const about = useSetting<{ intro?: string }>("content.about", {});
   const web = useSetting<WebSettings>("content.webdev", { enabled: true });
   const stats = useSetting<{ items: { value: string; label: string }[] }>("stats", { items: [] });
+  const slides = heroMedia.data?.length
+    ? heroMedia.data
+    : [
+        {
+          id: "default-hero",
+          url: hero.image,
+          caption: null,
+          alt: null,
+          slot: null,
+          sort_order: 0,
+        },
+      ];
+  const currentSlide = slides[slideIndex % slides.length] ?? slides[0]!;
+
+  useEffect(() => {
+    const preference = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const updatePreference = () => setReducedMotion(preference.matches);
+    updatePreference();
+    preference.addEventListener("change", updatePreference);
+    return () => preference.removeEventListener("change", updatePreference);
+  }, []);
+
+  useEffect(() => {
+    if (slides.length < 2 || carouselPaused || carouselHovered || reducedMotion) return;
+    const interval = window.setInterval(() => {
+      setSlideIndex((index) => (index + 1) % slides.length);
+    }, 6500);
+    return () => window.clearInterval(interval);
+  }, [carouselHovered, carouselPaused, reducedMotion, slides.length]);
+
+  useEffect(() => {
+    setSlideIndex((index) => Math.min(index, Math.max(0, slides.length - 1)));
+  }, [slides.length]);
 
   return (
-    <>
-      {/* HERO */}
-      <section className="relative isolate overflow-hidden bg-brand text-brand-foreground">
+    <div className="homepage-motion">
+      <AnnouncementStrip />
+
+      <section
+        className="relative isolate overflow-hidden bg-brand-deep text-brand-foreground"
+        onMouseEnter={() => setCarouselHovered(true)}
+        onMouseLeave={() => setCarouselHovered(false)}
+        role="region"
+        aria-label="Featured stories"
+        aria-roledescription={slides.length > 1 ? "carousel" : undefined}
+      >
         <img
-          src={hero.image}
-          alt="Profia Institute class in session"
-          className="absolute inset-0 -z-20 h-full w-full object-cover"
+          key={currentSlide.id}
+          src={currentSlide.url}
+          alt={currentSlide.alt || "Profia Institute students and community"}
+          className="absolute inset-0 -z-20 h-full w-full object-cover object-center"
           fetchPriority="high"
         />
-        <div className="absolute inset-0 -z-10 bg-hero-overlay" />
-        <div className="container-site py-20 sm:py-32">
-          <div className="max-w-2xl animate-fade-up">
-            {intakeBadge && (
-              <span className="inline-flex items-center gap-2 rounded-full bg-primary px-3 py-1 text-sm font-semibold text-primary-foreground">
-                <Check className="h-4 w-4" /> {intakeBadge}
-              </span>
-            )}
+        <div className="absolute inset-0 -z-10 bg-[linear-gradient(90deg,rgba(24,7,10,0.8)_0%,rgba(39,9,14,0.68)_42%,rgba(39,9,14,0.3)_100%)]" />
+        <div className="absolute inset-0 -z-10 bg-[linear-gradient(0deg,rgba(24,7,10,0.28)_0%,transparent_38%)]" />
+        <div className="container-site grid min-h-[44rem] items-center gap-10 py-12 sm:min-h-[40rem] sm:py-14 lg:min-h-[38rem] lg:grid-cols-[minmax(0,1.15fr)_minmax(19rem,0.7fr)] lg:gap-16 lg:py-16">
+          <div className="animate-fade-up py-2 lg:py-8">
+            <p className="inline-flex items-center gap-2 rounded-full border border-white/25 bg-black/20 px-4 py-2 text-xs font-bold uppercase tracking-[0.16em] text-white/95 backdrop-blur-sm sm:text-sm">
+              <span className="h-2 w-2 rounded-full bg-primary" />
+              Profia Institute of Professionals
+              <span className="text-white/60">·</span> Homa Bay, Kenya
+            </p>
             {activeIntake.isError && (
-              <p role="status" className="mt-3 text-sm">
+              <p role="status" className="mt-4 text-sm text-white/85">
                 Admissions details are temporarily unavailable.
               </p>
             )}
-            {intakeDetails && (
-              <p className="mt-3 text-sm font-medium text-brand-foreground/90">{intakeDetails}</p>
+            {heroMedia.error && (
+              <p role="status" className="mt-4 text-sm text-white/85">
+                Featured slides are temporarily unavailable. Showing the default campus image.
+              </p>
             )}
-            <h1 className="mt-5 text-4xl font-extrabold leading-[1.1] sm:text-6xl">{hero.title}</h1>
-            <div className="mt-8 flex flex-wrap gap-3">
-              <Button asChild variant="hero" size="lg">
+            <h1 className="mt-6 max-w-3xl text-4xl font-extrabold leading-[1.08] tracking-tight text-white sm:text-5xl lg:text-[3.8rem]">
+              <span aria-live="polite" aria-atomic="true">
+                {currentSlide.caption || hero.title}
+              </span>
+            </h1>
+            <p className="mt-5 max-w-2xl text-base leading-7 text-white/85 sm:text-lg sm:leading-8">
+              Build practical skills, earn recognised qualifications and take your next step with a
+              learning community rooted in Homa Bay.
+            </p>
+            <div className="mt-7 flex flex-wrap gap-3">
+              <Button asChild variant="hero" size="lg" className="px-7">
                 <Link to="/admission" search={{}}>
-                  {hero.cta || "Apply now"}
+                  {hero.cta || "Apply now"} <ArrowRight className="ml-1 h-4 w-4" />
                 </Link>
               </Button>
-              <Button asChild variant="heroOutline" size="lg">
-                <Link to="/academics">View courses</Link>
+              <Button
+                asChild
+                variant="heroOutline"
+                size="lg"
+                className="border-white/60 bg-white/5 px-7 text-white hover:bg-white/15"
+              >
+                <Link to="/academics">Explore programmes</Link>
               </Button>
             </div>
           </div>
-        </div>
-      </section>
 
-      <AnnouncementStrip />
+          <aside className="relative mx-auto w-full max-w-md overflow-hidden rounded-2xl border border-white/35 bg-brand-deep/65 text-white shadow-[0_24px_80px_-28px_rgba(0,0,0,0.55)] backdrop-blur-xl backdrop-saturate-150 lg:ml-auto">
+            <div className="h-px bg-gradient-to-r from-transparent via-white/80 to-transparent" />
+            <div className="p-6 sm:p-8">
+              <div className="flex items-center gap-3">
+                <span className="flex h-11 w-11 items-center justify-center rounded-xl border border-white/20 bg-white/10 text-primary">
+                  <CalendarDays className="h-5 w-5" />
+                </span>
+                <div>
+                  <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-primary">
+                    Admissions
+                  </p>
+                  <p className="mt-0.5 text-xs font-semibold uppercase tracking-wide text-white/65">
+                    Profia Institute · Homa Bay
+                  </p>
+                </div>
+              </div>
 
-      {/* CBC */}
-      {cbc.enabled && (
-        <section className="bg-cream py-16">
-          <div className="container-site grid items-center gap-10 lg:grid-cols-2">
-            <div>
-              <p className="eyebrow">💻 {cbc.badge}</p>
-              <h2 className="mt-2 text-3xl font-bold text-brand sm:text-4xl">{cbc.title}</h2>
-              <ul className="mt-6 space-y-3">
-                {(cbc.items ?? []).map((i: string) => (
-                  <li key={i} className="flex gap-3">
-                    <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
-                      <Check className="h-3.5 w-3.5" />
-                    </span>
-                    {i}
-                  </li>
-                ))}
-              </ul>
-              <div className="mt-8 flex flex-wrap gap-3">
-                <Button asChild variant="hero" size="lg">
+              {activeIntake.data ? (
+                <>
+                  <p className="mt-6 inline-flex items-center gap-2 rounded-full border border-emerald-200/20 bg-emerald-300/15 px-3 py-1.5 text-xs font-bold text-emerald-100">
+                    <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                    Applications open
+                  </p>
+                  <h2 className="mt-3 text-2xl font-extrabold leading-tight text-white sm:text-3xl">
+                    {activeIntake.data.name}
+                  </h2>
+                  <p className="mt-2 text-sm leading-6 text-white/75">
+                    Take the next step toward a practical, career-focused qualification.
+                  </p>
+                  {(activeIntake.data.start_date || activeIntake.data.application_deadline) && (
+                    <dl className="mt-5 grid grid-cols-2 gap-3 border-y border-white/20 py-4">
+                      {activeIntake.data.start_date && (
+                        <div>
+                          <dt className="text-[11px] font-semibold uppercase tracking-wide text-white/60">
+                            Intake starts
+                          </dt>
+                          <dd className="mt-1 text-sm font-bold text-white">
+                            {new Date(
+                              `${activeIntake.data.start_date}T00:00:00`,
+                            ).toLocaleDateString("en-KE", { dateStyle: "medium" })}
+                          </dd>
+                        </div>
+                      )}
+                      {activeIntake.data.application_deadline && (
+                        <div>
+                          <dt className="text-[11px] font-semibold uppercase tracking-wide text-white/60">
+                            Apply by
+                          </dt>
+                          <dd className="mt-1 text-sm font-bold text-white">
+                            {new Date(
+                              `${activeIntake.data.application_deadline}T00:00:00`,
+                            ).toLocaleDateString("en-KE", { dateStyle: "medium" })}
+                          </dd>
+                        </div>
+                      )}
+                    </dl>
+                  )}
+                  {activeIntake.data.notes && (
+                    <p className="mt-4 line-clamp-3 text-sm leading-6 text-white/75">
+                      {activeIntake.data.notes}
+                    </p>
+                  )}
+                </>
+              ) : (
+                <>
+                  <p className="mt-6 text-xs font-bold uppercase tracking-[0.18em] text-primary">
+                    Find your next step
+                  </p>
+                  <h2 className="mt-3 text-2xl font-extrabold leading-tight text-white sm:text-3xl">
+                    Your future starts here.
+                  </h2>
+                  <p className="mt-2 text-sm leading-6 text-white/75">
+                    Explore our programmes or talk with admissions about upcoming opportunities.
+                  </p>
+                  {activeIntake.isError && (
+                    <p role="status" className="mt-3 text-xs text-white/65">
+                      Current intake information is temporarily unavailable.
+                    </p>
+                  )}
+                </>
+              )}
+
+              <div className="mt-6 grid gap-2.5">
+                <Button asChild variant="hero" className="w-full justify-between">
                   <Link to="/admission" search={{}}>
-                    {cbc.cta || "Register Now"} <ArrowRight />
+                    Start your application <ArrowRight className="h-4 w-4" />
                   </Link>
                 </Button>
+                <Link
+                  to="/application-status"
+                  search={{}}
+                  className="text-center text-sm font-semibold text-white/85 underline-offset-4 hover:text-primary hover:underline"
+                >
+                  Already applied? Track your application
+                </Link>
               </div>
             </div>
-            <div className="grid gap-3 rounded-2xl bg-background p-6 shadow-card">
-              {cbc.phone && (
-                <InfoRow
-                  icon={<Phone />}
-                  label="Call"
-                  value={cbc.phone}
-                  href={`tel:${cbc.phone.replace(/\s/g, "")}`}
-                />
-              )}
-              {cbc.price && <InfoRow icon={<Wallet />} label="Fee" value={cbc.price} />}
-              {cbc.schedule && (
-                <InfoRow icon={<Megaphone />} label="Schedule" value={cbc.schedule} />
-              )}
-              {cbc.location && <InfoRow icon={<MapPin />} label="Location" value={cbc.location} />}
-            </div>
+          </aside>
+        </div>
+        {slides.length > 1 && (
+          <div className="container-site flex items-center gap-2 pb-5">
+            <button
+              type="button"
+              aria-label="Previous hero slide"
+              onClick={() => setSlideIndex((index) => (index - 1 + slides.length) % slides.length)}
+              className="flex h-9 w-9 items-center justify-center rounded-full border border-white/50 bg-black/20 text-white transition hover:bg-white/20"
+            >
+              <ChevronLeft className="h-5 w-5" />
+            </button>
+            {slides.map((slide, index) => (
+              <button
+                key={slide.id}
+                type="button"
+                aria-label={`Show hero slide ${index + 1}`}
+                aria-current={slideIndex === index ? "true" : undefined}
+                onClick={() => setSlideIndex(index)}
+                className={`h-2.5 rounded-full transition-all ${slideIndex === index ? "w-8 bg-primary" : "w-2.5 bg-white/70 hover:bg-white"}`}
+              />
+            ))}
+            <button
+              type="button"
+              aria-label="Next hero slide"
+              onClick={() => setSlideIndex((index) => (index + 1) % slides.length)}
+              className="flex h-9 w-9 items-center justify-center rounded-full border border-white/50 bg-black/20 text-white transition hover:bg-white/20"
+            >
+              <ChevronRight className="h-5 w-5" />
+            </button>
+            <button
+              type="button"
+              aria-label={carouselPaused ? "Play hero slideshow" : "Pause hero slideshow"}
+              aria-pressed={carouselPaused}
+              onClick={() => setCarouselPaused((paused) => !paused)}
+              className="ml-auto flex h-9 w-9 items-center justify-center rounded-full border border-white/50 bg-black/20 text-white transition hover:bg-white/20"
+            >
+              {carouselPaused ? <Play className="h-4 w-4" /> : <Pause className="h-4 w-4" />}
+            </button>
+          </div>
+        )}
+      </section>
+
+      <QuickLinks />
+
+      {stats.items?.length > 0 && (
+        <section className="border-b bg-background">
+          <div className="container-site grid grid-cols-2 divide-x py-8 text-center sm:grid-cols-4">
+            {stats.items.map((stat) => (
+              <div key={stat.label} className="px-3 sm:px-4">
+                <div className="text-3xl font-extrabold text-primary sm:text-4xl">{stat.value}</div>
+                <div className="mt-1 text-xs font-medium text-muted-foreground sm:text-sm">
+                  {stat.label}
+                </div>
+              </div>
+            ))}
           </div>
         </section>
       )}
 
+      <section className="container-site grid gap-6 py-14 sm:py-16 lg:grid-cols-[0.8fr_1.2fr] lg:items-center lg:gap-16">
+        <div>
+          <p className="eyebrow">Welcome to Profia</p>
+          <h2 className="mt-3 text-3xl font-extrabold leading-tight text-brand sm:text-4xl">
+            A practical start to a brighter future.
+          </h2>
+        </div>
+        <div className="rounded-2xl border bg-muted/30 p-6 sm:p-8">
+          <p className="text-base leading-7 text-muted-foreground">
+            {about.intro ||
+              "Profia Institute is a TVET college in Homa Bay. Explore our schools and programmes, or contact the Institute for current admissions information."}
+          </p>
+          <div className="mt-5 flex flex-wrap gap-3">
+            <Button asChild variant="outline">
+              <Link to="/about">
+                About the Institute <ArrowRight className="ml-1 h-4 w-4" />
+              </Link>
+            </Button>
+            <Button asChild variant="link" className="text-brand">
+              <Link to="/academics">Explore our schools</Link>
+            </Button>
+          </div>
+        </div>
+      </section>
+
+      <AcademicsGrid />
+      <Partners />
+      <LatestNews />
+
       {/* WEB DEV */}
       {web.enabled && (
-        <section className="py-16">
+        <section className="py-16 sm:py-20">
           <div className="container-site grid items-center gap-10 overflow-hidden rounded-2xl bg-gradient-brand text-brand-foreground lg:grid-cols-2">
             <div className="p-8 sm:p-12">
               <span className="rounded-full bg-primary px-3 py-1 text-sm font-semibold">
@@ -176,62 +369,21 @@ function Home() {
         </section>
       )}
 
-      {/* STATS */}
-      {stats.items?.length > 0 && (
-        <section className="border-y bg-background">
-          <div className="container-site grid grid-cols-2 divide-x py-10 text-center">
-            {stats.items.map((s) => (
-              <div key={s.label} className="px-4">
-                <div className="text-4xl font-extrabold text-primary sm:text-5xl">{s.value}</div>
-                <div className="mt-1 text-sm font-medium text-muted-foreground">{s.label}</div>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-
-      <AcademicsGrid />
-      <LatestNews />
       <HomepageMedia />
-      <Partners />
-    </>
-  );
-}
-
-function InfoRow({
-  icon,
-  label,
-  value,
-  href,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-  href?: string;
-}) {
-  const inner = (
-    <div className="flex items-center gap-4 rounded-lg border p-4">
-      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent text-primary [&_svg]:h-5 [&_svg]:w-5">
-        {icon}
-      </span>
-      <div>
-        <div className="text-xs uppercase tracking-wider text-muted-foreground">{label}</div>
-        <div className="font-semibold text-brand">{value}</div>
-      </div>
     </div>
   );
-  return href ? <a href={href}>{inner}</a> : inner;
 }
 
 function AnnouncementStrip() {
-  const { data } = useQuery({
+  const { data, error } = useQuery({
     queryKey: ["home_announcements"],
     queryFn: async () => {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("announcements")
         .select("id,title,category,starts_at,ends_at")
         .eq("published", true)
         .order("created_at", { ascending: false });
+      if (error) throw error;
       const now = Date.now();
       return (data ?? [])
         .filter(
@@ -242,19 +394,99 @@ function AnnouncementStrip() {
         .slice(0, 3);
     },
   });
+  if (error)
+    return (
+      <div
+        className="border-b bg-muted/50 px-4 py-3 text-center text-sm text-muted-foreground"
+        role="status"
+      >
+        Current notices are temporarily unavailable. Please check the announcements page later.
+      </div>
+    );
   if (!data?.length) return null;
   return (
-    <div className="bg-primary text-primary-foreground">
-      <div className="container-site flex flex-wrap items-center gap-x-6 gap-y-1 py-3 text-sm font-medium">
-        <Megaphone className="h-4 w-4" />
-        {data.map((a) => (
-          <span key={a.id}>{a.title}</span>
-        ))}
-        <Link to="/announcements" className="ml-auto underline">
-          All announcements
+    <div className="border-b border-white/10 bg-brand-deep text-brand-foreground">
+      <div className="container-site flex min-h-12 items-center gap-4 py-2.5">
+        <span className="flex shrink-0 items-center gap-2 text-xs font-bold uppercase tracking-wider text-white sm:text-sm">
+          <Megaphone className="h-4 w-4" /> Latest notices
+        </span>
+        <div
+          className="flex min-w-0 flex-1 items-center gap-5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          role="region"
+          aria-label="Profia announcements"
+        >
+          {data.map((announcement) => (
+            <Link
+              key={announcement.id}
+              to="/announcements"
+              className="flex shrink-0 items-center gap-2 text-sm text-white/80 transition hover:text-primary"
+            >
+              <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-primary" />
+              <span className="max-w-[18rem] truncate">{announcement.title}</span>
+            </Link>
+          ))}
+        </div>
+        <Link
+          to="/announcements"
+          className="shrink-0 text-xs font-semibold text-primary underline-offset-4 hover:text-white hover:underline sm:text-sm"
+        >
+          All notices
         </Link>
       </div>
     </div>
+  );
+}
+
+function QuickLinks() {
+  const links = [
+    {
+      to: "/admission",
+      label: "Join Profia",
+      detail: "Start your application",
+      icon: GraduationCap,
+    },
+    { to: "/academics", label: "Find a course", detail: "Explore our programmes", icon: Check },
+    {
+      to: "/student",
+      label: "Student portal",
+      detail: "Learning and student services",
+      icon: UserRound,
+      student: true,
+    },
+    {
+      to: "/holiday-program",
+      label: "Holiday program",
+      detail: "General and kids training",
+      icon: CalendarDays,
+    },
+    { to: "/contact", label: "Talk to us", detail: "Get help from admissions", icon: Phone },
+  ];
+  return (
+    <section className="border-b bg-white py-4 sm:py-5">
+      <div className="container-site grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        {links.map(({ to, label, detail, icon: Icon, student }) => (
+          <Link
+            key={label}
+            to={to}
+            {...(student ? { search: { course: undefined } } : {})}
+            className="group flex min-h-20 items-center gap-2.5 rounded-xl bg-muted/40 px-3 py-3 transition hover:bg-accent/70 sm:gap-3 sm:px-5"
+          >
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-primary shadow-sm sm:h-10 sm:w-10">
+              <Icon className="h-5 w-5" />
+            </span>
+            <span className="min-w-0">
+              <span className="block whitespace-normal text-sm font-bold leading-tight text-brand sm:text-base">
+                {label}
+              </span>
+              <span className="mt-1 block whitespace-normal text-[11px] leading-snug text-muted-foreground sm:text-xs">
+                {detail}
+              </span>
+            </span>
+            <ArrowRight className="ml-auto hidden h-4 w-4 shrink-0 text-primary transition-transform group-hover:translate-x-1 sm:block" />
+          </Link>
+        ))}
+      </div>
+    </section>
   );
 }
 

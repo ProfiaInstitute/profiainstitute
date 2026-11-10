@@ -15,6 +15,9 @@ verify_jwt = true
 [functions.create-online-payment]
 verify_jwt = true
 
+[functions.create-holiday-payment]
+verify_jwt = false
+
 [functions.manage-payhero-settings]
 verify_jwt = true
 
@@ -22,6 +25,9 @@ verify_jwt = true
 verify_jwt = true
 
 [functions.generate-fee-receipt]
+verify_jwt = true
+
+[functions.admin-send-email]
 verify_jwt = true
 
 [functions.generate-fee-statement-template]
@@ -32,6 +38,18 @@ verify_jwt = true
 
 [functions.manage-staff]
 verify_jwt = true
+
+[functions.manage-system-users]
+verify_jwt = true
+
+[functions.send-application-notifications]
+verify_jwt = false
+
+[functions.sync-regulatory-feeds]
+verify_jwt = true
+
+[functions.send-regulatory-deadline-reminders]
+verify_jwt = false
 
 [auth.email.template.confirmation]
 subject = "Confirm your Profia Institute account"

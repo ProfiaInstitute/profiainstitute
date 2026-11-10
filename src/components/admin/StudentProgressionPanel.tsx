@@ -181,6 +181,7 @@ export function StudentProgressionPanel() {
 
   return (
     <div className="space-y-6">
+      <StudentLevelApplicationsReview />
       <section className="rounded-xl border border-primary/30 bg-cream p-5">
         <div className="flex gap-3">
           <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
@@ -295,7 +296,10 @@ export function StudentProgressionPanel() {
             </span>
           </Field>
         </div>
-        <Button disabled={saveRule.isPending || !coursesQuery.data?.length}>
+        <Button
+          disabled={saveRule.isPending || !coursesQuery.data?.length}
+          loading={saveRule.isPending}
+        >
           {saveRule.isPending ? "Saving…" : "Save progression rule"}
         </Button>
       </form>
@@ -311,6 +315,7 @@ export function StudentProgressionPanel() {
           <Button
             variant="outline"
             disabled={queueExisting.isPending}
+            loading={queueExisting.isPending}
             onClick={() => queueExisting.mutate()}
           >
             <RefreshCw />{" "}
@@ -466,6 +471,166 @@ export function StudentProgressionPanel() {
         )}
       </section>
     </div>
+  );
+}
+
+function StudentLevelApplicationsReview() {
+  const queryClient = useQueryClient();
+  const applicationsQuery = useQuery({
+    queryKey: ["admin", "student-level-applications"],
+    refetchInterval: 30_000,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("student_level_applications")
+        .select("id,student_id,level_id,status,student_message,created_at")
+        .eq("status", "pending")
+        .order("created_at");
+      if (error) throw error;
+      const studentIds = [...new Set(data.map((application) => application.student_id))];
+      const levelIds = [...new Set(data.map((application) => application.level_id))];
+      const [students, levels] = await Promise.all([
+        studentIds.length
+          ? supabase
+              .from("students")
+              .select("id,student_number,first_name,last_name,course_id,level_id")
+              .in("id", studentIds)
+          : Promise.resolve({ data: [], error: null }),
+        levelIds.length
+          ? supabase.from("course_levels").select("id,name,course_id").in("id", levelIds)
+          : Promise.resolve({ data: [], error: null }),
+      ]);
+      if (students.error) throw students.error;
+      if (levels.error) throw levels.error;
+      return {
+        applications: data,
+        students: students.data ?? [],
+        levels: levels.data ?? [],
+      };
+    },
+  });
+  const reviewMutation = useMutation({
+    mutationFn: async ({
+      id,
+      decision,
+      message,
+    }: {
+      id: string;
+      decision: "approved" | "rejected";
+      message: string | null;
+    }) => {
+      const { error } = await supabase.rpc("review_student_level_application", {
+        _application_id: id,
+        _decision: decision,
+        _admin_message: message,
+      });
+      if (error) throw error;
+    },
+    onSuccess: async (_, variables) => {
+      toast.success(
+        variables.decision === "approved"
+          ? "Student enrolled in the requested level"
+          : "Level application declined",
+      );
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["admin", "student-level-applications"] }),
+        queryClient.invalidateQueries({ queryKey: ["student", "record"] }),
+        queryClient.invalidateQueries({ queryKey: ["student", "fees"] }),
+        queryClient.invalidateQueries({ queryKey: ["student", "course-levels"] }),
+      ]);
+    },
+    onError: (error) =>
+      toast.error("Could not review level application", { description: error.message }),
+  });
+  if (applicationsQuery.isLoading)
+    return <div className="rounded-xl border bg-card p-5 text-sm">Loading level applications…</div>;
+  if (applicationsQuery.error)
+    return (
+      <PanelError
+        message={applicationsQuery.error.message}
+        migrationRequired={isProgressionMigrationError(applicationsQuery.error)}
+        retry={() => void applicationsQuery.refetch()}
+      />
+    );
+  if (!applicationsQuery.data)
+    return <div className="rounded-xl border bg-card p-5 text-sm">Loading level applications…</div>;
+  const studentById = new Map(
+    applicationsQuery.data.students.map((student) => [student.id, student]),
+  );
+  const levelById = new Map(applicationsQuery.data.levels.map((level) => [level.id, level]));
+  return (
+    <section className="space-y-3 rounded-xl border bg-card p-5 shadow-card">
+      <div>
+        <h2 className="font-semibold text-brand">Student level applications</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Review applications before moving the student record and enabling units for the requested
+          level.
+        </p>
+      </div>
+      {applicationsQuery.data.applications.length ? (
+        <ul className="divide-y">
+          {applicationsQuery.data.applications.map((application) => {
+            const student = studentById.get(application.student_id);
+            const level = levelById.get(application.level_id);
+            return (
+              <li
+                key={application.id}
+                className="flex flex-wrap items-start justify-between gap-4 py-4"
+              >
+                <div className="min-w-0">
+                  <p className="font-semibold text-brand">
+                    {student
+                      ? `${student.first_name} ${student.last_name} · ${student.student_number}`
+                      : "Student record"}
+                  </p>
+                  <p className="mt-1 text-sm">Requested: {level?.name ?? "Course level"}</p>
+                  {application.student_message && (
+                    <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">
+                      {application.student_message}
+                    </p>
+                  )}
+                  <time className="mt-1 block text-xs text-muted-foreground">
+                    {new Date(application.created_at).toLocaleString("en-KE")}
+                  </time>
+                </div>
+                <div className="flex shrink-0 gap-2">
+                  <Button
+                    disabled={reviewMutation.isPending || !student || !level}
+                    onClick={() =>
+                      reviewMutation.mutate({
+                        id: application.id,
+                        decision: "approved",
+                        message: null,
+                      })
+                    }
+                  >
+                    Enrol
+                  </Button>
+                  <Button
+                    variant="outline"
+                    disabled={reviewMutation.isPending}
+                    onClick={() => {
+                      const message = window.prompt("Optional note for the student:");
+                      if (message === null) return;
+                      reviewMutation.mutate({
+                        id: application.id,
+                        decision: "rejected",
+                        message,
+                      });
+                    }}
+                  >
+                    Decline
+                  </Button>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      ) : (
+        <p className="rounded-lg bg-muted/50 p-4 text-sm text-muted-foreground">
+          No student level applications are awaiting review.
+        </p>
+      )}
+    </section>
   );
 }
 

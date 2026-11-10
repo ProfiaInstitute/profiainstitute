@@ -1,5 +1,12 @@
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
+type TableShape<Row, Insert, Update = Partial<Insert>> = {
+  Row: Row;
+  Insert: Insert;
+  Update: Update;
+  Relationships: [];
+};
+
 export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
@@ -39,6 +46,8 @@ export type Database = {
           attachment_url: string | null;
           body: string;
           category: string;
+          cta_label: string | null;
+          cta_url: string | null;
           created_at: string;
           created_by: string | null;
           ends_at: string | null;
@@ -47,6 +56,7 @@ export type Database = {
           show_on_homepage: boolean;
           show_public: boolean;
           show_to_students: boolean;
+          show_to_facilitators: boolean;
           starts_at: string | null;
           title: string;
           updated_at: string;
@@ -57,6 +67,8 @@ export type Database = {
           attachment_url?: string | null;
           body?: string;
           category?: string;
+          cta_label?: string | null;
+          cta_url?: string | null;
           created_at?: string;
           created_by?: string | null;
           ends_at?: string | null;
@@ -65,6 +77,7 @@ export type Database = {
           show_on_homepage?: boolean;
           show_public?: boolean;
           show_to_students?: boolean;
+          show_to_facilitators?: boolean;
           starts_at?: string | null;
           title: string;
           updated_at?: string;
@@ -75,6 +88,8 @@ export type Database = {
           attachment_url?: string | null;
           body?: string;
           category?: string;
+          cta_label?: string | null;
+          cta_url?: string | null;
           created_at?: string;
           created_by?: string | null;
           ends_at?: string | null;
@@ -83,6 +98,7 @@ export type Database = {
           show_on_homepage?: boolean;
           show_public?: boolean;
           show_to_students?: boolean;
+          show_to_facilitators?: boolean;
           starts_at?: string | null;
           title?: string;
           updated_at?: string;
@@ -212,6 +228,7 @@ export type Database = {
           id: string;
           institution_attended: string | null;
           intake_id: string | null;
+          level_id: string | null;
           kcse_grade: string | null;
           last_name: string;
           middle_name: string | null;
@@ -245,6 +262,7 @@ export type Database = {
           id?: string;
           institution_attended?: string | null;
           intake_id?: string | null;
+          level_id?: string | null;
           kcse_grade?: string | null;
           last_name: string;
           middle_name?: string | null;
@@ -278,6 +296,7 @@ export type Database = {
           id?: string;
           institution_attended?: string | null;
           intake_id?: string | null;
+          level_id?: string | null;
           kcse_grade?: string | null;
           last_name?: string;
           middle_name?: string | null;
@@ -307,6 +326,13 @@ export type Database = {
             columns: ["intake_id"];
             isOneToOne: false;
             referencedRelation: "intakes";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "applications_level_id_fkey";
+            columns: ["level_id"];
+            isOneToOne: false;
+            referencedRelation: "course_levels";
             referencedColumns: ["id"];
           },
           {
@@ -428,6 +454,7 @@ export type Database = {
           file_path: string | null;
           id: string;
           instructions: string | null;
+          level_ids: string[] | null;
           published: boolean;
           title: string;
           unit_id: string | null;
@@ -441,6 +468,7 @@ export type Database = {
           file_path?: string | null;
           id?: string;
           instructions?: string | null;
+          level_ids?: string[] | null;
           published?: boolean;
           title: string;
           unit_id?: string | null;
@@ -454,6 +482,7 @@ export type Database = {
           file_path?: string | null;
           id?: string;
           instructions?: string | null;
+          level_ids?: string[] | null;
           published?: boolean;
           title?: string;
           unit_id?: string | null;
@@ -542,12 +571,72 @@ export type Database = {
         };
         Relationships: [];
       };
+      course_levels: {
+        Row: {
+          code: string | null;
+          course_id: string;
+          created_at: string;
+          description: string | null;
+          fee_items: Json;
+          fee_structure_file_name: string | null;
+          fee_structure_path: string | null;
+          fee_structure_url: string | null;
+          id: string;
+          name: string;
+          published: boolean;
+          sort_order: number;
+          total_fee: number;
+          updated_at: string;
+        };
+        Insert: {
+          code?: string | null;
+          course_id: string;
+          created_at?: string;
+          description?: string | null;
+          fee_items?: Json;
+          fee_structure_file_name?: string | null;
+          fee_structure_path?: string | null;
+          fee_structure_url?: string | null;
+          id?: string;
+          name: string;
+          published?: boolean;
+          sort_order?: number;
+          total_fee?: number;
+          updated_at?: string;
+        };
+        Update: {
+          code?: string | null;
+          course_id?: string;
+          created_at?: string;
+          description?: string | null;
+          fee_items?: Json;
+          fee_structure_file_name?: string | null;
+          fee_structure_path?: string | null;
+          fee_structure_url?: string | null;
+          id?: string;
+          name?: string;
+          published?: boolean;
+          sort_order?: number;
+          total_fee?: number;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "course_levels_course_id_fkey";
+            columns: ["course_id"];
+            isOneToOne: false;
+            referencedRelation: "courses";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       course_units: {
         Row: {
           code: string | null;
           course_id: string;
           created_at: string;
           id: string;
+          level_id: string | null;
           semester: string | null;
           sort_order: number;
           title: string;
@@ -558,6 +647,7 @@ export type Database = {
           course_id: string;
           created_at?: string;
           id?: string;
+          level_id?: string | null;
           semester?: string | null;
           sort_order?: number;
           title: string;
@@ -568,6 +658,7 @@ export type Database = {
           course_id?: string;
           created_at?: string;
           id?: string;
+          level_id?: string | null;
           semester?: string | null;
           sort_order?: number;
           title?: string;
@@ -579,6 +670,13 @@ export type Database = {
             columns: ["course_id"];
             isOneToOne: false;
             referencedRelation: "courses";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "course_units_level_id_fkey";
+            columns: ["level_id"];
+            isOneToOne: false;
+            referencedRelation: "course_levels";
             referencedColumns: ["id"];
           },
         ];
@@ -722,6 +820,7 @@ export type Database = {
           created_at: string;
           id: string;
           intake_id: string | null;
+          level_id: string | null;
           progress: number;
           status: string;
           student_id: string;
@@ -734,6 +833,8 @@ export type Database = {
           created_at?: string;
           id?: string;
           intake_id?: string | null;
+          kasneb_number?: string | null;
+          level_id?: string | null;
           progress?: number;
           status?: string;
           student_id: string;
@@ -746,6 +847,8 @@ export type Database = {
           created_at?: string;
           id?: string;
           intake_id?: string | null;
+          kasneb_number?: string | null;
+          level_id?: string | null;
           progress?: number;
           status?: string;
           student_id?: string;
@@ -774,6 +877,13 @@ export type Database = {
             referencedColumns: ["id"];
           },
           {
+            foreignKeyName: "enrollments_level_id_fkey";
+            columns: ["level_id"];
+            isOneToOne: false;
+            referencedRelation: "course_levels";
+            referencedColumns: ["id"];
+          },
+          {
             foreignKeyName: "enrollments_student_id_fkey";
             columns: ["student_id"];
             isOneToOne: false;
@@ -782,6 +892,64 @@ export type Database = {
           },
         ];
       };
+      exam_sittings: TableShape<
+        {
+          created_at: string;
+          created_by: string | null;
+          course_id: string;
+          exam_body: string;
+          exam_date: string | null;
+          id: string;
+          level_id: string;
+          minimum_passing_score: number;
+          qualification: string;
+          registration_deadline: string | null;
+          required_unit_ids: string[];
+          status: string;
+          title: string;
+          updated_at: string;
+        },
+        {
+          created_at?: string;
+          created_by?: string | null;
+          course_id: string;
+          exam_body: string;
+          exam_date?: string | null;
+          id?: string;
+          level_id: string;
+          minimum_passing_score?: number;
+          qualification: string;
+          registration_deadline?: string | null;
+          required_unit_ids?: string[];
+          status?: string;
+          title: string;
+          updated_at?: string;
+        }
+      >;
+      exam_sitting_candidates: TableShape<
+        {
+          created_at: string;
+          external_reference: string | null;
+          id: string;
+          nominated_by: string | null;
+          notes: string | null;
+          sitting_id: string;
+          status: string;
+          student_id: string;
+          updated_at: string;
+        },
+        {
+          created_at?: string;
+          external_reference?: string | null;
+          id?: string;
+          nominated_by?: string | null;
+          notes?: string | null;
+          sitting_id: string;
+          status?: string;
+          student_id: string;
+          updated_at?: string;
+        }
+      >;
       faqs: {
         Row: {
           answer: string;
@@ -938,6 +1106,228 @@ export type Database = {
           },
         ];
       };
+      holiday_program_applications: TableShape<
+        {
+          admin_notes: string;
+          amount_due: number;
+          applicant_age: number | null;
+          applicant_name: string;
+          confirmation_code: string;
+          created_at: string;
+          deposit_amount: number;
+          discount_percent: number;
+          email: string | null;
+          fee_amount: number;
+          guardian_consent: boolean;
+          guardian_email: string | null;
+          guardian_name: string | null;
+          guardian_phone: string | null;
+          id: string;
+          location: string;
+          module_ids: string[];
+          payment_status: string;
+          period_id: string;
+          phone: string;
+          reviewed_at: string | null;
+          reviewed_by: string | null;
+          status: string;
+          submitted_at: string;
+          track_id: string;
+          updated_at: string;
+        },
+        {
+          admin_notes?: string;
+          amount_due: number;
+          applicant_age?: number | null;
+          applicant_name: string;
+          confirmation_code?: string;
+          created_at?: string;
+          deposit_amount: number;
+          discount_percent: number;
+          email?: string | null;
+          fee_amount: number;
+          guardian_consent?: boolean;
+          guardian_email?: string | null;
+          guardian_name?: string | null;
+          guardian_phone?: string | null;
+          id?: string;
+          location: string;
+          module_ids: string[];
+          payment_status?: string;
+          period_id: string;
+          phone: string;
+          reviewed_at?: string | null;
+          reviewed_by?: string | null;
+          status?: string;
+          submitted_at?: string;
+          track_id: string;
+          updated_at?: string;
+        }
+      >;
+      holiday_program_modules: TableShape<
+        {
+          active: boolean;
+          created_at: string;
+          description: string;
+          duration: string;
+          id: string;
+          title: string;
+          track_id: string;
+          updated_at: string;
+        },
+        {
+          active?: boolean;
+          created_at?: string;
+          description?: string;
+          duration?: string;
+          id?: string;
+          title: string;
+          track_id: string;
+          updated_at?: string;
+        }
+      >;
+      holiday_program_payments: TableShape<
+        {
+          amount: number;
+          application_id: string;
+          created_at: string;
+          id: string;
+          mpesa_receipt_number: string | null;
+          paid_at: string | null;
+          payer_phone: string;
+          provider: string;
+          provider_checkout_id: string | null;
+          provider_reference: string | null;
+          raw: Json;
+          reference: string;
+          status: string;
+          updated_at: string;
+        },
+        {
+          amount: number;
+          application_id: string;
+          created_at?: string;
+          id?: string;
+          mpesa_receipt_number?: string | null;
+          paid_at?: string | null;
+          payer_phone: string;
+          provider?: string;
+          provider_checkout_id?: string | null;
+          provider_reference?: string | null;
+          raw?: Json;
+          reference: string;
+          status?: string;
+          updated_at?: string;
+        },
+        {
+          amount?: number;
+          application_id?: string;
+          created_at?: string;
+          id?: string;
+          mpesa_receipt_number?: string | null;
+          paid_at?: string | null;
+          payer_phone?: string;
+          provider?: string;
+          provider_checkout_id?: string | null;
+          provider_reference?: string | null;
+          raw?: Json;
+          reference?: string;
+          status?: string;
+          updated_at?: string;
+        }
+      >;
+      holiday_program_application_history: TableShape<
+        {
+          application_id: string;
+          changed_at: string;
+          changed_by: string | null;
+          id: string;
+          new_values: Json;
+          previous_values: Json;
+        },
+        {
+          application_id: string;
+          changed_at?: string;
+          changed_by?: string | null;
+          id?: string;
+          new_values: Json;
+          previous_values: Json;
+        }
+      >;
+      holiday_program_period_modules: TableShape<
+        { module_id: string; period_id: string },
+        { module_id: string; period_id: string }
+      >;
+      holiday_program_periods: TableShape<
+        {
+          capacity: number | null;
+          created_at: string;
+          deposit_amount: number;
+          discount_percent: number;
+          ends_on: string;
+          fee_amount: number;
+          id: string;
+          location: string;
+          offer_deadline: string | null;
+          registration_deadline: string | null;
+          schedule: string;
+          starts_on: string;
+          status: string;
+          title: string;
+          track_id: string;
+          updated_at: string;
+        },
+        {
+          capacity?: number | null;
+          created_at?: string;
+          deposit_amount?: number;
+          discount_percent?: number;
+          ends_on: string;
+          fee_amount?: number;
+          id?: string;
+          location?: string;
+          offer_deadline?: string | null;
+          registration_deadline?: string | null;
+          schedule?: string;
+          starts_on: string;
+          status?: string;
+          title: string;
+          track_id: string;
+          updated_at?: string;
+        }
+      >;
+      holiday_program_tracks: TableShape<
+        {
+          contact_email: string;
+          contact_phone: string;
+          created_at: string;
+          description: string;
+          id: string;
+          location: string;
+          max_age: number | null;
+          min_age: number | null;
+          published: boolean;
+          subtitle: string;
+          title: string;
+          track_key: string;
+          updated_at: string;
+        },
+        {
+          contact_email?: string;
+          contact_phone?: string;
+          created_at?: string;
+          description?: string;
+          id?: string;
+          location?: string;
+          max_age?: number | null;
+          min_age?: number | null;
+          published?: boolean;
+          subtitle?: string;
+          title: string;
+          track_key: string;
+          updated_at?: string;
+        }
+      >;
       intakes: {
         Row: {
           application_deadline: string | null;
@@ -1042,6 +1432,7 @@ export type Database = {
           created_at: string;
           file_path: string | null;
           id: string;
+          link_url: string | null;
           published: boolean;
           slot: string | null;
           sort_order: number;
@@ -1056,6 +1447,7 @@ export type Database = {
           created_at?: string;
           file_path?: string | null;
           id?: string;
+          link_url?: string | null;
           published?: boolean;
           slot?: string | null;
           sort_order?: number;
@@ -1070,6 +1462,7 @@ export type Database = {
           created_at?: string;
           file_path?: string | null;
           id?: string;
+          link_url?: string | null;
           published?: boolean;
           slot?: string | null;
           sort_order?: number;
@@ -1172,6 +1565,7 @@ export type Database = {
           created_at: string;
           exam_fee: number;
           id: string;
+          level_id: string | null;
           status: string;
           student_id: string;
           tuition_fee: number;
@@ -1182,6 +1576,7 @@ export type Database = {
           created_at?: string;
           exam_fee?: number;
           id?: string;
+          level_id?: string | null;
           status?: string;
           student_id: string;
           tuition_fee: number;
@@ -1192,6 +1587,7 @@ export type Database = {
           created_at?: string;
           exam_fee?: number;
           id?: string;
+          level_id?: string | null;
           status?: string;
           student_id?: string;
           tuition_fee?: number;
@@ -1354,6 +1750,106 @@ export type Database = {
         };
         Relationships: [];
       };
+      facilitator_unit_assignments: TableShape<
+        {
+          active: boolean;
+          can_manage_assignments: boolean;
+          can_manage_cats: boolean;
+          can_manage_materials: boolean;
+          can_manage_results: boolean;
+          created_at: string;
+          created_by: string | null;
+          facilitator_id: string;
+          id: string;
+          unit_id: string;
+          updated_at: string;
+        },
+        {
+          active?: boolean;
+          can_manage_assignments?: boolean;
+          can_manage_cats?: boolean;
+          can_manage_materials?: boolean;
+          can_manage_results?: boolean;
+          created_at?: string;
+          created_by?: string | null;
+          facilitator_id: string;
+          id?: string;
+          unit_id: string;
+          updated_at?: string;
+        }
+      >;
+      portal_conversations: TableShape<
+        { created_at: string; id: string; student_id: string; updated_at: string },
+        { created_at?: string; id?: string; student_id: string; updated_at?: string }
+      >;
+      portal_messages: TableShape<
+        {
+          body: string;
+          conversation_id: string;
+          created_at: string;
+          id: string;
+          read_at: string | null;
+          sender_id: string;
+        },
+        {
+          body: string;
+          conversation_id: string;
+          created_at?: string;
+          id?: string;
+          read_at?: string | null;
+          sender_id: string;
+        }
+      >;
+      student_course_feedback: TableShape<
+        {
+          admin_reply: string | null;
+          body: string;
+          category: string;
+          created_at: string;
+          id: string;
+          status: string;
+          student_id: string;
+          subject: string;
+          updated_at: string;
+        },
+        {
+          admin_reply?: string | null;
+          body: string;
+          category: string;
+          created_at?: string;
+          id?: string;
+          status?: string;
+          student_id: string;
+          subject: string;
+          updated_at?: string;
+        }
+      >;
+      student_level_applications: TableShape<
+        {
+          admin_message: string | null;
+          created_at: string;
+          id: string;
+          level_id: string;
+          reviewed_at: string | null;
+          reviewed_by: string | null;
+          status: string;
+          student_id: string;
+          student_message: string | null;
+          updated_at: string;
+        },
+        {
+          admin_message?: string | null;
+          created_at?: string;
+          id?: string;
+          level_id: string;
+          reviewed_at?: string | null;
+          reviewed_by?: string | null;
+          status?: string;
+          student_id: string;
+          student_message?: string | null;
+          updated_at?: string;
+        }
+      >;
       progression_followups: {
         Row: {
           attempts: number;
@@ -1444,6 +1940,155 @@ export type Database = {
         };
         Relationships: [];
       };
+      regulatory_action_items: {
+        Row: {
+          agency: string;
+          category: string;
+          created_at: string;
+          created_by: string | null;
+          details: string | null;
+          due_date: string;
+          id: string;
+          notes: string | null;
+          reference_url: string | null;
+          status: string;
+          title: string;
+          updated_at: string;
+        };
+        Insert: {
+          agency: string;
+          category: string;
+          created_at?: string;
+          created_by?: string | null;
+          details?: string | null;
+          due_date: string;
+          id?: string;
+          notes?: string | null;
+          reference_url?: string | null;
+          status?: string;
+          title: string;
+          updated_at?: string;
+        };
+        Update: {
+          agency?: string;
+          category?: string;
+          created_at?: string;
+          created_by?: string | null;
+          details?: string | null;
+          due_date?: string;
+          id?: string;
+          notes?: string | null;
+          reference_url?: string | null;
+          status?: string;
+          title?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      regulatory_deadline_reminders: TableShape<
+        {
+          action_id: string;
+          attempts: number;
+          channel: string;
+          created_at: string;
+          days_before: number;
+          due_date: string;
+          id: string;
+          last_error: string | null;
+          next_attempt_at: string;
+          payload: Json;
+          recipient: string;
+          recipient_user_id: string;
+          scheduled_for: string;
+          sent_at: string | null;
+          status: string;
+          updated_at: string;
+        },
+        {
+          action_id: string;
+          attempts?: number;
+          channel: string;
+          created_at?: string;
+          days_before: number;
+          due_date: string;
+          id?: string;
+          last_error?: string | null;
+          next_attempt_at?: string;
+          payload?: Json;
+          recipient: string;
+          recipient_user_id: string;
+          scheduled_for: string;
+          sent_at?: string | null;
+          status?: string;
+          updated_at?: string;
+        }
+      >;
+      regulatory_feed_syncs: {
+        Row: {
+          error_message: string | null;
+          feed_url: string;
+          items_received: number;
+          last_attempted_at: string;
+          last_successful_at: string | null;
+          source_key: string;
+          source_name: string;
+          status: string;
+        };
+        Insert: {
+          error_message?: string | null;
+          feed_url: string;
+          items_received?: number;
+          last_attempted_at?: string;
+          last_successful_at?: string | null;
+          source_key: string;
+          source_name: string;
+          status: string;
+        };
+        Update: {
+          error_message?: string | null;
+          feed_url?: string;
+          items_received?: number;
+          last_attempted_at?: string;
+          last_successful_at?: string | null;
+          source_key?: string;
+          source_name?: string;
+          status?: string;
+        };
+        Relationships: [];
+      };
+      regulatory_source_updates: {
+        Row: {
+          article_url: string;
+          fetched_at: string;
+          id: string;
+          published_at: string | null;
+          source_key: string;
+          source_name: string;
+          summary: string | null;
+          title: string;
+        };
+        Insert: {
+          article_url: string;
+          fetched_at?: string;
+          id?: string;
+          published_at?: string | null;
+          source_key: string;
+          source_name: string;
+          summary?: string | null;
+          title: string;
+        };
+        Update: {
+          article_url?: string;
+          fetched_at?: string;
+          id?: string;
+          published_at?: string | null;
+          source_key?: string;
+          source_name?: string;
+          summary?: string | null;
+          title?: string;
+        };
+        Relationships: [];
+      };
       results: {
         Row: {
           academic_year: string | null;
@@ -1507,6 +2152,53 @@ export type Database = {
             columns: ["source_submission_id"];
             isOneToOne: true;
             referencedRelation: "submissions";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      school_fee_structures: {
+        Row: {
+          created_at: string;
+          description: string | null;
+          file_name: string;
+          file_path: string;
+          id: string;
+          published: boolean;
+          school_id: string;
+          sort_order: number;
+          title: string;
+          updated_at: string;
+        };
+        Insert: {
+          created_at?: string;
+          description?: string | null;
+          file_name: string;
+          file_path: string;
+          id?: string;
+          published?: boolean;
+          school_id: string;
+          sort_order?: number;
+          title: string;
+          updated_at?: string;
+        };
+        Update: {
+          created_at?: string;
+          description?: string | null;
+          file_name?: string;
+          file_path?: string;
+          id?: string;
+          published?: boolean;
+          school_id?: string;
+          sort_order?: number;
+          title?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "school_fee_structures_school_id_fkey";
+            columns: ["school_id"];
+            isOneToOne: false;
+            referencedRelation: "schools";
             referencedColumns: ["id"];
           },
         ];
@@ -1598,6 +2290,8 @@ export type Database = {
           gender: string | null;
           id: string;
           intake_id: string | null;
+          kasneb_number: string | null;
+          level_id: string | null;
           last_name: string;
           middle_name: string | null;
           national_id: string | null;
@@ -1623,6 +2317,8 @@ export type Database = {
           gender?: string | null;
           id?: string;
           intake_id?: string | null;
+          kasneb_number?: string | null;
+          level_id?: string | null;
           last_name: string;
           middle_name?: string | null;
           national_id?: string | null;
@@ -1648,6 +2344,8 @@ export type Database = {
           gender?: string | null;
           id?: string;
           intake_id?: string | null;
+          kasneb_number?: string | null;
+          level_id?: string | null;
           last_name?: string;
           middle_name?: string | null;
           national_id?: string | null;
@@ -1679,6 +2377,13 @@ export type Database = {
             columns: ["intake_id"];
             isOneToOne: false;
             referencedRelation: "intakes";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "students_level_id_fkey";
+            columns: ["level_id"];
+            isOneToOne: false;
+            referencedRelation: "course_levels";
             referencedColumns: ["id"];
           },
         ];
@@ -1728,6 +2433,7 @@ export type Database = {
           created_at: string;
           feedback: string | null;
           file_path: string | null;
+          file_paths: string[];
           grade: string | null;
           id: string;
           status: string;
@@ -1741,6 +2447,7 @@ export type Database = {
           created_at?: string;
           feedback?: string | null;
           file_path?: string | null;
+          file_paths?: string[];
           grade?: string | null;
           id?: string;
           status?: string;
@@ -1754,6 +2461,7 @@ export type Database = {
           created_at?: string;
           feedback?: string | null;
           file_path?: string | null;
+          file_paths?: string[];
           grade?: string | null;
           id?: string;
           status?: string;
@@ -1804,17 +2512,59 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
+      claim_regulatory_deadline_reminders: {
+        Args: { _channels?: string[] | null; _limit?: number };
+        Returns: Database["public"]["Tables"]["regulatory_deadline_reminders"]["Row"][];
+      };
+      complete_regulatory_deadline_reminder: {
+        Args: { _error?: string | null; _reminder_id: string; _sent: boolean };
+        Returns: undefined;
+      };
+      heartbeat_presence: { Args: never; Returns: undefined };
+      list_online_users: {
+        Args: never;
+        Returns: { last_seen_at: string; name: string; role: string }[];
+      };
+      log_auth_event: { Args: { _event: string }; Returns: undefined };
+      remove_my_presence: { Args: never; Returns: undefined };
       create_cat_assessment: {
         Args: {
           _closes_at: string;
           _course_id: string;
+          _download_file_name: string | null;
+          _download_file_path: string | null;
           _duration_minutes: number;
           _instructions: string | null;
-          _opens_at: string;
+          _level_ids: string[];
+          _name: string;
+          _opens_at: string | null;
           _questions: Json;
           _title: string;
+          _unit_id: string;
         };
         Returns: string;
+      };
+      create_targeted_cat_assessment: {
+        Args: {
+          _closes_at: string;
+          _course_id: string;
+          _download_file_name: string | null;
+          _download_file_path: string | null;
+          _duration_minutes: number;
+          _instructions: string | null;
+          _level_ids: string[];
+          _name: string;
+          _opens_at: string | null;
+          _questions: Json;
+          _student_ids: string[];
+          _title: string;
+          _unit_id: string;
+        };
+        Returns: string;
+      };
+      set_cat_assessment_unit: {
+        Args: { _assessment_id: string; _unit_id: string };
+        Returns: undefined;
       };
       admin_fee_account_summary: {
         Args: never;
@@ -1845,8 +2595,61 @@ export type Database = {
       claim_student_record: { Args: never; Returns: string };
       can_access_online_lesson: { Args: { _lesson_id: string }; Returns: boolean };
       can_access_online_lesson_file: { Args: { _file_path: string }; Returns: boolean };
+      create_facilitator_cat: {
+        Args: {
+          _closes_at: string;
+          _download_file_name: string | null;
+          _download_file_path: string | null;
+          _duration_minutes: number;
+          _instructions: string | null;
+          _level_ids: string[];
+          _name: string;
+          _opens_at: string | null;
+          _questions: Json;
+          _title: string;
+          _unit_id: string;
+        };
+        Returns: string;
+      };
+      facilitator_unit_permission: {
+        Args: { _permission?: string | null; _unit_id: string; _user_id: string };
+        Returns: boolean;
+      };
+      facilitator_can_message_student: {
+        Args: { _student_id: string };
+        Returns: boolean;
+      };
+      facilitator_can_access_student_unit: {
+        Args: { _permission: string; _student_id: string; _unit_id: string };
+        Returns: boolean;
+      };
+      get_or_create_facilitator_conversation: {
+        Args: { _student_id: string };
+        Returns: string;
+      };
+      get_or_create_student_conversation: { Args: never; Returns: string };
+      get_admission_letter_data: {
+        Args: { _course_id: string; _student_id: string };
+        Returns: Json;
+      };
       list_cat_assessments: { Args: never; Returns: Json };
-      list_my_cats: { Args: never; Returns: Json };
+      list_facilitator_cat_performance: { Args: { _unit_id: string }; Returns: Json };
+      get_cat_answer_sheet_unit: { Args: { _assessment_id: string }; Returns: Json };
+      list_my_cats: { Args: { _course_id?: string | null }; Returns: Json };
+      my_course_ids: { Args: never; Returns: string[] };
+      student_has_course_level: {
+        Args: { _course_id: string; _level_ids: string[] | null };
+        Returns: boolean;
+      };
+      admin_enroll_student_course: {
+        Args: {
+          _course_id: string;
+          _intake_id: string | null;
+          _level_id: string | null;
+          _student_id: string;
+        };
+        Returns: string;
+      };
       record_faq_search: {
         Args: { _bucket: number; _faq_id: string };
         Returns: undefined;
@@ -1859,6 +2662,7 @@ export type Database = {
         };
         Returns: undefined;
       };
+      save_my_kasneb_number: { Args: { _kasneb_number: string }; Returns: string };
       start_cat_attempt: { Args: { _assessment_id: string }; Returns: Json };
       submit_cat_attempt: { Args: { _attempt_id: string }; Returns: Json };
       list_faq_search_insights: {
@@ -1975,6 +2779,10 @@ export type Database = {
       my_course_id: { Args: never; Returns: string };
       my_student_id: { Args: never; Returns: string };
       next_student_number: { Args: never; Returns: string };
+      review_student_level_application: {
+        Args: { _admin_message?: string | null; _application_id: string; _decision: string };
+        Returns: undefined;
+      };
       queue_existing_progression_followups: { Args: never; Returns: number };
       retry_progression_followup: { Args: { _followup_id: string }; Returns: undefined };
       set_role_by_email: {
@@ -1989,7 +2797,39 @@ export type Database = {
         Args: { _status: string; _student_id: string };
         Returns: undefined;
       };
+      update_cat_assessment: {
+        Args: {
+          _assessment_id: string;
+          _closes_at: string;
+          _download_file_name: string | null;
+          _download_file_path: string | null;
+          _duration_minutes: number;
+          _instructions: string | null;
+          _name: string;
+          _opens_at: string;
+          _questions?: Json | null;
+          _title: string;
+        };
+        Returns: undefined;
+      };
+      confirm_holiday_program_payment: {
+        Args: {
+          p_mpesa_receipt_number?: string | null;
+          p_payment_id: string;
+          p_verified_status: string;
+        };
+        Returns: undefined;
+      };
+      set_holiday_program_period_modules: {
+        Args: { p_module_ids: string[]; p_period_id: string };
+        Returns: undefined;
+      };
       submit_application: { Args: { p: Json }; Returns: Json };
+      submit_holiday_program_application: { Args: { p: Json }; Returns: string };
+      submit_student_level_application: {
+        Args: { _level_id: string; _message?: string | null };
+        Returns: string;
+      };
       super_admin_exists: { Args: never; Returns: boolean };
       update_my_contact: {
         Args: {
@@ -2002,7 +2842,13 @@ export type Database = {
       };
     };
     Enums: {
-      app_role: "super_admin" | "admissions_admin" | "academic_admin" | "content_admin" | "student";
+      app_role:
+        | "super_admin"
+        | "admissions_admin"
+        | "academic_admin"
+        | "content_admin"
+        | "student"
+        | "facilitator";
       application_status:
         | "submitted"
         | "under_review"
@@ -2134,7 +2980,14 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      app_role: ["super_admin", "admissions_admin", "academic_admin", "content_admin", "student"],
+      app_role: [
+        "super_admin",
+        "admissions_admin",
+        "academic_admin",
+        "content_admin",
+        "student",
+        "facilitator",
+      ],
       application_status: [
         "submitted",
         "under_review",

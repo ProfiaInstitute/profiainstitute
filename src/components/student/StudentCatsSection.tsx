@@ -4,7 +4,14 @@ import { Clock3 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { CatDownloadButton } from "@/components/academics/CatDownloadButton";
 import { supabase } from "@/integrations/supabase/client";
+import {
+  buildAnswerSheetQuestionList,
+  downloadMarkedAnswerSheet,
+  fetchAnswerSheetUnit,
+} from "@/lib/answer-sheet";
 import {
   catDateTimeLabel,
   parseCatSubmission,
@@ -15,29 +22,137 @@ import {
   type StudentCatAttempt,
 } from "@/lib/cats";
 
-export function StudentCatsSection({ courseId }: { courseId: string | null }) {
+export function StudentCatsSection({
+  courseId,
+  kasnebNumber,
+}: {
+  courseId: string | null;
+  kasnebNumber: string | null;
+}) {
   const queryClient = useQueryClient();
   const [activeAttempt, setActiveAttempt] = useState<StudentCatAttempt | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  const [kasnebDraft, setKasnebDraft] = useState(kasnebNumber ?? "");
+  const [savedKasnebNumber, setSavedKasnebNumber] = useState(kasnebNumber);
   const [savingQuestionId, setSavingQuestionId] = useState<string | null>(null);
   const [startingId, setStartingId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
+  const [studentName, setStudentName] = useState("");
+  const [courseTitle, setCourseTitle] = useState("");
   const submittingAttemptId = useRef<string | null>(null);
   const catsQuery = useQuery({
     queryKey: ["student", "cats", courseId],
     enabled: Boolean(courseId),
     queryFn: async () => {
-      const { data, error } = await supabase.rpc("list_my_cats");
+      const { data, error } = await supabase.rpc("list_my_cats", { _course_id: courseId });
       if (error) throw error;
       return parseStudentCats(data);
     },
+  });
+  const saveKasnebNumber = useMutation({
+    mutationFn: async () => {
+      const value = kasnebDraft.trim().toUpperCase();
+      if (!/^[A-Z0-9][A-Z0-9 /.-]{1,39}$/.test(value)) {
+        throw new Error(
+          "Enter a valid KASNEB registration number using 2 to 40 letters, numbers, spaces, dots, slashes, or hyphens.",
+        );
+      }
+      const { data, error } = await supabase.rpc("save_my_kasneb_number", {
+        _kasneb_number: value,
+      });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: async (value) => {
+      setSavedKasnebNumber(value);
+      setKasnebDraft(value);
+      toast.success("KASNEB number saved to your student record");
+      await queryClient.invalidateQueries({ queryKey: ["student", "record"] });
+    },
+    onError: (error) =>
+      toast.error("Could not save your KASNEB number", { description: error.message }),
   });
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
   }, []);
+  useEffect(() => {
+    if (kasnebNumber) {
+      setSavedKasnebNumber(kasnebNumber);
+      setKasnebDraft(kasnebNumber);
+    }
+  }, [kasnebNumber]);
+
+  useEffect(() => {
+    if (!courseId) return;
+    void (async () => {
+      try {
+        const [studentResult, courseResult] = await Promise.all([
+          supabase.auth.getUser(),
+          supabase.from("courses").select("title").eq("id", courseId).maybeSingle(),
+        ]);
+        if (studentResult.error) throw studentResult.error;
+        const userId = studentResult.data.user?.id;
+        if (!userId) return;
+        const { data: profileData, error: profileError } = await supabase
+          .from("students")
+          .select("first_name,last_name")
+          .eq("user_id", userId)
+          .maybeSingle();
+        if (profileError) throw profileError;
+        const resolvedName = [profileData?.first_name, profileData?.last_name]
+          .filter(Boolean)
+          .join(" ");
+        setStudentName(resolvedName);
+        if (courseResult.error) throw courseResult.error;
+        setCourseTitle(courseResult.data?.title ?? "");
+      } catch {
+        setStudentName("");
+        setCourseTitle("");
+      }
+    })();
+  }, [courseId]);
+
+  const downloadGeneratedAnswerSheet = useCallback(
+    async (attempt: StudentCatAttempt) => {
+      if (!courseId || !courseTitle || !studentName) {
+        toast.error("This CAT answer sheet is not ready yet. Please refresh and try again.");
+        return;
+      }
+
+      try {
+        const unit = await fetchAnswerSheetUnit(attempt.assessmentId);
+
+        await downloadMarkedAnswerSheet(
+          {
+            courseName: courseTitle,
+            unitName: unit.name,
+            unitCode: unit.code,
+            examName: attempt.title,
+            studentName,
+            kasnebNumber: savedKasnebNumber || kasnebDraft || "Not provided",
+            questions: buildAnswerSheetQuestionList(
+              attempt.questions.map((question) => ({
+                id: question.id,
+                selectedOption: question.selectedOption,
+                correctOption: null,
+                points: question.points,
+              })),
+            ),
+          },
+          `${studentName.replace(/\s+/g, "-")}-${attempt.title.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "")}-answer-sheet.docx`,
+        );
+      } catch (error) {
+        toast.error("Could not generate the CAT answer sheet", {
+          description:
+            error instanceof Error ? error.message : "The unit details could not be loaded.",
+        });
+      }
+    },
+    [courseId, courseTitle, kasnebDraft, savedKasnebNumber, studentName],
+  );
 
   const submitAttempt = useCallback(
     async (attemptId: string, automatic = false) => {
@@ -73,10 +188,13 @@ export function StudentCatsSection({ courseId }: { courseId: string | null }) {
       );
       setSubmitting(false);
       setSubmitError("");
+      if (result && activeAttempt && activeAttempt.id === attemptId) {
+        downloadGeneratedAnswerSheet(activeAttempt);
+      }
       toast.success(automatic ? "CAT time expired. Your answers were submitted." : "CAT submitted");
       void queryClient.invalidateQueries({ queryKey: ["student", "cats", courseId] });
     },
-    [courseId, queryClient],
+    [activeAttempt, courseId, downloadGeneratedAnswerSheet, queryClient],
   );
 
   useEffect(() => {
@@ -87,6 +205,10 @@ export function StudentCatsSection({ courseId }: { courseId: string | null }) {
   }, [activeAttempt, now, submitError, submitAttempt, submitting]);
 
   async function startAttempt(cat: StudentCat) {
+    if (!savedKasnebNumber) {
+      toast.error("Enter your KASNEB number before starting a CAT.");
+      return;
+    }
     setStartingId(cat.id);
     try {
       const { data, error } = await supabase.rpc("start_cat_attempt", {
@@ -168,6 +290,50 @@ export function StudentCatsSection({ courseId }: { courseId: string | null }) {
     );
   }
 
+  if (!savedKasnebNumber) {
+    return (
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          saveKasnebNumber.mutate();
+        }}
+        className="max-w-2xl space-y-4 rounded-xl border bg-card p-5 shadow-card"
+      >
+        <div>
+          <h2 className="font-semibold text-brand">Set up your KASNEB CAT details</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Enter your KASNEB registration number once before your first CAT. It will be saved to
+            your student record and reused for future CAT results.
+          </p>
+        </div>
+        <label className="grid gap-1.5 text-sm font-medium">
+          KASNEB registration number
+          <Input
+            required
+            minLength={2}
+            maxLength={40}
+            autoComplete="off"
+            value={kasnebDraft}
+            onChange={(event) => setKasnebDraft(event.target.value)}
+            placeholder="Enter your KASNEB number"
+          />
+        </label>
+        {saveKasnebNumber.error && (
+          <p role="alert" className="text-sm text-destructive">
+            {saveKasnebNumber.error.message}
+          </p>
+        )}
+        <Button
+          type="submit"
+          disabled={saveKasnebNumber.isPending}
+          loading={saveKasnebNumber.isPending}
+        >
+          {saveKasnebNumber.isPending ? "Saving…" : "Save and continue"}
+        </Button>
+      </form>
+    );
+  }
+
   if (activeAttempt) {
     const secondsRemaining = Math.max(
       0,
@@ -178,7 +344,14 @@ export function StudentCatsSection({ courseId }: { courseId: string | null }) {
         <section className="space-y-4 rounded-xl border bg-card p-5 shadow-card">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h2 className="font-semibold text-brand">{activeAttempt.title}</h2>
+              <div className="flex items-center gap-3">
+                <img
+                  src="/favicon.png"
+                  alt="Profia Institute"
+                  className="h-10 w-10 shrink-0 object-contain"
+                />
+                <h2 className="font-semibold text-brand">{activeAttempt.title}</h2>
+              </div>
               <p className="mt-1 text-sm text-muted-foreground">CAT submitted</p>
             </div>
             <Badge>Result</Badge>
@@ -186,9 +359,18 @@ export function StudentCatsSection({ courseId }: { courseId: string | null }) {
           <p className="rounded-lg bg-accent p-4 text-lg font-semibold">
             Your mark: {activeAttempt.score} / {activeAttempt.maxScore}
           </p>
-          <Button variant="outline" onClick={() => setActiveAttempt(null)}>
-            Back to CATs
-          </Button>
+          <div className="flex flex-wrap items-center gap-3">
+            <Button
+              variant="outline"
+              onClick={() => downloadGeneratedAnswerSheet(activeAttempt)}
+              disabled={!courseTitle || !studentName}
+            >
+              Download answer sheet
+            </Button>
+            <Button variant="outline" onClick={() => setActiveAttempt(null)}>
+              Back to CATs
+            </Button>
+          </div>
         </section>
       );
     }
@@ -196,7 +378,14 @@ export function StudentCatsSection({ courseId }: { courseId: string | null }) {
       <section className="space-y-5 rounded-xl border bg-card p-5 shadow-card">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 className="font-semibold text-brand">{activeAttempt.title}</h2>
+            <div className="flex items-center gap-3">
+              <img
+                src="/favicon.png"
+                alt="Profia Institute"
+                className="h-10 w-10 shrink-0 object-contain"
+              />
+              <h2 className="font-semibold text-brand">{activeAttempt.title}</h2>
+            </div>
             {activeAttempt.instructions && (
               <p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">
                 {activeAttempt.instructions}
@@ -282,7 +471,10 @@ export function StudentCatsSection({ courseId }: { courseId: string | null }) {
       ))}
     </div>
   ) : (
-    <EmptyCats title="No CATs yet" detail="CATs published for your course will appear here." />
+    <EmptyCats
+      title="No CATs yet"
+      detail="CATs published for your course level will appear here."
+    />
   );
 }
 
@@ -313,6 +505,7 @@ function CatStudentCard({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="font-semibold text-brand">{cat.title}</h2>
+          <p className="mt-1 text-sm font-medium">CAT download name: {cat.name}</p>
           <p className="mt-1 text-sm text-muted-foreground">
             {cat.durationMinutes} minute time limit · Opens {catDateTimeLabel(cat.opensAt)} · Closes{" "}
             {catDateTimeLabel(cat.closesAt)}
@@ -324,6 +517,15 @@ function CatStudentCard({
       </div>
       {cat.instructions && (
         <p className="mt-3 whitespace-pre-wrap text-sm text-muted-foreground">{cat.instructions}</p>
+      )}
+      {cat.downloadFilePath && cat.downloadFileName && (
+        <div className="mt-4">
+          <CatDownloadButton
+            path={cat.downloadFilePath}
+            filename={cat.downloadFileName}
+            name={cat.name}
+          />
+        </div>
       )}
       {submitted ? (
         <p className="mt-4 rounded-lg bg-accent p-3 text-sm font-semibold">
@@ -342,7 +544,7 @@ function CatStudentCard({
         </p>
       ) : null}
       {!submitted && (isOpen || cat.inProgress) && (
-        <Button className="mt-4" disabled={busy} onClick={onStart}>
+        <Button className="mt-4" disabled={busy} loading={busy} onClick={onStart}>
           {busy ? "Opening CAT…" : cat.inProgress ? "Resume CAT" : "Start CAT"}
         </Button>
       )}

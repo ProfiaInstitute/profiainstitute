@@ -1,6 +1,27 @@
 import { describe, expect, it } from "vitest";
 import type { Json } from "@/integrations/supabase/types";
-import { parseAdminCats, parseStudentCatAttempt, parseStudentCats } from "@/lib/cats";
+import {
+  getDateTimeLocalMinimum,
+  parseAdminCats,
+  parseStudentCatAttempt,
+  parseStudentCats,
+} from "@/lib/cats";
+
+describe("CAT local date and time validation", () => {
+  it("sets the minimum to the next minute for an immediately opened CAT", () => {
+    const now = new Date(2026, 9, 31, 10, 14, 30);
+    const minimum = getDateTimeLocalMinimum(undefined, now);
+
+    expect(new Date(minimum).getTime()).toBe(new Date(2026, 9, 31, 10, 15).getTime());
+  });
+
+  it("requires a CAT closing time to be after its scheduled opening time", () => {
+    const now = new Date(2026, 9, 31, 10, 14, 30);
+    const minimum = getDateTimeLocalMinimum("2026-11-05T11:11", now);
+
+    expect(new Date(minimum).getTime()).toBe(new Date(2026, 10, 5, 11, 12).getTime());
+  });
+});
 
 describe("CAT response parsing", () => {
   it("parses the student's available CATs and submitted marks", () => {
@@ -8,6 +29,9 @@ describe("CAT response parsing", () => {
       {
         id: "cat-1",
         title: "Unit CAT",
+        name: "CAT 1 Financial Accounting",
+        download_file_path: "course-1/cat-downloads/cat-file.pdf",
+        download_file_name: "cat-file.pdf",
         instructions: null,
         duration_minutes: 30,
         opens_at: "2026-10-25T08:00:00.000Z",
@@ -25,6 +49,9 @@ describe("CAT response parsing", () => {
     expect(parseStudentCats(value)).toEqual([
       expect.objectContaining({
         id: "cat-1",
+        name: "CAT 1 Financial Accounting",
+        downloadFilePath: "course-1/cat-downloads/cat-file.pdf",
+        downloadFileName: "cat-file.pdf",
         attemptId: "attempt-1",
         score: 4,
         maxScore: 5,
@@ -50,10 +77,10 @@ describe("CAT response parsing", () => {
           id: "question-1",
           prompt: "Which option is correct?",
           options: [
-            { key: "A", text: "First" },
-            { key: "B", text: "Second" },
-            { key: "C", text: "Third" },
-            { key: "D", text: "Fourth" },
+            { key: "B", text: "First" },
+            { key: "D", text: "Second" },
+            { key: "A", text: "Third" },
+            { key: "C", text: "Fourth" },
           ],
           points: 2,
           selected_option: "B",
@@ -63,6 +90,7 @@ describe("CAT response parsing", () => {
 
     const attempt = parseStudentCatAttempt(value);
     expect(attempt.questions[0]?.selectedOption).toBe("B");
+    expect(attempt.questions[0]?.options[0]).toEqual({ key: "B", text: "First" });
     expect(attempt.questions[0]).not.toHaveProperty("correctOption");
   });
 
@@ -73,6 +101,17 @@ describe("CAT response parsing", () => {
         course_id: "course-1",
         course_title: "Course",
         title: "Unit CAT",
+        name: "CAT 1 Financial Accounting",
+        level_ids: ["level-1", "level-2"],
+        target_students: [
+          {
+            id: "student-1",
+            student_number: "PRF/2026/0001",
+            student_name: "Student Name",
+          },
+        ],
+        download_file_path: "course-1/cat-downloads/cat-file.pdf",
+        download_file_name: "cat-file.pdf",
         instructions: null,
         duration_minutes: 30,
         opens_at: "2026-10-25T08:00:00.000Z",
@@ -94,6 +133,8 @@ describe("CAT response parsing", () => {
             id: "attempt-1",
             student_number: "PRF/2026/0001",
             student_name: "Student Name",
+            kasneb_number: "1234567890",
+            level_name: "Level 1",
             started_at: "2026-10-25T08:10:00.000Z",
             submitted_at: "2026-10-25T08:15:00.000Z",
             score: 0,
@@ -105,7 +146,19 @@ describe("CAT response parsing", () => {
     ];
 
     const [cat] = parseAdminCats(value);
+    expect(cat?.name).toBe("CAT 1 Financial Accounting");
+    expect(cat?.levelIds).toEqual(["level-1", "level-2"]);
+    expect(cat?.targetStudents).toEqual([
+      {
+        id: "student-1",
+        studentNumber: "PRF/2026/0001",
+        studentName: "Student Name",
+      },
+    ]);
+    expect(cat?.downloadFileName).toBe("cat-file.pdf");
     expect(cat?.questions[0]?.correctOption).toBe("C");
+    expect(cat?.attempts[0]?.kasnebNumber).toBe("1234567890");
+    expect(cat?.attempts[0]?.levelName).toBe("Level 1");
     expect(cat?.attempts[0]?.answers[0]?.selectedOption).toBe("A");
   });
 

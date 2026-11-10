@@ -5,6 +5,8 @@ import {
   ArrowRight,
   CheckCircle2,
   Clock3,
+  ChevronDown,
+  ExternalLink,
   GraduationCap,
   MapPin,
   MessageCircle,
@@ -24,14 +26,15 @@ import {
   PageHero,
   SectionTitle,
 } from "@/components/site/common";
+import { FeeStructureActions } from "@/components/site/FeeStructureActions";
 import { supabase } from "@/integrations/supabase/client";
 import { getYouTubeEmbedUrl, renderContentMarkup } from "@/lib/content-format";
 import { downloadContentAttachment } from "@/lib/content-download";
 import type { Tables } from "@/integrations/supabase/types";
+import type { Json } from "@/integrations/supabase/types";
 import {
   FACILITY_LOCATION,
   SCHOOL_ROUTES,
-  formatKES,
   useActiveIntake,
   useCourses,
   useGeneral,
@@ -133,7 +136,7 @@ export function AcademicsPage() {
       <section className="bg-muted/40 py-12">
         <div className="container-site">
           <SectionTitle
-            title="Published courses"
+            title="Our Courses"
             subtitle="See programme details and begin an application."
           />
           {courses.data?.length ? (
@@ -162,11 +165,7 @@ export function AcademicsPage() {
                     </p>
                   )}
                   {course.application_enabled !== false ? (
-                    <Button asChild size="sm" className="mt-4">
-                      <Link to="/admission" search={{ course: course.id }}>
-                        Apply for this course
-                      </Link>
-                    </Button>
+                    <CourseLevelsDetails courseId={course.id} />
                   ) : (
                     <p className="mt-4 text-sm font-medium text-muted-foreground">
                       Applications are currently closed.
@@ -183,7 +182,212 @@ export function AcademicsPage() {
           )}
         </div>
       </section>
+      <SchoolFeeStructures schools={schools.data ?? []} />
     </>
+  );
+}
+
+function SchoolFeeStructures({ schools }: { schools: Array<{ id: string; name: string }> }) {
+  const [selectedSchoolId, setSelectedSchoolId] = useState("");
+  const selectedSchool = schools.find((school) => school.id === selectedSchoolId) ?? schools[0];
+  const feeStructures = useQuery({
+    queryKey: ["school-fee-structures", selectedSchool?.id],
+    enabled: Boolean(selectedSchool?.id),
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("school_fee_structures")
+        .select("id,title,description,file_path,file_name")
+        .eq("school_id", selectedSchool!.id)
+        .eq("published", true)
+        .order("sort_order")
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  if (!schools.length) return null;
+
+  return (
+    <section className="container-site py-12">
+      <SectionTitle
+        title="School Fee Structures"
+        subtitle="Choose a school to view and download its published fee schedules."
+      />
+      <div className="mb-6 flex flex-wrap gap-2" role="tablist" aria-label="Schools">
+        {schools.map((school) => (
+          <button
+            key={school.id}
+            type="button"
+            role="tab"
+            id={`school-fee-tab-${school.id}`}
+            aria-selected={selectedSchool?.id === school.id}
+            aria-controls="school-fee-panel"
+            onClick={() => setSelectedSchoolId(school.id)}
+            className={`rounded-full border px-4 py-2 text-sm font-medium transition-colors ${
+              selectedSchool?.id === school.id
+                ? "border-primary bg-primary text-primary-foreground"
+                : "bg-card text-foreground hover:border-primary"
+            }`}
+          >
+            {school.name}
+          </button>
+        ))}
+      </div>
+      <div
+        id="school-fee-panel"
+        role="tabpanel"
+        aria-labelledby={selectedSchool ? `school-fee-tab-${selectedSchool.id}` : undefined}
+      >
+        {feeStructures.isLoading ? (
+          <p className="text-sm text-muted-foreground">Loading fee structures…</p>
+        ) : feeStructures.error ? (
+          <p role="alert" className="text-sm text-destructive">
+            Could not load fee structures: {feeStructures.error.message}
+          </p>
+        ) : feeStructures.data?.length ? (
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {feeStructures.data.map((feeStructure) => (
+              <article key={feeStructure.id} className="rounded-xl border bg-card p-5 shadow-card">
+                <h3 className="font-semibold text-brand">{feeStructure.title}</h3>
+                {feeStructure.description && (
+                  <p className="mt-2 text-sm text-muted-foreground">{feeStructure.description}</p>
+                )}
+                <div className="mt-4">
+                  <FeeStructureActions
+                    path={feeStructure.file_path}
+                    filename={feeStructure.file_name}
+                    title={feeStructure.title}
+                  />
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <p className="rounded-xl border bg-card p-5 text-sm text-muted-foreground">
+            No fee structures have been published for {selectedSchool?.name} yet.
+          </p>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function CourseLevelsDetails({ courseId }: { courseId: string }) {
+  const levels = useQuery({
+    queryKey: ["course-levels", courseId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("course_levels")
+        .select("id,name,code,description")
+        .eq("course_id", courseId)
+        .eq("published", true)
+        .order("sort_order")
+        .order("name");
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  if (levels.isLoading) {
+    return <p className="mt-4 text-sm text-muted-foreground">Loading course levels…</p>;
+  }
+  if (levels.error) {
+    return (
+      <p role="alert" className="mt-4 text-sm text-destructive">
+        Could not load course levels: {levels.error.message}
+      </p>
+    );
+  }
+  if (!levels.data?.length) {
+    return (
+      <p className="mt-4 text-sm text-muted-foreground">
+        Level details are being updated. Contact admissions for help applying.
+      </p>
+    );
+  }
+
+  return (
+    <div className="mt-4 space-y-3">
+      {levels.data.map((level) => (
+        <CourseLevelDetails key={level.id} courseId={courseId} level={level} />
+      ))}
+    </div>
+  );
+}
+
+function CourseLevelDetails({
+  courseId,
+  level,
+}: {
+  courseId: string;
+  level: {
+    id: string;
+    name: string;
+    code: string | null;
+    description: string | null;
+  };
+}) {
+  const [open, setOpen] = useState(false);
+  const units = useQuery({
+    queryKey: ["course-level-units", level.id],
+    enabled: open,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("course_units")
+        .select("id,code,title,semester")
+        .eq("level_id", level.id)
+        .order("sort_order")
+        .order("title");
+      if (error) throw error;
+      return data;
+    },
+  });
+  return (
+    <details
+      className="rounded-lg border bg-background"
+      open={open}
+      onToggle={(event) => setOpen(event.currentTarget.open)}
+    >
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-3">
+        <span>
+          <span className="block font-semibold text-brand">
+            {level.name}
+            {level.code ? ` · ${level.code}` : ""}
+          </span>
+        </span>
+        <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+      </summary>
+      <div className="border-t px-3 pb-3 pt-3">
+        {level.description && <p className="text-sm text-muted-foreground">{level.description}</p>}
+        {units.isLoading ? (
+          <p className="mt-3 text-sm text-muted-foreground">Loading units…</p>
+        ) : units.error ? (
+          <p role="alert" className="mt-3 text-sm text-destructive">
+            {units.error.message}
+          </p>
+        ) : units.data?.length ? (
+          <ul className="mt-3 space-y-2 text-sm">
+            {units.data.map((unit) => (
+              <li key={unit.id}>
+                {unit.code && <strong>{unit.code} · </strong>}
+                {unit.title}
+                {unit.semester && <span className="text-muted-foreground"> · {unit.semester}</span>}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-3 text-sm text-muted-foreground">Units will be shared by the school.</p>
+        )}
+        <div className="mt-4">
+          <Button asChild size="sm">
+            <Link to="/admission" search={{ course: courseId, level: level.id }}>
+              Apply for this level
+            </Link>
+          </Button>
+        </div>
+      </div>
+    </details>
   );
 }
 
@@ -280,9 +484,6 @@ function OnlineCourseCard({
       <div className="space-y-3 p-5">
         <p className="text-xs font-semibold uppercase tracking-wide text-primary">{schoolName}</p>
         <h2 className="text-lg font-bold text-brand">{course.title}</h2>
-        <p className="text-sm font-semibold text-brand">
-          Tuition {course.fees === null ? "Contact admissions" : formatKES(course.fees)}
-        </p>
         {course.description && (
           <p className="line-clamp-4 text-sm text-muted-foreground">{course.description}</p>
         )}
@@ -388,10 +589,6 @@ function OnlineCourseCard({
                 </p>
               )}
             </div>
-            <p className="text-xs text-muted-foreground">
-              Examination: {formatKES(course.online_exam_fee)} · Certificate:{" "}
-              {formatKES(course.online_certificate_fee)} (paid separately after lessons)
-            </p>
           </div>
         )}
       </div>
@@ -421,9 +618,9 @@ export function AboutPage() {
         eyebrow={general.tagline ?? "Institute of Professionals"}
       />
       <section className="container-site grid gap-6 py-12 md:grid-cols-2">
-        {about.mission && <InfoCard title="Our mission" text={about.mission} />}
-        {about.vision && <InfoCard title="Our vision" text={about.vision} />}
-        {about.history && <InfoCard title="Our story" text={about.history} />}
+        {about.mission && <AboutCopyCard title="Our mission" text={about.mission} />}
+        {about.vision && <AboutCopyCard title="Our vision" text={about.vision} />}
+        {about.history && <AboutCopyCard title="Our story" text={about.history} />}
         {about.accreditation && <InfoCard title="Accreditation" text={about.accreditation} />}
         {!!about.core_values?.length && (
           <section className="rounded-xl border bg-card p-6 shadow-card md:col-span-2">
@@ -475,6 +672,23 @@ export function AboutPage() {
         </div>
       </section>
     </>
+  );
+}
+
+function AboutCopyCard({ title, text }: { title: string; text: string }) {
+  return (
+    <article
+      tabIndex={0}
+      className="group rounded-xl border bg-card p-5 shadow-card outline-none transition duration-300 hover:-translate-y-1 hover:border-primary/50 hover:shadow-lift focus-visible:-translate-y-1 focus-visible:border-primary/50 focus-visible:shadow-lift"
+    >
+      <h2 className="font-semibold text-brand">{title}</h2>
+      <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground transition-[max-height] duration-300 md:max-h-[4.5rem] md:overflow-hidden md:group-hover:max-h-[32rem] md:group-focus-within:max-h-[32rem]">
+        {text}
+      </p>
+      <span className="mt-2 block text-xs font-semibold text-primary md:group-hover:hidden md:group-focus-within:hidden">
+        Hover or focus to read more
+      </span>
+    </article>
   );
 }
 
@@ -664,6 +878,19 @@ export function ArticlesPage() {
       return data;
     },
   });
+  const feedsQuery = useQuery({
+    queryKey: ["regulatory-feeds", "public-updates"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("regulatory_source_updates")
+        .select("id,source_name,title,article_url,summary,published_at,fetched_at")
+        .order("published_at", { ascending: false, nullsFirst: false })
+        .order("fetched_at", { ascending: false })
+        .limit(30);
+      if (error) throw error;
+      return data;
+    },
+  });
   return (
     <>
       <PageHero
@@ -736,6 +963,61 @@ export function ArticlesPage() {
             text="News from Profia Institute will be shared here."
           />
         )}
+      </section>
+      <section className="bg-muted/40 py-12">
+        <div className="container-site">
+          <SectionTitle
+            title="Official feeds"
+            subtitle="Recent updates fetched from official KASNEB, TVETA, HELB, and ICPAK sources. Select a headline to read the original on its source website."
+          />
+          {feedsQuery.isLoading ? (
+            <CardGridSkeleton n={3} />
+          ) : feedsQuery.error ? (
+            <div
+              role="status"
+              className="rounded-xl border bg-card p-5 text-sm text-muted-foreground"
+            >
+              Official feed updates are temporarily unavailable.
+            </div>
+          ) : feedsQuery.data?.length ? (
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {feedsQuery.data.map((item) => (
+                <article key={item.id} className="rounded-xl border bg-card p-5 shadow-card">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">
+                      {item.source_name}
+                    </span>
+                    <time className="text-xs text-muted-foreground">
+                      {new Date(item.published_at ?? item.fetched_at).toLocaleDateString("en-KE", {
+                        dateStyle: "medium",
+                      })}
+                    </time>
+                  </div>
+                  <h3 className="mt-3 font-semibold leading-snug text-brand">{item.title}</h3>
+                  {item.summary && (
+                    <p className="mt-2 line-clamp-4 text-sm leading-6 text-muted-foreground">
+                      {item.summary}
+                    </p>
+                  )}
+                  <a
+                    className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-primary hover:underline"
+                    href={item.article_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    Read on {item.source_name}
+                    <ExternalLink aria-hidden="true" className="h-3.5 w-3.5" />
+                  </a>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <EmptyState
+              title="No official feed updates yet"
+              text="Updates fetched by the Institute will appear here."
+            />
+          )}
+        </div>
       </section>
     </>
   );
@@ -825,6 +1107,7 @@ function PublicAttachment({
         className="mt-5 aspect-video w-full rounded-lg bg-black"
         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
         referrerPolicy="strict-origin-when-cross-origin"
+        loading="lazy"
         allowFullScreen
       />
     );

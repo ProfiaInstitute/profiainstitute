@@ -6,7 +6,13 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const staffRoles = ["super_admin", "admissions_admin", "academic_admin", "content_admin"] as const;
+const staffRoles = [
+  "super_admin",
+  "admissions_admin",
+  "academic_admin",
+  "content_admin",
+  "facilitator",
+] as const;
 type StaffRole = (typeof staffRoles)[number];
 
 Deno.serve(async (request: Request) => {
@@ -60,9 +66,33 @@ Deno.serve(async (request: Request) => {
     return json({ error: "Choose a valid staff role." }, 400);
   }
 
+  if (role === "facilitator") {
+    const { error: roleSchemaError } = await supabase
+      .from("user_roles")
+      .select("id")
+      .eq("role", "facilitator")
+      .limit(1);
+    if (roleSchemaError) {
+      console.error("Could not verify the facilitator role in the database:", {
+        code: roleSchemaError.code,
+        message: roleSchemaError.message,
+      });
+      return json(
+        {
+          error:
+            "Facilitator support is not ready in the database. Apply migration 0029_student_facilitator_portal.sql, then retry.",
+        },
+        503,
+      );
+    }
+  }
+
   let redirectTo: string;
   try {
-    redirectTo = new URL("/admin?setupPassword=1", publicSiteUrl).toString();
+    redirectTo = new URL(
+      role === "facilitator" ? "/facilitator?setupPassword=1" : "/admin?setupPassword=1",
+      publicSiteUrl,
+    ).toString();
   } catch {
     console.error("PUBLIC_SITE_URL is not a valid URL.");
     return json({ error: "The staff invitation redirect URL is not configured correctly." }, 500);
@@ -95,11 +125,25 @@ Deno.serve(async (request: Request) => {
     role: role as StaffRole,
   });
   if (insertRoleError) {
-    console.error("Could not assign the invited staff role:", insertRoleError.message);
+    console.error("Could not assign the invited staff role:", {
+      code: insertRoleError.code,
+      message: insertRoleError.message,
+    });
     const { error: cleanupError } = await supabase.auth.admin.deleteUser(invitation.user.id);
     if (cleanupError)
       console.error("Could not remove incomplete staff invitation:", cleanupError.message);
-    return json({ error: "The invitation could not be assigned the selected staff role." }, 500);
+    const missingFacilitatorRole =
+      role === "facilitator" &&
+      (insertRoleError.code === "22P02" ||
+        /invalid input value for enum|facilitator.*not.*valid/i.test(insertRoleError.message));
+    return json(
+      {
+        error: missingFacilitatorRole
+          ? "Facilitator support is not ready in the database. Apply migration 0029_student_facilitator_portal.sql, then retry."
+          : "The invitation was created, but the selected staff role could not be assigned.",
+      },
+      500,
+    );
   }
 
   const { error: auditError } = await supabase.from("audit_logs").insert({

@@ -9,7 +9,9 @@ import {
   Scripts,
   type ErrorComponentProps,
 } from "@tanstack/react-router";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Analytics } from "@vercel/analytics/react";
+import { SpeedInsights } from "@vercel/speed-insights/react";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
@@ -20,6 +22,9 @@ import { WhatsAppFloat } from "@/components/site/common";
 import { Toaster } from "@/components/ui/sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { FACILITY_LOCATION } from "@/lib/site";
+import { useScrollReveal } from "@/lib/motion";
+import { LogoTraceLoader } from "@/components/LogoTraceLoader";
+import { DownloadPrintAnimation } from "@/components/site/DownloadPrintAnimation";
 
 const structuredData = {
   "@context": "https://schema.org",
@@ -128,6 +133,32 @@ function ErrorComponent({ error, reset }: ErrorComponentProps) {
   );
 }
 
+function PageLoadOverlay() {
+  const [isComplete, setIsComplete] = useState(false);
+  const [visible, setVisible] = useState(true);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setIsComplete(true), 500);
+    return () => window.clearTimeout(timeout);
+  }, []);
+
+  if (!visible) return null;
+
+  return (
+    <div className="page-load-overlay">
+      <LogoTraceLoader
+        loading={!isComplete}
+        isComplete={isComplete}
+        size={216}
+        strokeWidth={3}
+        className="text-brand"
+        ariaLabel="Loading page"
+        onDone={() => setVisible(false)}
+      />
+    </div>
+  );
+}
+
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
   head: () => ({
     meta: [
@@ -149,12 +180,6 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { rel: "icon", type: "image/png", href: "/favicon.png" },
       { rel: "apple-touch-icon", href: "/images/logo.png" },
       { rel: "manifest", href: "/manifest.webmanifest" },
-      { rel: "preconnect", href: "https://fonts.googleapis.com" },
-      { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
-      {
-        rel: "stylesheet",
-        href: "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap",
-      },
     ],
   }),
   shellComponent: RootShell,
@@ -184,8 +209,23 @@ function RootShell({ children }: { children: ReactNode }) {
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
   const router = useRouter();
-  const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const isApp = pathname.startsWith("/admin") || pathname.startsWith("/student");
+  const { pathname, route } = useRouterState({
+    select: (state) => ({
+      pathname: state.location.pathname,
+      route: state.matches[state.matches.length - 1]?.routeId ?? state.location.pathname,
+    }),
+  });
+  const portalPath = pathname.toLowerCase();
+  const isFacilitatorApp = portalPath.startsWith("/facilitator");
+  const isStudentApp = portalPath.startsWith("/student");
+  const isApp = portalPath.startsWith("/admin") || isStudentApp || isFacilitatorApp;
+  const manifestHref = isFacilitatorApp
+    ? "/facilitator.webmanifest"
+    : isStudentApp
+      ? "/student.webmanifest"
+      : "/manifest.webmanifest";
+  const publicContentRef = useRef<HTMLDivElement>(null);
+  useScrollReveal(publicContentRef, pathname, true, !isApp);
 
   useEffect(() => {
     if (!import.meta.env.PROD || !("serviceWorker" in navigator)) return;
@@ -195,26 +235,93 @@ function RootComponent() {
   }, []);
 
   useEffect(() => {
-    const { data } = supabase.auth.onAuthStateChange((event) => {
+    let heartbeat: ReturnType<typeof setInterval> | undefined;
+    let mounted = true;
+    let updatingPresence = false;
+    const stopPresence = () => {
+      if (heartbeat !== undefined) clearInterval(heartbeat);
+      heartbeat = undefined;
+    };
+    const updatePresence = async () => {
+      if (updatingPresence) return;
+      updatingPresence = true;
+      try {
+        const { error } = await supabase.rpc("heartbeat_presence");
+        if (error) console.error("Could not update online presence:", error);
+      } catch (error) {
+        console.error("Could not update online presence:", error);
+      } finally {
+        updatingPresence = false;
+      }
+    };
+    const startPresence = () => {
+      if (heartbeat !== undefined) return;
+      void updatePresence();
+      heartbeat = setInterval(() => void updatePresence(), 25_000);
+    };
+
+    const { data } = supabase.auth.onAuthStateChange((event, session) => {
       if (event !== "SIGNED_IN" && event !== "SIGNED_OUT" && event !== "USER_UPDATED") return;
+      if (event === "SIGNED_IN" || event === "SIGNED_OUT") queryClient.clear();
       router.invalidate();
-      if (event !== "SIGNED_OUT") queryClient.invalidateQueries();
+      if (event === "USER_UPDATED") void queryClient.invalidateQueries();
+      if (event === "SIGNED_IN") {
+        window.setTimeout(() => {
+          void supabase.rpc("log_auth_event", { _event: "sign_in" }).then(
+            ({ error }) => {
+              if (error) console.error("Could not record sign-in activity:", error);
+            },
+            (error: unknown) => {
+              console.error("Could not record sign-in activity:", error);
+            },
+          );
+          if (session?.user) startPresence();
+        }, 0);
+      } else if (event === "SIGNED_OUT") {
+        stopPresence();
+      }
     });
-    return () => data.subscription.unsubscribe();
+
+    void supabase.auth.getSession().then(
+      ({ data: sessionData, error }) => {
+        if (error) {
+          console.error("Could not restore the session for online presence:", error);
+          return;
+        }
+        if (mounted && sessionData.session?.user) startPresence();
+      },
+      (error: unknown) => {
+        console.error("Could not restore the session for online presence:", error);
+      },
+    );
+
+    return () => {
+      mounted = false;
+      stopPresence();
+      data.subscription.unsubscribe();
+    };
   }, [router, queryClient]);
 
   return (
     <QueryClientProvider client={queryClient}>
-      <PwaInstallProvider>
+      <PwaInstallProvider manifestHref={manifestHref}>
+        <PageLoadOverlay key={pathname} />
         {!isApp && <SiteHeader />}
         <main>
-          <div key={pathname} className={isApp ? undefined : "page-transition"}>
+          <div
+            ref={publicContentRef}
+            key={pathname}
+            className={isApp ? undefined : "page-transition"}
+          >
             <Outlet />
           </div>
         </main>
         {!isApp && <SiteFooter />}
         {!isApp && <WhatsAppFloat />}
         <Toaster richColors position="top-center" />
+        <DownloadPrintAnimation />
+        <Analytics route={route} path={pathname} />
+        <SpeedInsights />
       </PwaInstallProvider>
     </QueryClientProvider>
   );

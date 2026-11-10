@@ -2541,7 +2541,41 @@ Attempts are limited to one per student and CAT; answers are saved as they are
 selected, marked automatically on submission or time expiry, and the student
 can see their mark after submission. Staff can review each attempt and its
 selected answers in the Assignments area. Answer keys are not exposed through
-student database access.
+student database access. Apply
+`drizzle/migrations/0042_cat_kasneb_identity_and_results.sql` after the existing
+migrations to collect each student's KASNEB registration number once, before
+their first CAT. The number is saved to the student record and reused for later
+CATs. Academic admins can export submitted CAT results to Excel with KASNEB
+number, student name, course, level, and marks.
+Apply `drizzle/migrations/0056_admin_edit_cat_assessments.sql` to enable CAT
+editing for academic admins and Super Admins. If a student has started an
+attempt, questions, answer keys, schedule, and time limit are locked; descriptive
+details and downloadable files can still be updated.
+Both academic admins and facilitators with CAT permissions can import numbered
+questions from Word, text-based PDF, or plain text, then import a separate
+numbered marking scheme. Marking-scheme entries accept forms such as `1.A`,
+`1 a`, and `1 A: explanation`; explanation text is ignored. The admin CAT list
+can be searched by CAT, course, unit, or student and filtered by scheduled,
+open, or closed status.
+Apply `drizzle/migrations/0057_individual_cat_targets.sql` to allow admins to
+create a CAT for selected active students instead of the full selected course
+levels. Individual recipients are checked against active course and level
+enrolments; only selected students can see or start the CAT in the portal.
+
+### Holiday program applications
+
+Apply `drizzle/migrations/0047_holiday_program.sql` and, after the intervening
+migrations, `drizzle/migrations/0054_holiday_applications_without_modules.sql`
+and `drizzle/migrations/0055_holiday_program_payments.sql`.
+Published tracks accept applications during open, in-date registration periods.
+Applicants select a module when one is offered; they can still apply when a
+period has no active modules assigned. Module duration is not collected when
+creating holiday program modules. After submitting an application, applicants
+can send the configured deposit or a whole-KES custom amount to any valid
+Kenyan M-Pesa number using PayHero STK Push. The payment remains pending until
+the PayHero callback verifies its provider reference and amount; only then is
+it recorded as paid against the application. Deploy the
+`create-holiday-payment` function alongside `payhero-callback`.
 
 ### Student profile photos
 
@@ -2550,6 +2584,85 @@ migrations to enable private student profile-photo uploads. Students can upload
 a JPG, PNG, or WebP image up to 3 MB from **My profile**. Photos appear in the
 student portal and staff student directory using expiring signed URLs. The
 Audit Log is read-only and displays actor names, summarized changes, and times.
+
+### Course levels, units, fees, and online learners
+
+Apply `drizzle/migrations/0025_course_levels_and_online_students.sql` after
+migration `0024_student_profile_photos.sql`. It adds editable course levels,
+level-specific unit lists and fee schedules, enforces level selection in public
+applications, and creates the LMS enrollment for admitted online applicants.
+Existing courses receive a starter Level 1 using their current fee and units.
+
+Academic admins manage levels, units, fee breakdowns, and downloadable PDF fee
+schedules from **Admin → Courses → Course levels & units**. Students can inspect
+published levels and units in the public course catalogue and download each
+level's fee structure. Course images may be uploaded locally or supplied by URL.
+Students applying online must select an online-enabled course and a published
+level. Approved online-only learners receive an LMS-focused portal with their
+assigned online courses, fees, and profile tools rather than full-time academic
+sections.
+
+### Admission email and WhatsApp notifications
+
+Apply `drizzle/migrations/0026_application_admission_notifications.sql` after
+migration `0025_course_levels_and_online_students.sql`. It queues email and
+WhatsApp notifications whenever an application status changes to **Accepted**
+or **Enrolled**. Each message tells the student to create or access their
+student-portal account using the same email address entered on the application.
+The enrollment message is queued when admissions enrolls the applicant.
+Delivery attempts are recorded and retried automatically by the notification
+worker.
+
+Apply `drizzle/migrations/0037_student_learning_notifications.sql` after
+migration `0036_immediate_cats_and_shuffled_options.sql`, then apply
+`drizzle/migrations/0052_unit_scoped_learning_emails.sql` and
+`drizzle/migrations/0053_learning_email_only_delivery.sql`. Publishing an
+assignment or creating a CAT queues notifications only for active enrollments
+in the matching course, unit, and level. CAT opening emails are scheduled for
+the configured opening time; results are emailed only to the student whose
+matching unit result is published. Student learning notifications are
+email-only and deduplicated per event, student, and channel. Delivery failures
+are retried up to five times.
+
+Deploy `supabase/functions/send-application-notifications` and configure these
+Edge Function secrets: `RESEND_API_KEY`, `SCHOOL_EMAIL_FROM`,
+`PUBLIC_SITE_URL`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`,
+`WHATSAPP_TEMPLATE_NAME`, and `WHATSAPP_LEARNING_TEMPLATE_NAME`. Optionally set
+`WHATSAPP_TEMPLATE_LANGUAGE` and `WHATSAPP_API_VERSION`. Both WhatsApp templates
+must be approved by Meta. The admission template must contain six body text
+parameters in this order: student name, application number, status, application
+email, student portal URL, and the school's WhatsApp contact number. The
+learning-notification template must contain six body text parameters in this
+order: student name, item type, item title, course title, due/opening time, and
+student portal URL. The contact number for admission notifications is read from
+the `general.whatsapp` site setting; the API phone-number ID and token must
+belong to the school's WhatsApp Business sender and are separate credentials.
+Ready-to-submit Meta template definitions are in
+`supabase/templates/whatsapp/profia_admission_update.json` and
+`supabase/templates/whatsapp/profia_learning_published.json`. Create each
+template in WhatsApp Manager or with the WhatsApp Business Management API and
+wait for Meta approval before sending. The worker defaults to the template
+names in those files; the two template-name secrets are optional overrides.
+Resend is used only for email. WhatsApp messages are sent through the Meta
+WhatsApp Cloud API and require a WhatsApp Business phone number ID and access
+token.
+
+Schedule authenticated POST requests to
+`/functions/v1/send-application-notifications` at least once per minute, using
+the Supabase service-role key in the `Authorization: Bearer …` header. Use
+Supabase Scheduled Edge Functions or another trusted scheduler; never put the
+service-role key in the website. Email delivery uses Resend, and WhatsApp
+delivery uses the WhatsApp Cloud API. Missing provider configuration or
+unapproved templates are reported as failed deliveries and retried up to five
+times.
+
+For an email-only learning-notification schedule, include the
+`x-notification-scope: learning-email-only` header and the
+`x-notification-scheduler-secret` header matching the
+`LEARNING_NOTIFICATIONS_CRON_SECRET` Edge Function secret. Use that secret as
+the bearer authorization and send the service-role key in the `apikey` header.
+This limits the worker to CAT, assignment, and result emails; it leaves
+WhatsApp rows and the separate admissions queue untouched.
 
 To bootstrap the first Super Admin:
 
@@ -2598,6 +2711,74 @@ learners can select an online course, create a portal account, verify their
 email, and complete enrollment; the online enrollment process creates a
 student record and student number when no existing record matches.
 
+### Student portal announcements
+
+Apply `drizzle/migrations/0027_announcement_student_portal_cta.sql` after
+migration `0026_application_admission_notifications.sql`. Admins can choose
+whether each published announcement appears in the student portal and can
+optionally attach a button label and an HTTP(S) destination link. Announcements
+are displayed while their configured start/end dates are active.
+
+### Partner website links
+
+Apply `drizzle/migrations/0028_partner_media_links.sql` after migration
+`0027_announcement_student_portal_cta.sql`. Admins can optionally add an
+HTTP(S) destination to each partner image; visitors open it by selecting the
+image.
+
+### Student progression and facilitator portal
+
+Apply `drizzle/migrations/0029_student_facilitator_portal.sql` after
+`0028_partner_media_links.sql` before using student progression applications,
+feedback, portal messages, or facilitator accounts. This migration adds the
+`facilitator` role and the tables, policies, and database functions required by
+these features. Apply it in the Supabase SQL Editor or through the project's
+approved migration workflow; deploying the website alone does not apply
+database migrations.
+
+After applying the migration, deploy the updated staff Edge Functions so
+facilitator invitations and staff management accept the new role:
+
+```sh
+supabase functions deploy invite-staff --project-ref mnufqsnsaiaiqzhvpinf
+supabase functions deploy manage-staff --project-ref mnufqsnsaiaiqzhvpinf
+```
+
+Set `PUBLIC_SITE_URL` for `invite-staff` and verify Supabase Auth email delivery
+and redirect URLs include `/facilitator`. The admin facilitator screen reports
+an actionable database setup error if the migration has not been applied.
+
+Apply `drizzle/migrations/0030_facilitator_portal_experience.sql` after migration
+`0029_student_facilitator_portal.sql` to enable facilitator/student conversations
+and facilitator-targeted memos. Facilitators can update their profile photo and
+password, download assigned learning files and class rosters, and access these
+tools from the responsive facilitator portal navigation. Admins choose
+**Show in facilitator portal** when publishing or editing a memo.
+
+### School fee structures
+
+Apply `drizzle/migrations/0031_school_fee_structures.sql` after migration
+`0030_facilitator_portal_experience.sql`. This adds the school fee-structure
+catalogue and makes the `course-fee-structures` bucket private, with reads
+restricted to published fee documents and the relevant student or academic
+staff accounts. Academic administrators can upload, publish, and replace PDF
+fee schedules from **Admin → School fee structures**. Published schedules are
+organized by school on the Academics page; course pricing remains in the
+application flow after a student selects a level. The website must be deployed
+after the migration is applied in Supabase.
+
+### RLS and session-cache hardening
+
+Apply `drizzle/migrations/0032_rls_cache_hardening.sql` after migration
+`0031_school_fee_structures.sql`. It prevents clients from probing role checks
+for other user IDs, limits cross-account profile and photo access to
+administrators and facilitators assigned to those students, and requires the
+short-lived application upload token for supporting-document uploads. It also
+limits notification writes to trusted database-side workflows and adds indexes
+for notification and inbox fetches. The frontend keeps React Query results in
+memory for reuse, clears its cache when accounts sign in or out, and does not
+persist private portal data to local or session storage.
+
 ### Student progression email follow-ups
 
 Apply `0003_student_progression_followups.sql` after migrations `0000` through
@@ -2609,6 +2790,56 @@ published before a rule was created. Students receive an invitation to apply
 for the next course; staff still review and confirm enrolment. Apply
 `0007_student_progression_directory.sql` after the other numbered migrations to
 show linked student, exam result, and course details in the scheduled list.
+
+### Regulatory and exam action tracking
+
+Apply `drizzle/migrations/0038_regulatory_action_tracker.sql` after
+`0037_student_learning_notifications.sql`. **Admin → Regulatory & exams** gives
+Super Admins, Admissions Admins, and Academic Admins a shared register for
+KASNEB, TVETA, HELB, ICPAK, NITA, KRA/eTIMS, eCitizen, and other-body tasks.
+Staff can record exam, accreditation, funding, tax, and government-service
+deadlines, link official notices, track submission references, and see upcoming
+or overdue actions. This is an internal tracker; it does not sign in to agency
+accounts, submit filings, or synchronize student records with external portals.
+
+Apply `drizzle/migrations/0039_regulatory_public_feeds.sql` after migration
+`0038_regulatory_action_tracker.sql` and deploy
+`supabase/functions/sync-regulatory-feeds`. The **Fetch latest** action imports
+public RSS updates from KASNEB, TVETA, HELB, and ICPAK and links each item back
+to its official source. NITA, KRA/eTIMS, and eCitizen are linked as official
+portals but are not automatically fetched because a supported public feed or
+API has not been verified. Feed content is informational and is not parsed as
+authoritative deadlines or student-specific account status.
+
+Apply `drizzle/migrations/0040_regulatory_deadline_reminders.sql` after
+`0039_regulatory_public_feeds.sql` and deploy
+`supabase/functions/send-regulatory-deadline-reminders`. Pending exam and
+accreditation actions notify academic admins and Super Admins; funding actions
+notify admissions admins and Super Admins; tax actions notify Super Admins.
+Reminders are queued for 30, 7, and 1 day before a deadline and on the due date
+at 08:00 East Africa Time. The worker requires `REGULATORY_REMINDER_CRON_SECRET`.
+Email delivery additionally requires `RESEND_API_KEY`, `SCHOOL_EMAIL_FROM`,
+and `PUBLIC_SITE_URL`. WhatsApp delivery additionally requires the WhatsApp
+Cloud API secrets and Meta approval of
+`supabase/templates/whatsapp/profia_regulatory_deadline_reminder.json`. Do not
+expose these secrets in the browser or commit them.
+
+To activate automated delivery, configure an external scheduler to POST to the
+worker every 15 minutes with the `x-regulatory-cron-secret` header. The worker
+does not run on a schedule until an operator configures that scheduler and at
+least one delivery channel. It processes only configured channels, so an
+unconfigured WhatsApp channel does not consume retries. Failed deliveries
+retry with backoff, up to five attempts.
+
+Apply `drizzle/migrations/0041_exam_sittings_and_candidates.sql` after
+`0040_regulatory_deadline_reminders.sql`. **Admin → Exam candidates** lets
+academic admins define exam sittings, select the related course, level, and
+required units, and view enrolled students' published unit results against a
+configurable pass mark. Eligible students can be nominated and their
+registration status tracked; nominated rosters can be exported to XLSX without
+national IDs or dates of birth. This is an internal readiness checklist, not
+confirmation of eligibility by an exam body; staff must verify official
+requirements before submitting a roster.
 
 ### Application supporting documents
 
@@ -2710,6 +2941,18 @@ rejects requests without the service-role authorization. Verify the sender
 domain before enabling the schedule; until then, queued messages remain
 undelivered.
 
+### Admin email file sharing
+
+Apply `drizzle/migrations/0050_admission_letter_data.sql` and
+`drizzle/migrations/0051_admin_email_sharing.sql`, then deploy the
+`supabase/functions/admin-send-email` Edge Function. It uses the existing
+`RESEND_API_KEY` and `SCHOOL_EMAIL_FROM` secrets. Super Admins and Admissions
+Admins can send an email to one address with selected application/student
+documents, admission letters, fee statements, receipts, and up to 10 files
+from their computer (5 MB each, 15 MB total). Attachments are staged in a
+private bucket and removed after the send attempt. Keep provider and
+service-role credentials out of the browser and source control.
+
 ### Profia-branded authentication emails
 
 The Supabase Auth templates in `supabase/templates` use the current Institute
@@ -2733,3 +2976,13 @@ the hosted project's email branding until its configuration is pushed (or the
 templates are pasted into the Supabase dashboard). When the refreshed website
 is deployed over the current website, update the template image source to the
 deployed `/images/logo.png` URL if the legacy static logo URL has been removed.
+
+## Vercel Web Analytics
+
+The app loads `@vercel/analytics` from the root layout and reports TanStack
+Router navigations using the matched route and pathname. In the Vercel project,
+enable **Settings → Analytics** and redeploy the production branch. After the
+deployment is live, verify that the browser Network panel shows the Vercel
+Insights script and page-view requests; ad blockers can prevent these requests.
+Analytics data is available in the project's **Analytics** dashboard after
+visits reach the deployed site.

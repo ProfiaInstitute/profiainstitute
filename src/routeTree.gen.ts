@@ -20,6 +20,8 @@ import { Route as BusinessRouteImport } from './routes/business'
 import { Route as ContactRouteImport } from './routes/contact'
 import { Route as CosmetologyRouteImport } from './routes/cosmetology'
 import { Route as EngineeringRouteImport } from './routes/engineering'
+import { Route as FacilitatorRouteImport } from './routes/facilitator'
+import { Route as HolidayProgramRouteImport } from './routes/holiday-program'
 import { Route as HospitalityRouteImport } from './routes/hospitality'
 import { Route as IctRouteImport } from './routes/ict'
 import { Route as OnlineCoursesRouteImport } from './routes/online-courses'
@@ -83,6 +85,16 @@ const EngineeringRoute = EngineeringRouteImport.update({
   path: '/engineering',
   getParentRoute: () => rootRouteImport,
 } as any)
+const FacilitatorRoute = FacilitatorRouteImport.update({
+  id: '/facilitator',
+  path: '/facilitator',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const HolidayProgramRoute = HolidayProgramRouteImport.update({
+  id: '/holiday-program',
+  path: '/holiday-program',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const HospitalityRoute = HospitalityRouteImport.update({
   id: '/hospitality',
   path: '/hospitality',
@@ -131,6 +143,8 @@ export interface FileRoutesByFullPath {
   '/contact': typeof ContactRoute
   '/cosmetology': typeof CosmetologyRoute
   '/engineering': typeof EngineeringRoute
+  '/facilitator': typeof FacilitatorRoute
+  '/holiday-program': typeof HolidayProgramRoute
   '/hospitality': typeof HospitalityRoute
   '/ict': typeof IctRoute
   '/online-courses': typeof OnlineCoursesRoute
@@ -151,6 +165,8 @@ export interface FileRoutesByTo {
   '/contact': typeof ContactRoute
   '/cosmetology': typeof CosmetologyRoute
   '/engineering': typeof EngineeringRoute
+  '/facilitator': typeof FacilitatorRoute
+  '/holiday-program': typeof HolidayProgramRoute
   '/hospitality': typeof HospitalityRoute
   '/ict': typeof IctRoute
   '/online-courses': typeof OnlineCoursesRoute
@@ -172,6 +188,8 @@ export interface FileRoutesById {
   '/contact': typeof ContactRoute
   '/cosmetology': typeof CosmetologyRoute
   '/engineering': typeof EngineeringRoute
+  '/facilitator': typeof FacilitatorRoute
+  '/holiday-program': typeof HolidayProgramRoute
   '/hospitality': typeof HospitalityRoute
   '/ict': typeof IctRoute
   '/online-courses': typeof OnlineCoursesRoute
@@ -194,6 +212,8 @@ export interface FileRouteTypes {
     | '/contact'
     | '/cosmetology'
     | '/engineering'
+    | '/facilitator'
+    | '/holiday-program'
     | '/hospitality'
     | '/ict'
     | '/online-courses'
@@ -214,6 +234,8 @@ export interface FileRouteTypes {
     | '/contact'
     | '/cosmetology'
     | '/engineering'
+    | '/facilitator'
+    | '/holiday-program'
     | '/hospitality'
     | '/ict'
     | '/online-courses'
@@ -234,6 +256,8 @@ export interface FileRouteTypes {
     | '/contact'
     | '/cosmetology'
     | '/engineering'
+    | '/facilitator'
+    | '/holiday-program'
     | '/hospitality'
     | '/ict'
     | '/online-courses'
@@ -255,6 +279,8 @@ export interface RootRouteChildren {
   ContactRoute: typeof ContactRoute
   CosmetologyRoute: typeof CosmetologyRoute
   EngineeringRoute: typeof EngineeringRoute
+  FacilitatorRoute: typeof FacilitatorRoute
+  HolidayProgramRoute: typeof HolidayProgramRoute
   HospitalityRoute: typeof HospitalityRoute
   IctRoute: typeof IctRoute
   OnlineCoursesRoute: typeof OnlineCoursesRoute
@@ -343,6 +369,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof EngineeringRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/facilitator': {
+      id: '/facilitator'
+      path: '/facilitator'
+      fullPath: '/facilitator'
+      preLoaderRoute: typeof FacilitatorRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/holiday-program': {
+      id: '/holiday-program'
+      path: '/holiday-program'
+      fullPath: '/holiday-program'
+      preLoaderRoute: typeof HolidayProgramRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/hospitality': {
       id: '/hospitality'
       path: '/hospitality'
@@ -407,6 +447,8 @@ const rootRouteChildren: RootRouteChildren = {
   ContactRoute: ContactRoute,
   CosmetologyRoute: CosmetologyRoute,
   EngineeringRoute: EngineeringRoute,
+  FacilitatorRoute: FacilitatorRoute,
+  HolidayProgramRoute: HolidayProgramRoute,
   HospitalityRoute: HospitalityRoute,
   IctRoute: IctRoute,
   OnlineCoursesRoute: OnlineCoursesRoute,

@@ -16,6 +16,9 @@ function label(value: string) {
 const ignoredFields = new Set(["id", "created_at", "updated_at"]);
 
 export function summarizeAuditChange(action: string, entity: string | null, details: unknown) {
+  if (action === "auth_sign_in") return "Signed in";
+  if (action === "auth_sign_out") return "Signed out";
+
   const entityLabel =
     entity === "auth.users"
       ? "staff account"

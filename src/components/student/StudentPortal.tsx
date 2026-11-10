@@ -9,9 +9,11 @@ import {
   Download,
   Ellipsis,
   Eye,
+  EyeOff,
   FileText,
   GraduationCap,
   LogOut,
+  Mail,
   Printer,
   RefreshCw,
   UserRound,
@@ -24,13 +26,19 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
-import { useUser } from "@/lib/auth";
-import { isAssignmentOpenForSubmission } from "@/lib/assignments";
+import { signOutWithAudit, useUser } from "@/lib/auth";
+import { isAssignmentOpenForSubmission, submissionFilePaths } from "@/lib/assignments";
+import { downloadContentAttachment } from "@/lib/content-download";
 import { StudentCatsSection } from "@/components/student/StudentCatsSection";
 import { formatKES } from "@/lib/site";
 import { useScrollReveal } from "@/lib/motion";
+import { AdmissionLetterDownload } from "@/components/academics/AdmissionLetterDownload";
 import type { Database, Tables } from "@/integrations/supabase/types";
 import { InstallAppButton } from "@/components/site/InstallAppButton";
+import { NotificationBell } from "@/components/site/NotificationBell";
+import { PasswordResetPage } from "@/components/auth/PasswordResetPage";
+import { FeeStructureActions } from "@/components/site/FeeStructureActions";
+import { SubmissionFileDownloads } from "@/components/academics/SubmissionFileDownloads";
 import {
   Sheet,
   SheetContent,
@@ -47,15 +55,122 @@ import {
 } from "@/lib/profile-photos";
 
 type PortalSection =
-  "overview" | "online" | "learning" | "assignments" | "cats" | "results" | "fees" | "profile";
+  | "overview"
+  | "online"
+  | "learning"
+  | "assignments"
+  | "cats"
+  | "results"
+  | "fees"
+  | "progression"
+  | "feedback"
+  | "messages"
+  | "profile";
 type Student = Tables<"students">;
+const selectClass = "h-9 rounded-md border border-input bg-background px-3 text-sm";
+type StudentCourse = {
+  course_id: string;
+  title: string;
+  duration: string | null;
+  level_id: string | null;
+  modes: string[];
+  statuses: string[];
+};
+
+async function fetchStudentCourses(student: Student): Promise<StudentCourse[]> {
+  const [academic, online] = await Promise.all([
+    supabase.from("enrollments").select("course_id,level_id,status").eq("student_id", student.id),
+    supabase
+      .from("online_course_enrollments")
+      .select("course_id,level_id,status")
+      .eq("student_id", student.id),
+  ]);
+  if (academic.error) throw academic.error;
+  if (online.error) throw online.error;
+
+  const enrollments = new Map<
+    string,
+    { course_id: string; level_id: string | null; modes: Set<string>; statuses: Set<string> }
+  >();
+  const addEnrollment = (
+    courseId: string,
+    levelId: string | null,
+    mode: string,
+    status: string,
+  ) => {
+    const row = enrollments.get(courseId) ?? {
+      course_id: courseId,
+      level_id: null,
+      modes: new Set<string>(),
+      statuses: new Set<string>(),
+    };
+    if (status === "active" && levelId) row.level_id = levelId;
+    row.modes.add(mode);
+    row.statuses.add(status);
+    enrollments.set(courseId, row);
+  };
+  for (const enrollment of academic.data ?? [])
+    addEnrollment(enrollment.course_id, enrollment.level_id, "Academic", enrollment.status);
+  for (const enrollment of online.data ?? [])
+    addEnrollment(enrollment.course_id, enrollment.level_id, "Online", enrollment.status);
+  if (student.course_id && !enrollments.has(student.course_id)) {
+    enrollments.set(student.course_id, {
+      course_id: student.course_id,
+      level_id: student.level_id,
+      modes: new Set([student.study_mode === "online" ? "Online" : "Academic"]),
+      statuses: new Set(["assigned"]),
+    });
+  }
+
+  const courseIds = [...enrollments.keys()];
+  if (!courseIds.length) return [];
+  const { data: courses, error: coursesError } = await supabase
+    .from("courses")
+    .select("id,title,duration")
+    .in("id", courseIds);
+  if (coursesError) throw coursesError;
+  const courseById = new Map(courses.map((course) => [course.id, course]));
+  return [...enrollments.values()].map((enrollment) => ({
+    ...enrollment,
+    title: courseById.get(enrollment.course_id)?.title ?? "Course no longer available",
+    duration: courseById.get(enrollment.course_id)?.duration ?? null,
+    modes: [...enrollment.modes],
+    statuses: [...enrollment.statuses],
+  }));
+}
 
 export function StudentPortal({ selectedCourseId }: { selectedCourseId: string | null }) {
-  const { user, loading } = useUser();
+  const { user, loading, error: sessionError } = useUser();
   const [section, setSection] = useState<PortalSection>("overview");
   const [enrollmentPhone, setEnrollmentPhone] = useState("");
+  const [passwordReset, setPasswordReset] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      new URLSearchParams(window.location.search).get("resetPassword") === "1",
+  );
+
+  if (passwordReset || user?.app_metadata?.["password_reset_required"] === true) {
+    return (
+      <PasswordResetPage
+        destination="/student"
+        forced={user?.app_metadata?.["password_reset_required"] === true}
+        onComplete={() => {
+          window.history.replaceState({}, "", "/student");
+          setPasswordReset(false);
+        }}
+      />
+    );
+  }
 
   if (loading) return <PortalMessage title="Loading student portal…" />;
+  if (sessionError)
+    return (
+      <PortalMessage
+        title="Could not load your sign-in session"
+        detail={sessionError.message}
+        retry={() => window.location.reload()}
+      />
+    );
   if (!user)
     return (
       <StudentSignIn selectedCourseId={selectedCourseId} onEnrollmentPhone={setEnrollmentPhone} />
@@ -74,6 +189,122 @@ export function StudentPortal({ selectedCourseId }: { selectedCourseId: string |
   );
 }
 
+function StudentAnnouncements({ studentId }: { studentId: string }) {
+  const announcementsQuery = useQuery({
+    queryKey: ["student-announcements", studentId],
+    queryFn: async () => {
+      const now = new Date().toISOString();
+      const { data, error } = await supabase
+        .from("announcements")
+        .select(
+          "id, title, category, starts_at, ends_at, attachment_url, attachment_file_name, cta_label, cta_url",
+        )
+        .eq("published", true)
+        .eq("show_to_students", true)
+        .or(`starts_at.is.null,starts_at.lte.${now}`)
+        .or(`ends_at.is.null,ends_at.gt.${now}`)
+        .order("created_at", { ascending: false })
+        .limit(10);
+      if (error) throw error;
+      return data ?? [];
+    },
+    staleTime: 60_000,
+    refetchInterval: 60_000,
+  });
+
+  if (
+    announcementsQuery.isLoading ||
+    (!announcementsQuery.data?.length && !announcementsQuery.error)
+  )
+    return null;
+
+  return (
+    <section
+      className="student-announcement-strip flex h-11 items-center gap-3 overflow-hidden border-b bg-brand-deep px-4 text-brand-foreground sm:px-6"
+      aria-label="Student notices and memos"
+    >
+      {announcementsQuery.error ? (
+        <div className="flex min-w-0 items-center gap-3 text-xs" role="alert">
+          <strong className="shrink-0 uppercase tracking-wide text-primary">Notices</strong>
+          <span>Student notices could not be loaded.</span>
+          <button
+            type="button"
+            className="shrink-0 font-semibold underline"
+            onClick={() => void announcementsQuery.refetch()}
+          >
+            Try again
+          </button>
+        </div>
+      ) : (
+        <>
+          <strong className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-primary sm:text-xs">
+            Notices & memos
+          </strong>
+          <div
+            className="announcement-marquee min-w-0 flex-1"
+            role="region"
+            aria-label="Student notices"
+            tabIndex={0}
+          >
+            <div className="announcement-marquee-track">
+              {[0, 1].map((copy) => (
+                <div
+                  key={copy}
+                  className="announcement-marquee-content gap-6 pr-6 text-xs sm:text-sm"
+                  aria-hidden={copy === 1 ? true : undefined}
+                >
+                  {announcementsQuery.data?.map((item) => (
+                    <span key={`${copy}-${item.id}`} className="flex shrink-0 items-center gap-2">
+                      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
+                      {item.category === "memo" && (
+                        <strong className="uppercase text-primary">Memo:</strong>
+                      )}
+                      <span>{item.title}</span>
+                      {item.category === "memo" && item.attachment_url && (
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-1 font-semibold text-primary underline underline-offset-2"
+                          tabIndex={copy === 1 ? -1 : undefined}
+                          onClick={async () => {
+                            try {
+                              await downloadContentAttachment(
+                                item.attachment_url!,
+                                item.attachment_file_name || item.title,
+                              );
+                            } catch (error) {
+                              toast.error("Could not download memo", {
+                                description: error instanceof Error ? error.message : undefined,
+                              });
+                            }
+                          }}
+                        >
+                          <Download className="h-3.5 w-3.5" />
+                          Download
+                        </button>
+                      )}
+                      {item.category !== "memo" && item.cta_label && item.cta_url && (
+                        <a
+                          href={item.cta_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          tabIndex={copy === 1 ? -1 : undefined}
+                          className="font-semibold text-primary underline underline-offset-2"
+                        >
+                          {item.cta_label}
+                        </a>
+                      )}
+                    </span>
+                  ))}
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
 function StudentSignIn({
   selectedCourseId,
   onEnrollmentPhone,
@@ -84,10 +315,30 @@ function StudentSignIn({
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [recoveryBusy, setRecoveryBusy] = useState(false);
+
+  async function sendPasswordReset() {
+    if (!email.trim()) {
+      setError("Enter your email address first.");
+      return;
+    }
+    setRecoveryBusy(true);
+    setError("");
+    const { error: resetError } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: `${window.location.origin}/student?resetPassword=1`,
+    });
+    setRecoveryBusy(false);
+    if (resetError) setError(resetError.message);
+    else
+      toast.success("Password reset email sent", {
+        description: "Check your inbox for the reset link.",
+      });
+  }
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -118,93 +369,146 @@ function StudentSignIn({
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-brand px-4 py-10">
-      <form
-        onSubmit={submit}
-        className="w-full max-w-md space-y-5 rounded-2xl border bg-card p-7 shadow-card"
-      >
-        <a href="/" className="text-sm font-medium text-primary hover:underline">
-          ← Profia Institute website
+    <div className="min-h-screen bg-muted/50">
+      <header className="flex h-16 items-center justify-between border-b bg-background px-4 sm:px-8">
+        <a href="/" className="flex items-center gap-2.5" aria-label="Profia Institute home">
+          <img src="/images/logo.png" alt="" className="h-10 w-auto" />
+          <span>
+            <span className="block text-sm font-extrabold leading-tight text-brand">PROFIA</span>
+            <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Institute of Professionals
+            </span>
+          </span>
         </a>
-        <div>
-          <p className="eyebrow">Profia student services</p>
-          <h1 className="mt-2 text-2xl font-bold text-brand">
-            {mode === "signin" ? "Student sign in" : "Create student account"}
-          </h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Existing students can link their record using its registered email. New learners can
-            create an account here and will receive an online student record when they enroll.
-          </p>
-        </div>
-        {mode === "signup" && (
-          <label className="block space-y-1.5 text-sm font-medium">
-            Full name
-            <Input
-              required
-              autoComplete="name"
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-            />
-          </label>
-        )}
-        {selectedCourseId && (
-          <label className="block space-y-1.5 text-sm font-medium">
-            Mobile money phone number
-            <Input
-              type="tel"
-              required
-              autoComplete="tel"
-              placeholder="07xx xxx xxx"
-              value={phone}
-              onChange={(event) => setPhone(event.target.value)}
-            />
-          </label>
-        )}
-        <label className="block space-y-1.5 text-sm font-medium">
-          Email
-          <Input
-            type="email"
-            required
-            autoComplete="email"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
+        <a href="/" className="text-sm font-semibold text-brand hover:text-primary">
+          ← Back to website
+        </a>
+      </header>
+      <main className="container-site grid min-h-[calc(100vh-4rem)] items-center gap-10 py-8 lg:grid-cols-[1fr_28rem] lg:py-12">
+        <section className="relative hidden min-h-[34rem] overflow-hidden rounded-3xl bg-brand text-brand-foreground shadow-card lg:block">
+          <img
+            src="/images/profia_school.webp"
+            alt="Students learning at Profia Institute"
+            className="absolute inset-0 h-full w-full object-cover"
           />
-        </label>
-        <label className="block space-y-1.5 text-sm font-medium">
-          Password
-          <Input
-            type="password"
-            required
-            minLength={8}
-            autoComplete={mode === "signin" ? "current-password" : "new-password"}
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-          />
-        </label>
-        {error && (
-          <p
-            role="alert"
-            className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive"
-          >
-            {error}
-          </p>
-        )}
-        <Button className="w-full" disabled={busy}>
-          {busy ? "Please wait…" : mode === "signin" ? "Sign in" : "Create account"}
-        </Button>
-        <button
-          type="button"
-          className="w-full text-sm font-medium text-primary hover:underline"
-          onClick={() => {
-            setError("");
-            setMode(mode === "signin" ? "signup" : "signin");
-          }}
+          <div className="absolute inset-0 bg-hero-overlay" />
+          <div className="absolute inset-x-0 bottom-0 p-10">
+            <p className="text-xs font-bold uppercase tracking-[0.2em] text-primary">
+              Learn · Grow · Succeed
+            </p>
+            <h2 className="mt-3 max-w-lg text-4xl font-extrabold leading-tight">
+              Your learning journey, all in one place.
+            </h2>
+            <p className="mt-4 max-w-md leading-7 text-white/80">
+              Access your courses, learning materials, assignments, results and student services.
+            </p>
+          </div>
+        </section>
+        <form
+          onSubmit={submit}
+          className="mx-auto w-full max-w-md space-y-5 rounded-2xl border bg-card p-7 shadow-lift sm:p-9"
         >
-          {mode === "signin"
-            ? "New to the student portal? Create an account"
-            : "Already have an account? Sign in"}
-        </button>
-      </form>
+          <div>
+            <p className="eyebrow">Profia student services</p>
+            <h1 className="mt-2 text-2xl font-bold text-brand">
+              {mode === "signin" ? "Student sign in" : "Create student account"}
+            </h1>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              Existing students can link their record using its registered email. New learners can
+              create an account here and will receive an online student record when they enroll.
+            </p>
+          </div>
+          {mode === "signup" && (
+            <label className="block space-y-1.5 text-sm font-medium">
+              Full name
+              <Input
+                required
+                autoComplete="name"
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+              />
+            </label>
+          )}
+          {selectedCourseId && (
+            <label className="block space-y-1.5 text-sm font-medium">
+              Mobile money phone number
+              <Input
+                type="tel"
+                required
+                autoComplete="tel"
+                placeholder="07xx xxx xxx"
+                value={phone}
+                onChange={(event) => setPhone(event.target.value)}
+              />
+            </label>
+          )}
+          <label className="block space-y-1.5 text-sm font-medium">
+            Email
+            <Input
+              type="email"
+              required
+              autoComplete="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+            />
+          </label>
+          <label className="block space-y-1.5 text-sm font-medium">
+            Password
+            <span className="relative block">
+              <Input
+                type={showPassword ? "text" : "password"}
+                required
+                minLength={8}
+                autoComplete={mode === "signin" ? "current-password" : "new-password"}
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                className="pr-11"
+              />
+              <button
+                type="button"
+                className="absolute inset-y-0 right-0 grid w-11 place-items-center text-muted-foreground"
+                aria-label={showPassword ? "Hide password" : "Show password"}
+                onClick={() => setShowPassword(!showPassword)}
+              >
+                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </span>
+          </label>
+          {mode === "signin" && (
+            <button
+              type="button"
+              className="text-sm font-semibold text-primary underline"
+              disabled={recoveryBusy}
+              onClick={() => void sendPasswordReset()}
+            >
+              {recoveryBusy ? "Sending reset link…" : "Forgot password?"}
+            </button>
+          )}
+          {error && (
+            <p
+              role="alert"
+              className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive"
+            >
+              {error}
+            </p>
+          )}
+          <Button className="w-full" disabled={busy} loading={busy}>
+            {busy ? "Please wait…" : mode === "signin" ? "Sign in" : "Create account"}
+          </Button>
+          <button
+            type="button"
+            className="w-full text-sm font-medium text-primary hover:underline"
+            onClick={() => {
+              setError("");
+              setMode(mode === "signin" ? "signup" : "signin");
+            }}
+          >
+            {mode === "signin"
+              ? "New to the student portal? Create an account"
+              : "Already have an account? Sign in"}
+          </button>
+        </form>
+      </main>
     </div>
   );
 }
@@ -228,6 +532,7 @@ function StudentWorkspace({
 }) {
   const queryClient = useQueryClient();
   const [phoneDraft, setPhoneDraft] = useState(enrollmentPhone);
+  const [activeCourseId, setActiveCourseId] = useState<string | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
   const [isOnline, setIsOnline] = useState(true);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -276,7 +581,41 @@ function StudentWorkspace({
       return data;
     },
   });
-  useScrollReveal(contentRef, `${section}:${studentQuery.data?.id ?? ""}`, false);
+  const studentCoursesQuery = useQuery({
+    queryKey: ["student", "course-enrollments", studentQuery.data?.id],
+    enabled: Boolean(studentQuery.data?.id),
+    queryFn: async () => {
+      if (!studentQuery.data) throw new Error("Student record is not available.");
+      return fetchStudentCourses(studentQuery.data);
+    },
+    staleTime: 20_000,
+    refetchInterval: 30_000,
+  });
+  const accessibleCourses = (studentCoursesQuery.data ?? []).filter(
+    (course) => course.statuses.includes("active") || course.statuses.includes("assigned"),
+  );
+  const activeCourse =
+    accessibleCourses.find((course) => course.course_id === activeCourseId) ??
+    accessibleCourses.find((course) => course.course_id === selectedCourseId) ??
+    accessibleCourses.find((course) => course.course_id === studentQuery.data?.course_id) ??
+    accessibleCourses[0] ??
+    null;
+  useEffect(() => {
+    if (activeCourse && activeCourse.course_id !== activeCourseId) {
+      setActiveCourseId(activeCourse.course_id);
+    }
+  }, [activeCourse, activeCourseId]);
+  useEffect(() => {
+    if (
+      studentQuery.data?.study_mode === "online" &&
+      !["overview", "online", "fees", "progression", "feedback", "messages", "profile"].includes(
+        section,
+      )
+    ) {
+      onSection("overview");
+    }
+  }, [onSection, section, studentQuery.data?.study_mode]);
+  useScrollReveal(contentRef, `${section}:${studentQuery.data?.id ?? ""}`, true);
 
   function submitEnrollmentPhone(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -289,8 +628,15 @@ function StudentWorkspace({
   }
 
   async function signOut() {
-    const { error } = await supabase.auth.signOut();
-    if (error) toast.error("Could not sign out", { description: error.message });
+    const result = await signOutWithAudit();
+    if (result.error) {
+      toast.error(
+        result.signedOut
+          ? "Signed out, but activity recording was incomplete"
+          : "Could not sign out",
+        { description: result.error.message },
+      );
+    }
   }
 
   if (selectedCourseId && !enrollmentPhone) {
@@ -366,6 +712,9 @@ function StudentWorkspace({
     cats: "CATs",
     results: "My results",
     fees: "Fees & payments",
+    progression: "Course levels",
+    feedback: "Course feedback",
+    messages: "Messages",
     profile: "My profile",
   };
   const links: { id: PortalSection; title: string; icon: typeof BookOpen }[] = [
@@ -376,16 +725,43 @@ function StudentWorkspace({
     { id: "cats", title: "CATs", icon: ClipboardCheck },
     { id: "results", title: "Results", icon: FileText },
     { id: "fees", title: "Fees", icon: Wallet },
+    { id: "progression", title: "Levels & units", icon: GraduationCap },
+    { id: "feedback", title: "Feedback", icon: ClipboardCheck },
+    { id: "messages", title: "Messages", icon: Mail },
     { id: "profile", title: "My profile", icon: UserRound },
   ];
+  const onlineOnly = student.study_mode === "online";
+  const visibleLinks = links.filter(
+    ({ id }) =>
+      !onlineOnly ||
+      ["overview", "online", "fees", "progression", "feedback", "messages", "profile"].includes(id),
+  );
   const linkGroups: { title: string; ids: PortalSection[] }[] = [
     {
-      title: "Learning",
-      ids: ["overview", "online", "learning", "assignments", "cats", "results"],
+      title: onlineOnly ? "Online learning" : "Learning",
+      ids: [
+        "overview",
+        "online",
+        "learning",
+        "assignments",
+        "cats",
+        "results",
+        "progression",
+        "feedback",
+        "messages",
+      ],
     },
     { title: "Account", ids: ["fees", "profile"] },
   ];
-  const mobileLinks: PortalSection[] = ["overview", "online", "assignments", "fees"];
+  const visibleGroups = linkGroups
+    .map((group) => ({
+      ...group,
+      ids: group.ids.filter((id) => visibleLinks.some((link) => link.id === id)),
+    }))
+    .filter((group) => group.ids.length > 0);
+  const mobileLinks: PortalSection[] = onlineOnly
+    ? ["overview", "online", "fees"]
+    : ["overview", "online", "assignments", "fees"];
   const mobileLabels: Partial<Record<PortalSection, string>> = {
     overview: "Home",
     online: "Courses",
@@ -393,39 +769,81 @@ function StudentWorkspace({
   };
 
   return (
-    <div className="student-app-shell min-h-screen bg-muted/40">
-      <header className="student-app-header sticky top-0 z-30 flex items-center justify-between gap-3 border-b bg-brand px-4 py-3 text-brand-foreground sm:px-6">
+    <div className="student-app-shell student-workspace min-h-screen bg-muted/40">
+      <header className="student-app-header sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-border/70 bg-background/95 px-4 py-3 text-foreground shadow-sm backdrop-blur sm:px-6">
         <div className="flex min-w-0 items-center gap-3">
           <a
             href="/"
-            className="flex shrink-0 items-center gap-2"
+            className="flex shrink-0 items-center gap-2.5"
             aria-label="Profia Institute home"
           >
-            <ProfilePhotoAvatar
-              src={profilePhotoQuery.data?.url}
-              name={`${student.first_name} ${student.last_name}`}
-              className="h-9 w-9 rounded-xl ring-1 ring-brand-foreground/25"
-            />
-            <span className="hidden text-sm font-extrabold tracking-wide sm:inline">PROFIA</span>
+            <img src="/images/logo.png" alt="" className="h-10 w-auto" />
+            <span className="hidden sm:inline">
+              <span className="block text-sm font-extrabold leading-tight text-brand">PROFIA</span>
+              <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                Student services
+              </span>
+            </span>
           </a>
-          <span aria-hidden="true" className="text-brand-foreground/40">
+          <span aria-hidden="true" className="text-border">
             /
           </span>
-          <span className="truncate text-sm font-semibold">{pageTitle[section]}</span>
+          <span className="truncate text-sm font-semibold text-foreground">
+            {pageTitle[section]}
+          </span>
         </div>
         <div className="flex items-center gap-3">
+          {!onlineOnly && accessibleCourses.length > 1 && (
+            <label className="hidden items-center gap-2 text-xs font-medium sm:flex">
+              <span className="sr-only">Active course</span>
+              <select
+                aria-label="Active course"
+                className={`${selectClass} max-w-56`}
+                value={activeCourse?.course_id ?? ""}
+                onChange={(event) => setActiveCourseId(event.target.value)}
+              >
+                {accessibleCourses.map((course) => (
+                  <option key={course.course_id} value={course.course_id}>
+                    {course.title}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          <NotificationBell
+            userId={userId}
+            onNavigate={(category) =>
+              onSection(
+                category === "messages"
+                  ? "messages"
+                  : category === "student_feedback"
+                    ? "feedback"
+                    : category === "admission"
+                      ? student.study_mode === "online"
+                        ? "online"
+                        : "learning"
+                      : category === "academics"
+                        ? "progression"
+                        : category === "fees"
+                          ? "fees"
+                          : category === "results"
+                            ? "results"
+                            : "overview",
+              )
+            }
+          />
           <span
-            className={`hidden items-center gap-1.5 text-xs sm:inline-flex ${isOnline ? "text-brand-foreground/70" : "text-orange-200"}`}
+            className={`hidden items-center gap-1.5 text-xs sm:inline-flex ${isOnline ? "text-muted-foreground" : "text-orange-700"}`}
             role="status"
           >
             <span
               aria-hidden="true"
-              className={`h-2 w-2 rounded-full ${isOnline ? "bg-emerald-300" : "bg-orange-300"}`}
+              className={`h-2 w-2 rounded-full ${isOnline ? "bg-emerald-500" : "bg-orange-500"}`}
             />
             {isOnline ? "Online" : "Offline"}
           </span>
           <InstallAppButton />
-          <Button size="sm" variant="heroOutline" onClick={() => void signOut()}>
+          <Button size="sm" variant="outline" onClick={() => void signOut()}>
             <LogOut />
             <span className="hidden sm:inline">Sign out</span>
           </Button>
@@ -454,25 +872,52 @@ function StudentWorkspace({
           You're offline. Reconnect to refresh your student information.
         </div>
       )}
+      {!onlineOnly && accessibleCourses.length > 1 && (
+        <div className="border-b bg-card px-4 py-2 sm:hidden">
+          <label className="flex items-center gap-2 text-xs font-medium">
+            Course materials for
+            <select
+              aria-label="Course materials for"
+              className={`${selectClass} min-w-0 flex-1`}
+              value={activeCourse?.course_id ?? ""}
+              onChange={(event) => setActiveCourseId(event.target.value)}
+            >
+              {accessibleCourses.map((course) => (
+                <option key={course.course_id} value={course.course_id}>
+                  {course.title}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      )}
+      <StudentAnnouncements studentId={student.id} />
       <div className="mx-auto flex max-w-7xl flex-col lg:flex-row">
-        <aside className="hidden border-b bg-card p-3 lg:sticky lg:top-[65px] lg:block lg:h-[calc(100vh-65px)] lg:w-64 lg:shrink-0 lg:border-b-0 lg:border-r">
-          <div className="hidden rounded-xl bg-cream p-4 lg:block">
-            <p className="text-xs font-semibold uppercase tracking-wide text-primary">Student</p>
+        <aside className="hidden border-b bg-card p-4 lg:sticky lg:top-[65px] lg:block lg:h-[calc(100vh-65px)] lg:w-64 lg:shrink-0 lg:border-b-0 lg:border-r">
+          <div className="hidden rounded-xl border bg-cream p-4 lg:block">
+            <p className="text-xs font-semibold uppercase tracking-wide text-primary">My account</p>
+            <ProfilePhotoAvatar
+              src={profilePhotoQuery.data?.url}
+              name={`${student.first_name} ${student.last_name}`}
+              className="mt-4 h-12 w-12 rounded-xl"
+            />
             <p className="mt-1 font-semibold text-brand">
               {student.first_name} {student.last_name}
             </p>
-            <p className="mt-1 text-xs text-muted-foreground">{student.student_number}</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Student no. {student.student_number}
+            </p>
           </div>
           <nav
             className="flex gap-1 overflow-x-auto lg:mt-5 lg:flex-col lg:gap-4"
             aria-label="Student portal"
           >
-            {linkGroups.map((group) => (
+            {visibleGroups.map((group) => (
               <div key={group.title} className="flex shrink-0 gap-1 lg:flex-col">
                 <p className="hidden px-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground lg:block">
                   {group.title}
                 </p>
-                {links
+                {visibleLinks
                   .filter((link) => group.ids.includes(link.id))
                   .map(({ id, title, icon: Icon }) => (
                     <button
@@ -480,7 +925,7 @@ function StudentWorkspace({
                       type="button"
                       onClick={() => onSection(id)}
                       aria-current={section === id ? "page" : undefined}
-                      className={`flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${section === id ? "bg-brand text-brand-foreground shadow-sm" : "text-muted-foreground hover:bg-muted"}`}
+                      className={`flex shrink-0 items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${section === id ? "bg-accent text-brand shadow-sm ring-1 ring-primary/15" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
                     >
                       <Icon className="h-4 w-4" />
                       {title}
@@ -496,13 +941,38 @@ function StudentWorkspace({
             ref={contentRef}
             className="dashboard-section-transition mx-auto max-w-5xl"
           >
-            <p className="eyebrow">Student services</p>
-            <h1 className="mb-6 mt-1 text-2xl font-bold text-brand">{pageTitle[section]}</h1>
-            {section === "overview" && <StudentOverview student={student} onNavigate={onSection} />}
+            <p className="eyebrow">Student services / {student.student_number}</p>
+            <h1 className="mb-6 mt-1 text-2xl font-bold text-brand sm:text-3xl">
+              {pageTitle[section]}
+            </h1>
+            {section === "overview" &&
+              (onlineOnly ? (
+                <OnlineStudentOverview student={student} onNavigate={onSection} />
+              ) : (
+                <StudentOverview
+                  student={student}
+                  onNavigate={onSection}
+                  activeCourseId={activeCourse?.course_id ?? null}
+                  onCourseChange={setActiveCourseId}
+                />
+              ))}
             {section === "online" && <OnlineCoursesSection student={student} />}
-            {section === "learning" && <LearningSection courseId={student.course_id} />}
-            {section === "assignments" && <AssignmentsSection student={student} />}
-            {section === "cats" && <StudentCatsSection courseId={student.course_id} />}
+            {section === "learning" && (
+              <LearningSection
+                courseId={activeCourse?.course_id ?? null}
+                studentId={student.id}
+                enrolled={activeCourse?.statuses.includes("active") ?? false}
+              />
+            )}
+            {section === "assignments" && (
+              <AssignmentsSection student={student} courseId={activeCourse?.course_id ?? null} />
+            )}
+            {section === "cats" && (
+              <StudentCatsSection
+                courseId={activeCourse?.course_id ?? null}
+                kasnebNumber={student.kasneb_number}
+              />
+            )}
             {section === "results" && <ResultsSection studentId={student.id} />}
             {section === "fees" && (
               <FeesSection
@@ -510,6 +980,11 @@ function StudentWorkspace({
                 studentNumber={student.student_number}
                 userId={userId}
               />
+            )}
+            {section === "progression" && <StudentProgressionSection student={student} />}
+            {section === "feedback" && <StudentFeedbackSection studentId={student.id} />}
+            {section === "messages" && (
+              <StudentMessagesSection studentId={student.id} userId={userId} />
             )}
             {section === "profile" && (
               <ProfileSection
@@ -567,7 +1042,7 @@ function StudentWorkspace({
             <SheetDescription>Learning tools and account settings</SheetDescription>
           </SheetHeader>
           <div className="grid grid-cols-2 gap-3 pb-2">
-            {links
+            {visibleLinks
               .filter((link) => !mobileLinks.includes(link.id))
               .map(({ id, title, icon: Icon }) => (
                 <button
@@ -594,70 +1069,50 @@ function StudentWorkspace({
 function StudentOverview({
   student,
   onNavigate,
+  activeCourseId,
+  onCourseChange,
 }: {
   student: Student;
   onNavigate: (section: PortalSection) => void;
+  activeCourseId: string | null;
+  onCourseChange: (courseId: string) => void;
 }) {
   const coursesQuery = useQuery({
     queryKey: ["student", "course-enrollments", student.id],
+    queryFn: () => fetchStudentCourses(student),
+    staleTime: 20_000,
+    refetchInterval: 30_000,
+  });
+  const selectedCourse = coursesQuery.data?.find((course) => course.course_id === activeCourseId);
+  const selectedLevelId =
+    selectedCourse?.level_id ?? (activeCourseId === student.course_id ? student.level_id : null);
+  const levelQuery = useQuery({
+    queryKey: ["student", "course-level", selectedLevelId],
+    enabled: Boolean(selectedLevelId),
     queryFn: async () => {
-      const [academic, online] = await Promise.all([
-        supabase.from("enrollments").select("course_id,status").eq("student_id", student.id),
-        supabase
-          .from("online_course_enrollments")
-          .select("course_id,status")
-          .eq("student_id", student.id),
-      ]);
-      if (academic.error) throw academic.error;
-      if (online.error) throw online.error;
-
-      const enrollments = new Map<
-        string,
-        { course_id: string; modes: Set<string>; statuses: Set<string> }
-      >();
-      for (const enrollment of academic.data ?? []) {
-        const row = enrollments.get(enrollment.course_id) ?? {
-          course_id: enrollment.course_id,
-          modes: new Set<string>(),
-          statuses: new Set<string>(),
-        };
-        row.modes.add("Academic");
-        row.statuses.add(enrollment.status);
-        enrollments.set(enrollment.course_id, row);
-      }
-      for (const enrollment of online.data ?? []) {
-        const row = enrollments.get(enrollment.course_id) ?? {
-          course_id: enrollment.course_id,
-          modes: new Set<string>(),
-          statuses: new Set<string>(),
-        };
-        row.modes.add("Online");
-        row.statuses.add(enrollment.status);
-        enrollments.set(enrollment.course_id, row);
-      }
-      if (student.course_id && !enrollments.has(student.course_id)) {
-        enrollments.set(student.course_id, {
-          course_id: student.course_id,
-          modes: new Set([student.study_mode === "online" ? "Online" : "Academic"]),
-          statuses: new Set(["assigned"]),
-        });
-      }
-
-      const ids = [...enrollments.keys()];
-      if (!ids.length) return [];
-      const { data: courses, error: courseError } = await supabase
-        .from("courses")
-        .select("id,title,duration")
-        .in("id", ids);
-      if (courseError) throw courseError;
-      const courseById = new Map(courses.map((course) => [course.id, course]));
-      return [...enrollments.values()].map((enrollment) => ({
-        course_id: enrollment.course_id,
-        title: courseById.get(enrollment.course_id)?.title ?? "Course no longer available",
-        duration: courseById.get(enrollment.course_id)?.duration ?? null,
-        modes: [...enrollment.modes],
-        statuses: [...enrollment.statuses],
-      }));
+      const { data, error } = await supabase
+        .from("course_levels")
+        .select(
+          "id,name,code,total_fee,fee_structure_url,fee_structure_path,fee_structure_file_name",
+        )
+        .eq("id", selectedLevelId!)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+  });
+  const levelUnits = useQuery({
+    queryKey: ["student", "course-level-units", selectedLevelId],
+    enabled: Boolean(selectedLevelId),
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("course_units")
+        .select("id,code,title,semester")
+        .eq("level_id", selectedLevelId!)
+        .order("sort_order")
+        .order("title");
+      if (error) throw error;
+      return data;
     },
   });
   const [results, fees, payments, assignments] = [
@@ -697,13 +1152,13 @@ function StudentOverview({
       },
     }),
     useQuery({
-      queryKey: ["student", "assignments", student.id, student.course_id],
-      enabled: !!student.course_id,
+      queryKey: ["student", "assignments", student.id, activeCourseId],
+      enabled: !!activeCourseId,
       queryFn: async () => {
         const { data, error } = await supabase
           .from("assignments")
           .select("id")
-          .eq("course_id", student.course_id!)
+          .eq("course_id", activeCourseId!)
           .eq("published", true);
         if (error) throw error;
         return data;
@@ -785,6 +1240,17 @@ function StudentOverview({
                     </Badge>
                   ))}
                 </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={course.course_id === activeCourseId ? "secondary" : "outline"}
+                  disabled={
+                    !course.statuses.includes("active") && !course.statuses.includes("assigned")
+                  }
+                  onClick={() => onCourseChange(course.course_id)}
+                >
+                  {course.course_id === activeCourseId ? "Selected course" : "View course"}
+                </Button>
               </li>
             ))}
           </ul>
@@ -812,6 +1278,68 @@ function StudentOverview({
           </button>
         ))}
       </div>
+      {selectedLevelId && (
+        <section data-scroll-reveal className="rounded-xl border bg-card p-5 shadow-card">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h3 className="font-semibold text-brand">
+                {selectedCourse?.title ? `${selectedCourse.title} level` : "Your course level"}
+              </h3>
+              {levelQuery.isLoading ? (
+                <p className="mt-2 text-sm text-muted-foreground">Loading your level…</p>
+              ) : levelQuery.error ? (
+                <p role="alert" className="mt-2 text-sm text-destructive">
+                  Could not load your course level: {levelQuery.error.message}
+                </p>
+              ) : (
+                <p className="mt-1 text-lg font-semibold">
+                  {levelQuery.data?.name ?? "Course level"}
+                  {levelQuery.data?.code ? ` · ${levelQuery.data.code}` : ""}
+                </p>
+              )}
+            </div>
+            {(levelQuery.data?.fee_structure_path || levelQuery.data?.fee_structure_url) && (
+              <FeeStructureActions
+                path={levelQuery.data.fee_structure_path}
+                url={levelQuery.data.fee_structure_url}
+                filename={
+                  levelQuery.data.fee_structure_file_name ??
+                  `${levelQuery.data.name}-fee-structure.pdf`
+                }
+                title={`${levelQuery.data.name} fee structure`}
+              />
+            )}
+          </div>
+          {levelQuery.data && (
+            <p className="mt-2 text-sm text-muted-foreground">
+              Level fee: {formatKES(levelQuery.data.total_fee)}
+            </p>
+          )}
+          {levelUnits.error ? (
+            <p role="alert" className="mt-3 text-sm text-destructive">
+              Could not load your units: {levelUnits.error.message}
+            </p>
+          ) : levelUnits.data?.length ? (
+            <ul className="mt-3 grid gap-2 sm:grid-cols-2">
+              {levelUnits.data.map((unit) => (
+                <li key={unit.id} className="rounded-lg bg-muted/40 px-3 py-2 text-sm">
+                  {unit.code && <strong>{unit.code} · </strong>}
+                  {unit.title}
+                  {unit.semester && (
+                    <span className="block text-xs text-muted-foreground">{unit.semester}</span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          ) : levelUnits.isLoading ? (
+            <p className="mt-3 text-sm text-muted-foreground">Loading your units…</p>
+          ) : (
+            <p className="mt-3 text-sm text-muted-foreground">
+              No units are assigned to this level yet.
+            </p>
+          )}
+        </section>
+      )}
       <section data-scroll-reveal className="rounded-xl border bg-card p-5 shadow-card">
         <h3 className="font-semibold text-brand">Your enrolment</h3>
         <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
@@ -839,7 +1367,180 @@ function StudentOverview({
   );
 }
 
-function LearningSection({ courseId }: { courseId: string | null }) {
+function OnlineStudentOverview({
+  student,
+  onNavigate,
+}: {
+  student: Student;
+  onNavigate: (section: PortalSection) => void;
+}) {
+  const selectedLevel = useQuery({
+    queryKey: ["student", "online-course-level", student.level_id],
+    enabled: Boolean(student.level_id),
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("course_levels")
+        .select("name,code,fee_structure_url,fee_structure_path,fee_structure_file_name,total_fee")
+        .eq("id", student.level_id!)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+  });
+  const courses = useQuery({
+    queryKey: ["student", "online-course-enrollments", student.id],
+    queryFn: async () => {
+      const { data: enrollments, error: enrollmentError } = await supabase
+        .from("online_course_enrollments")
+        .select("id,course_id,status,tuition_fee,exam_fee,certificate_fee")
+        .eq("student_id", student.id)
+        .eq("status", "active")
+        .order("created_at");
+      if (enrollmentError) throw enrollmentError;
+      const ids = (enrollments ?? []).map((enrollment) => enrollment.course_id);
+      if (!ids.length) return [];
+      const { data: courseRecords, error: courseError } = await supabase
+        .from("courses")
+        .select("id,title,duration,image_url")
+        .in("id", ids);
+      if (courseError) throw courseError;
+      const byId = new Map((courseRecords ?? []).map((course) => [course.id, course]));
+      return (enrollments ?? []).flatMap((enrollment) => {
+        const course = byId.get(enrollment.course_id);
+        return course ? [{ ...enrollment, course }] : [];
+      });
+    },
+  });
+  return (
+    <div className="space-y-6">
+      <section className="rounded-2xl bg-gradient-brand p-6 text-brand-foreground shadow-card sm:p-8">
+        <p className="text-sm font-semibold text-brand-foreground/75">
+          Online learner · {student.student_number}
+        </p>
+        <h2 className="mt-2 text-2xl font-bold sm:text-3xl">Welcome, {student.first_name}</h2>
+        <p className="mt-2 max-w-2xl text-sm text-brand-foreground/80">
+          Your workspace is focused on your online learning, course fees, and account. Course
+          lessons and materials are managed in the LMS.
+        </p>
+      </section>
+      <section className="rounded-xl border bg-card p-5 shadow-card">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 className="font-semibold text-brand">Your online courses</h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Only courses assigned to your online learner account appear here.
+            </p>
+          </div>
+          <Button type="button" onClick={() => onNavigate("online")}>
+            Open my LMS
+          </Button>
+        </div>
+        {courses.isLoading ? (
+          <p className="mt-4 text-sm text-muted-foreground">Loading your online courses…</p>
+        ) : courses.error ? (
+          <p role="alert" className="mt-4 text-sm text-destructive">
+            Could not load online courses: {courses.error.message}
+          </p>
+        ) : courses.data?.length ? (
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            {courses.data.map(({ id, course, tuition_fee, exam_fee, certificate_fee }) => (
+              <article key={id} className="overflow-hidden rounded-xl border">
+                {course.image_url && (
+                  <img
+                    src={course.image_url}
+                    alt=""
+                    className="h-32 w-full object-cover"
+                    loading="lazy"
+                  />
+                )}
+                <div className="p-4">
+                  <h4 className="font-semibold text-brand">{course.title}</h4>
+                  {course.duration && (
+                    <p className="mt-1 text-xs text-muted-foreground">{course.duration}</p>
+                  )}
+                  <p className="mt-3 text-sm">Tuition: {formatKES(tuition_fee)}</p>
+                  {exam_fee > 0 && <p className="text-sm">Examination: {formatKES(exam_fee)}</p>}
+                  {certificate_fee > 0 && (
+                    <p className="text-sm">Certificate: {formatKES(certificate_fee)}</p>
+                  )}
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-4 text-sm text-muted-foreground">
+            No active online LMS course is linked to this account yet. Contact admissions if you
+            have recently been admitted.
+          </p>
+        )}
+      </section>
+      {selectedLevel.data && (
+        <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card p-5 shadow-card">
+          <div>
+            <h3 className="font-semibold text-brand">
+              {selectedLevel.data.name}
+              {selectedLevel.data.code ? ` · ${selectedLevel.data.code}` : ""}
+            </h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Level fee: {formatKES(selectedLevel.data.total_fee)}
+            </p>
+          </div>
+          {(selectedLevel.data.fee_structure_path || selectedLevel.data.fee_structure_url) && (
+            <FeeStructureActions
+              path={selectedLevel.data.fee_structure_path}
+              url={selectedLevel.data.fee_structure_url}
+              filename={
+                selectedLevel.data.fee_structure_file_name ??
+                `${selectedLevel.data.name}-fee-structure.pdf`
+              }
+              title={`${selectedLevel.data.name} fee structure`}
+            />
+          )}
+        </section>
+      )}
+      {selectedLevel.error && (
+        <p
+          role="alert"
+          className="rounded-lg border border-destructive/30 p-3 text-sm text-destructive"
+        >
+          Could not load your fee structure details: {selectedLevel.error.message}
+        </p>
+      )}
+      <div className="grid gap-3 sm:grid-cols-2">
+        <button
+          type="button"
+          onClick={() => onNavigate("fees")}
+          className="rounded-xl border bg-card p-5 text-left shadow-card hover:border-primary"
+        >
+          <Wallet className="h-5 w-5 text-primary" />
+          <p className="mt-3 font-semibold text-brand">Fees & payments</p>
+          <p className="mt-1 text-sm text-muted-foreground">Review balances and payment history.</p>
+        </button>
+        <button
+          type="button"
+          onClick={() => onNavigate("profile")}
+          className="rounded-xl border bg-card p-5 text-left shadow-card hover:border-primary"
+        >
+          <UserRound className="h-5 w-5 text-primary" />
+          <p className="mt-3 font-semibold text-brand">My account</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Manage your learner profile and contact details.
+          </p>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function LearningSection({
+  courseId,
+  studentId,
+  enrolled,
+}: {
+  courseId: string | null;
+  studentId: string;
+  enrolled: boolean;
+}) {
   const query = useQuery({
     queryKey: ["student", "materials", courseId],
     enabled: !!courseId,
@@ -854,55 +1555,74 @@ function LearningSection({ courseId }: { courseId: string | null }) {
       return data;
     },
   });
-  if (!courseId)
-    return (
-      <Empty
-        title="No course assigned"
-        detail="Learning materials will appear after a course has been assigned to your student profile."
-      />
-    );
-  if (query.isLoading) return <Loading />;
-  if (query.error) return <ErrorCard error={query.error.message} retry={() => query.refetch()} />;
-  return query.data?.length ? (
-    <div className="space-y-3">
-      {query.data.map((material) => (
-        <article
-          key={material.id}
-          data-scroll-reveal
-          className="rounded-xl border bg-card p-5 shadow-card"
-        >
-          <h2 className="font-semibold text-brand">{material.title}</h2>
-          <p className="mt-1 text-xs uppercase tracking-wide text-primary">
-            {material.material_type}
+  return (
+    <div className="space-y-5">
+      <section className="space-y-3 rounded-xl border bg-card p-5 shadow-card">
+        <div>
+          <h2 className="font-semibold text-brand">Module downloads</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Download official documents for your enrolled course.
           </p>
-          {material.description && (
-            <p className="mt-2 text-sm text-muted-foreground">{material.description}</p>
-          )}
-          {material.external_url && (
-            <a
-              className="mt-3 inline-block text-sm font-medium text-primary hover:underline"
-              href={material.external_url}
-              target="_blank"
-              rel="noreferrer"
+        </div>
+        {courseId && enrolled ? (
+          <AdmissionLetterDownload studentId={studentId} courseId={courseId} />
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            Your admission letter will be available here after you are enrolled in a course.
+          </p>
+        )}
+      </section>
+      {!courseId ? (
+        <Empty
+          title="No course assigned"
+          detail="Learning materials will appear after a course has been assigned to your student profile."
+        />
+      ) : query.isLoading ? (
+        <Loading />
+      ) : query.error ? (
+        <ErrorCard error={query.error.message} retry={() => query.refetch()} />
+      ) : query.data?.length ? (
+        <div className="space-y-3">
+          {query.data.map((material) => (
+            <article
+              key={material.id}
+              data-scroll-reveal
+              className="rounded-xl border bg-card p-5 shadow-card"
             >
-              Open learning material ↗
-            </a>
-          )}
-          {material.file_path && (
-            <PrivateStorageMedia
-              path={material.file_path}
-              contentType={material.material_type}
-              label="Open learning material"
-            />
-          )}
-        </article>
-      ))}
+              <h2 className="font-semibold text-brand">{material.title}</h2>
+              <p className="mt-1 text-xs uppercase tracking-wide text-primary">
+                {material.material_type}
+              </p>
+              {material.description && (
+                <p className="mt-2 text-sm text-muted-foreground">{material.description}</p>
+              )}
+              {material.external_url && (
+                <a
+                  className="mt-3 inline-block text-sm font-medium text-primary hover:underline"
+                  href={material.external_url}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Open learning material ↗
+                </a>
+              )}
+              {material.file_path && (
+                <PrivateStorageMedia
+                  path={material.file_path}
+                  contentType={material.material_type}
+                  label="Open learning material"
+                />
+              )}
+            </article>
+          ))}
+        </div>
+      ) : (
+        <Empty
+          title="No learning materials yet"
+          detail="Your instructor has not published course materials yet."
+        />
+      )}
     </div>
-  ) : (
-    <Empty
-      title="No learning materials yet"
-      detail="Your instructor has not published course materials yet."
-    />
   );
 }
 
@@ -1074,6 +1794,13 @@ function OnlineCoursesSection({ student }: { student: Student }) {
                 Watch course introduction ↗
               </a>
             )}
+            <div className="mt-4 border-t pt-4">
+              <h3 className="font-semibold text-brand">Module downloads</h3>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Download your official admission letter for this enrolled course.
+              </p>
+              <AdmissionLetterDownload studentId={student.id} courseId={selected.course.id} />
+            </div>
             <div className="mt-4 grid gap-3 sm:grid-cols-3">
               <FeeMetric label="Tuition paid" value={formatKES(tuitionPaid) ?? "KES 0"} />
               <FeeMetric
@@ -1278,16 +2005,16 @@ function FeeMetric({ label, value }: { label: string; value: string }) {
   );
 }
 
-function AssignmentsSection({ student }: { student: Student }) {
+function AssignmentsSection({ student, courseId }: { student: Student; courseId: string | null }) {
   const [currentTime, setCurrentTime] = useState(() => Date.now());
   const assignmentsQuery = useQuery({
-    queryKey: ["student", "assignment-list", student.id, student.course_id],
-    enabled: !!student.course_id,
+    queryKey: ["student", "assignment-list", student.id, courseId],
+    enabled: !!courseId,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("assignments")
         .select("*")
-        .eq("course_id", student.course_id!)
+        .eq("course_id", courseId!)
         .eq("published", true)
         .order("due_date", { ascending: true });
       if (error) throw error;
@@ -1296,7 +2023,6 @@ function AssignmentsSection({ student }: { student: Student }) {
   });
   const submissionsQuery = useQuery({
     queryKey: ["student", "assignment-submissions", student.id],
-    enabled: !!student.course_id,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("submissions")
@@ -1310,7 +2036,7 @@ function AssignmentsSection({ student }: { student: Student }) {
     const timer = window.setInterval(() => setCurrentTime(Date.now()), 1000);
     return () => window.clearInterval(timer);
   }, []);
-  if (!student.course_id)
+  if (!courseId)
     return (
       <Empty
         title="No course assigned"
@@ -1389,12 +2115,12 @@ function AssignmentsSection({ student }: { student: Student }) {
               </p>
             ) : submissionsQuery.error ? null : submission ? (
               <div className="mt-4 space-y-2 border-t pt-4">
-                {submission.file_path && (
-                  <SubmissionFileLink path={submission.file_path} label="View submitted file" />
-                )}
+                <SubmissionFileDownloads paths={submissionFilePaths(submission)} />
                 <p className="text-sm text-muted-foreground">
-                  Submitted {new Date(submission.submitted_at).toLocaleString("en-KE")}. Only one
-                  submission is allowed; this assignment remains available for revision.
+                  Submitted {new Date(submission.submitted_at).toLocaleString("en-KE")}.
+                  {submissionFilePaths(submission).length > 1
+                    ? ` ${submissionFilePaths(submission).length} files attached.`
+                    : ""}
                 </p>
               </div>
             ) : deadlinePassed ? (
@@ -1415,7 +2141,7 @@ function AssignmentsSection({ student }: { student: Student }) {
   ) : (
     <Empty
       title="No assignments yet"
-      detail="Published assignments for your course will appear here."
+      detail="Published assignments for your course level will appear here."
     />
   );
 }
@@ -1430,7 +2156,7 @@ function SubmitAssignment({
   dueDate: string;
 }) {
   const queryClient = useQueryClient();
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [comment, setComment] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -1439,23 +2165,23 @@ function SubmitAssignment({
       toast.error("The submission deadline has passed.");
       return;
     }
-    if (!file && !comment.trim()) {
+    if (!files.length && !comment.trim()) {
       toast.error("Add a file or a submission comment.");
       return;
     }
     const maxFileSize = 50 * 1024 * 1024;
-    if (file && file.size > maxFileSize) {
+    if (files.some((file) => file.size > maxFileSize)) {
       toast.error("Submission file is too large", {
-        description: "Choose a file up to 50 MB.",
+        description: "Each submission file must be up to 50 MB.",
       });
       return;
     }
     setBusy(true);
-    let uploadedPath: string | null = null;
+    const uploadedPaths: string[] = [];
     try {
-      if (file) {
+      for (const file of files) {
         const safeFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-        const path = `${student.id}/${assignmentId}/${Date.now()}-${safeFileName}`;
+        const path = `${student.id}/${assignmentId}/${crypto.randomUUID()}-${safeFileName}`;
         const { error: uploadError } = await supabase.storage
           .from("submissions")
           .upload(path, file, {
@@ -1463,25 +2189,35 @@ function SubmitAssignment({
             upsert: false,
           });
         if (uploadError) {
-          toast.error("Could not upload submission", { description: uploadError.message });
+          let description = uploadError.message;
+          if (uploadedPaths.length) {
+            const { error: cleanupError } = await supabase.storage
+              .from("submissions")
+              .remove(uploadedPaths);
+            if (cleanupError) {
+              description += ` Earlier uploaded files could not be cleaned up: ${cleanupError.message}`;
+            }
+          }
+          toast.error("Could not upload submission files", { description });
           return;
         }
-        uploadedPath = path;
+        uploadedPaths.push(path);
       }
 
       const { error: saveError } = await supabase.from("submissions").insert({
         assignment_id: assignmentId,
         student_id: student.id,
-        file_path: uploadedPath,
+        file_path: uploadedPaths[0] ?? null,
+        file_paths: uploadedPaths,
         comment: comment.trim() || null,
       });
 
       if (saveError) {
         let description = saveError.message;
-        if (uploadedPath) {
+        if (uploadedPaths.length) {
           const { error: cleanupError } = await supabase.storage
             .from("submissions")
-            .remove([uploadedPath]);
+            .remove(uploadedPaths);
           if (cleanupError) {
             description += ` The uploaded file could not be cleaned up: ${cleanupError.message}`;
           }
@@ -1491,11 +2227,23 @@ function SubmitAssignment({
       }
 
       toast.success("Assignment submitted");
-      setFile(null);
+      setFiles([]);
       setComment("");
       await queryClient.invalidateQueries({
         queryKey: ["student", "assignment-submissions", student.id],
       });
+    } catch (error) {
+      let description =
+        error instanceof Error ? error.message : "The submission could not be saved.";
+      if (uploadedPaths.length) {
+        const { error: cleanupError } = await supabase.storage
+          .from("submissions")
+          .remove(uploadedPaths);
+        if (cleanupError) {
+          description += ` Uploaded files could not be cleaned up: ${cleanupError.message}`;
+        }
+      }
+      toast.error("Could not submit assignment", { description });
     } finally {
       setBusy(false);
     }
@@ -1507,46 +2255,28 @@ function SubmitAssignment({
         <Textarea rows={2} value={comment} onChange={(event) => setComment(event.target.value)} />
       </label>
       <label className="block text-sm font-medium">
-        Submission file
+        Submission files
         <input
           className="mt-1 block w-full text-sm"
           type="file"
+          multiple
           disabled={busy}
-          onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+          onChange={(event) => setFiles(Array.from(event.target.files ?? []))}
         />
+        <span className="mt-1 block text-xs text-muted-foreground">
+          You can attach multiple files. Each file must be 50 MB or smaller.
+        </span>
       </label>
-      <Button className="mt-2" size="sm" disabled={busy} onClick={() => void submit()}>
+      <Button
+        className="mt-2"
+        size="sm"
+        disabled={busy}
+        loading={busy}
+        onClick={() => void submit()}
+      >
         {busy ? "Submitting…" : "Submit assignment"}
       </Button>
     </div>
-  );
-}
-
-function SubmissionFileLink({ path, label }: { path: string; label: string }) {
-  const fileQuery = useQuery({
-    queryKey: ["student", "submission-file-url", path],
-    queryFn: async () => {
-      const { data, error } = await supabase.storage.from("submissions").createSignedUrl(path, 300);
-      if (error) throw error;
-      return data.signedUrl;
-    },
-    staleTime: 4 * 60_000,
-  });
-
-  if (fileQuery.isLoading)
-    return <p className="text-sm text-muted-foreground">Preparing submission download…</p>;
-  if (fileQuery.error)
-    return <ErrorCard error={fileQuery.error.message} retry={() => void fileQuery.refetch()} />;
-  return (
-    <a
-      className="inline-flex text-sm font-medium text-primary underline"
-      href={fileQuery.data}
-      target="_blank"
-      rel="noreferrer"
-      download
-    >
-      {label} ↗
-    </a>
   );
 }
 
@@ -1603,20 +2333,510 @@ function showReceiptPopup(windowRef: Window, ready: boolean) {
   if (windowRef.closed) return;
   windowRef.document.title = ready ? "Receipt download started" : "Preparing your receipt";
   windowRef.document.head.innerHTML = `<meta name="viewport" content="width=device-width, initial-scale=1"><style>
-    *{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:#fff8f1;color:#321018;font:15px Inter,Arial,sans-serif}
-    main{width:min(360px,calc(100% - 36px));padding:34px 28px;text-align:center;background:#fff;border:1px solid #eaded8;border-radius:20px;box-shadow:0 18px 55px #68091518}
-    .icon{height:62px;width:62px;margin:0 auto 18px;display:grid;place-items:center;border-radius:18px;background:#fff1e8;color:#f1582b}
-    .printer{animation:print .7s ease-in-out infinite}.check{color:#287a52;animation:ready .4s ease both}
-    .paper{height:4px;margin-top:22px;overflow:hidden;border-radius:9px;background:#f2e9e4}.paper:after{content:"";display:block;width:42%;height:100%;border-radius:9px;background:#f1582b;animation:progress 1.2s ease-in-out infinite}
-    h1{margin:0;font-size:18px;color:#680915}p{margin:8px 0 0;line-height:1.55;color:#75666a}
-    @keyframes print{25%{transform:translateY(-3px) rotate(-7deg)}50%{transform:translateY(1px) rotate(5deg)}75%{transform:translateY(-1px) rotate(-3deg}}
-    @keyframes ready{from{transform:scale(.7);opacity:0}to{transform:scale(1);opacity:1}}
-    @keyframes progress{from{transform:translateX(-110%)}to{transform:translateX(250%)}}
-    @media(prefers-reduced-motion:reduce){*,*:before{animation:none!important}}
+    *{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;background:#f4f1ed;color:#211d1c;font:14px Inter,Arial,sans-serif}
+    main{width:min(410px,100%);text-align:center;animation:card-in .45s cubic-bezier(.2,.8,.2,1) both}
+    .printer{position:relative;z-index:2;padding:14px 14px 12px;border:1px solid #45413f;border-radius:24px;background:linear-gradient(145deg,#383533,#211f1e);box-shadow:0 18px 34px #211d1c35,0 5px 0 #171615}
+    .printer-top{display:flex;align-items:center;justify-content:space-between;margin:0 2px 11px;color:#f7f4f1}
+    .brand{display:grid;width:24px;height:24px;place-items:center;border-radius:5px;background:#f1582b;color:#fff;font-size:14px;font-weight:800}
+    .home{border:0;border-radius:999px;background:#55514f;padding:7px 12px;color:#fff;font-size:11px;font-weight:700}
+    .screen{padding:15px;border:1px solid #363331;border-radius:14px;background:#151413;color:#f8f6f4;text-align:left}
+    .summary{display:flex;justify-content:space-between;gap:12px}
+    .plan{font-size:13px;font-weight:700}.caption{margin-top:3px;color:#a8a3a0;font-size:11px}
+    .status{display:flex;align-items:center;gap:8px;margin-top:16px;color:#c7c2bf;font-size:11px}
+    .status-mark{display:grid;width:15px;height:15px;place-items:center;border-radius:50%;background:#f1582b;color:#fff}
+    .done .status-mark{background:#399b6c}
+    .slot{height:7px;margin:13px 10px 0;border-radius:9px;background:#111;box-shadow:inset 0 2px 3px #000}
+    .paper-window{height:244px;margin:-1px 42px 0;overflow:hidden;background:#d8d4d0;box-shadow:inset 0 4px 8px #0002}
+    .paper{position:relative;min-height:238px;padding:17px 18px 20px;background:repeating-linear-gradient(to bottom,#fff 0,#fff 11px,#f7f5f2 12px,#fff 13px);color:#373331;text-align:left;box-shadow:0 8px 14px #0002;transform:translateY(-102%);animation:paper-feed 1.5s cubic-bezier(.2,.75,.25,1) .15s forwards}
+    .paper:after{position:absolute;right:0;bottom:-1px;left:0;height:9px;background:linear-gradient(135deg,#d8d4d0 25%,transparent 25%) 0 0/12px 9px,linear-gradient(225deg,#d8d4d0 25%,transparent 25%) 0 0/12px 9px;content:""}
+    .paper-brand{font-size:10px;font-weight:800;letter-spacing:.13em;text-align:center}
+    .paper-title{margin-top:5px;font-size:8px;letter-spacing:.16em;text-align:center}
+    .rule{margin:13px 0;border:0;border-top:1px dashed #c9c4c0}
+    .paper-line{display:flex;justify-content:space-between;gap:8px;font-size:8px;line-height:1.8}
+    .paper-line strong{font-weight:700}
+    .barcode{height:25px;margin:13px auto 0;width:67%;background:repeating-linear-gradient(90deg,#282523 0,#282523 1px,transparent 1px,transparent 3px,#282523 3px,#282523 5px,transparent 5px,transparent 7px)}
+    .order-code{margin-top:4px;color:#77716d;font-size:7px;letter-spacing:.2em;text-align:center}
+    .message{margin:21px 0 0;color:#57514e;font-size:14px;font-weight:700}
+    .detail{margin:6px 0 0;color:#77716d;font-size:12px;line-height:1.5}
+    .ready-mark{display:inline-grid;width:17px;height:17px;place-items:center;border-radius:50%;background:#399b6c;color:white;animation:ready-pop .4s cubic-bezier(.2,.8,.2,1) both}
+    @keyframes card-in{from{opacity:0;transform:translateY(10px) scale(.98)}to{opacity:1;transform:translateY(0) scale(1)}}
+    @keyframes paper-feed{0%{transform:translateY(-102%)}18%{transform:translateY(-92%)}38%{transform:translateY(-58%)}58%{transform:translateY(-43%)}78%,100%{transform:translateY(0)}}
+    @keyframes ready-pop{0%{transform:scale(.5) rotate(-12deg);opacity:0}70%{transform:scale(1.18) rotate(4deg);opacity:1}100%{transform:scale(1) rotate(0)}}
+    @media(prefers-reduced-motion:reduce){*,*:before,*:after{animation:none!important;scroll-behavior:auto!important}.paper{transform:translateY(0)}}
   </style>`;
   windowRef.document.body.innerHTML = ready
-    ? `<main role="status" aria-live="polite"><div class="icon check"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 4 4L19 6"/></svg></div><h1>Receipt ready</h1><p>Your download has started. This window will close shortly.</p></main>`
-    : `<main role="status" aria-live="polite"><div class="icon printer"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 14h12v8H6z"/></svg></div><h1>Preparing your receipt</h1><p>Creating your secure, school-branded PDF…</p><div class="paper" aria-hidden="true"></div></main>`;
+    ? `<main role="status" aria-live="polite"><div class="printer"><div class="printer-top"><span class="brand" aria-hidden="true">P</span><span class="home">PROFIA INSTITUTE</span></div><div class="screen"><div class="summary"><div><div class="plan">Fee payment</div><div class="caption">Official school receipt</div></div><div class="plan">PDF</div></div><div class="status done"><span class="status-mark">✓</span>Receipt ready</div></div><div class="slot"></div></div><div class="paper-window" aria-hidden="true"><div class="paper"><div class="paper-brand">PROFIA INSTITUTE</div><div class="paper-title">OFFICIAL FEE RECEIPT</div><hr class="rule"><div class="paper-line"><span>Document</span><strong>PDF RECEIPT</strong></div><hr class="rule"><div class="paper-line"><strong>Thank you for your payment</strong></div><div class="barcode"></div><div class="order-code">SECURE RECEIPT</div></div></div><p class="message"><span class="ready-mark">✓</span> Receipt ready</p><p class="detail">Your secure receipt download has started.</p></main>`
+    : `<main role="status" aria-live="polite"><div class="printer"><div class="printer-top"><span class="brand" aria-hidden="true">P</span><span class="home">PROFIA INSTITUTE</span></div><div class="screen"><div class="summary"><div><div class="plan">Fee payment</div><div class="caption">Preparing official receipt</div></div><div class="plan">PDF</div></div><div class="status"><span class="status-mark">•</span>Printing your receipt</div></div><div class="slot"></div></div><div class="paper-window" aria-hidden="true"><div class="paper"><div class="paper-brand">PROFIA INSTITUTE</div><div class="paper-title">OFFICIAL FEE RECEIPT</div><hr class="rule"><div class="paper-line"><span>Document</span><strong>PDF RECEIPT</strong></div><hr class="rule"><div class="paper-line"><strong>Thank you for your payment</strong></div><div class="barcode"></div><div class="order-code">SECURE RECEIPT</div></div></div><p class="message">Preparing your receipt</p><p class="detail">Creating your secure, school-branded PDF…</p></main>`;
+}
+
+function StudentProgressionSection({ student }: { student: Student }) {
+  const queryClient = useQueryClient();
+  const [levelId, setLevelId] = useState("");
+  const [message, setMessage] = useState("");
+  const courseId = student.course_id;
+  const levelsQuery = useQuery({
+    queryKey: ["student", "course-levels", courseId],
+    enabled: Boolean(courseId),
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("course_levels")
+        .select("id,name,description,total_fee,sort_order")
+        .eq("course_id", courseId!)
+        .eq("published", true)
+        .order("sort_order");
+      if (error) throw error;
+      return data;
+    },
+  });
+  const unitsQuery = useQuery({
+    queryKey: ["student", "course-level-units", courseId],
+    enabled: Boolean(courseId),
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("course_units")
+        .select("id,level_id,title,code,semester")
+        .eq("course_id", courseId!)
+        .order("sort_order");
+      if (error) throw error;
+      return data;
+    },
+  });
+  const applicationsQuery = useQuery({
+    queryKey: ["student", "level-applications", student.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("student_level_applications")
+        .select("id,level_id,status,student_message,admin_message,created_at")
+        .eq("student_id", student.id)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data;
+    },
+  });
+  const applyMutation = useMutation({
+    mutationFn: async () => {
+      if (!levelId) throw new Error("Choose the level you want to apply for.");
+      const { error } = await supabase.rpc("submit_student_level_application", {
+        _level_id: levelId,
+        _message: message.trim() || null,
+      });
+      if (error) throw error;
+    },
+    onSuccess: async () => {
+      toast.success("Level application sent", {
+        description:
+          "The administration has been notified. Your current units remain active until approval.",
+      });
+      setLevelId("");
+      setMessage("");
+      await queryClient.invalidateQueries({
+        queryKey: ["student", "level-applications", student.id],
+      });
+    },
+    onError: (error) =>
+      toast.error("Could not submit level application", { description: error.message }),
+  });
+  if (!courseId)
+    return (
+      <PortalMessage title="Course not assigned" detail="Contact the administration for help." />
+    );
+  if (levelsQuery.isLoading || unitsQuery.isLoading || applicationsQuery.isLoading)
+    return <Loading />;
+  if (levelsQuery.error || unitsQuery.error || applicationsQuery.error)
+    return (
+      <ErrorCard
+        error={
+          levelsQuery.error?.message ??
+          unitsQuery.error?.message ??
+          applicationsQuery.error?.message ??
+          "Could not load course levels."
+        }
+        retry={() => {
+          void levelsQuery.refetch();
+          void unitsQuery.refetch();
+          void applicationsQuery.refetch();
+        }}
+      />
+    );
+  const levels = levelsQuery.data ?? [];
+  const currentLevel = levels.find((level) => level.id === student.level_id) ?? levels[0];
+  const nextLevels = levels.filter((level) => level.sort_order > (currentLevel?.sort_order ?? 0));
+  const names = new Map(levels.map((level) => [level.id, level.name]));
+  const hasPending = applicationsQuery.data?.some(
+    (application) => application.status === "pending",
+  );
+  return (
+    <div className="space-y-5">
+      <section className="rounded-xl border bg-card p-5 shadow-card">
+        <h2 className="font-semibold text-brand">Course curriculum by level</h2>
+        <div className="mt-4 space-y-3">
+          {levels.map((level) => {
+            const units = (unitsQuery.data ?? []).filter((unit) => unit.level_id === level.id);
+            return (
+              <details
+                key={level.id}
+                className="rounded-lg border p-4"
+                open={level.id === student.level_id}
+              >
+                <summary className="cursor-pointer font-semibold">
+                  {level.name}
+                  {level.id === student.level_id ? " · Current level" : ""}
+                  {level.total_fee > 0 ? ` · ${formatKES(level.total_fee)}` : ""}
+                </summary>
+                {level.description && (
+                  <p className="mt-2 text-sm text-muted-foreground">{level.description}</p>
+                )}
+                {units.length ? (
+                  <ul className="mt-3 divide-y">
+                    {units.map((unit) => (
+                      <li
+                        key={unit.id}
+                        className="flex flex-wrap justify-between gap-2 py-2 text-sm"
+                      >
+                        <span>{unit.title}</span>
+                        <span className="text-muted-foreground">
+                          {[unit.code, unit.semester].filter(Boolean).join(" · ")}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="mt-3 text-sm text-muted-foreground">Units are being updated.</p>
+                )}
+              </details>
+            );
+          })}
+        </div>
+      </section>
+      <section className="rounded-xl border bg-card p-5 shadow-card">
+        <h2 className="font-semibold text-brand">Apply to progress to another level</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Review the curriculum above before applying. Administration approval is required before
+          your student record and units are moved to the new level.
+        </p>
+        {hasPending ? (
+          <p className="mt-4 rounded-lg bg-muted p-3 text-sm" role="status">
+            Your level application is awaiting review.
+          </p>
+        ) : nextLevels.length ? (
+          <form
+            className="mt-4 grid gap-3"
+            onSubmit={(event) => {
+              event.preventDefault();
+              applyMutation.mutate();
+            }}
+          >
+            <label className="grid gap-1.5 text-sm font-medium">
+              Requested level
+              <select
+                className="h-10 rounded-md border bg-background px-3"
+                required
+                value={levelId}
+                onChange={(event) => setLevelId(event.target.value)}
+              >
+                <option value="">Select a higher level</option>
+                {nextLevels.map((level) => (
+                  <option key={level.id} value={level.id}>
+                    {level.name} ·{" "}
+                    {(unitsQuery.data ?? []).filter((unit) => unit.level_id === level.id).length}{" "}
+                    units
+                  </option>
+                ))}
+              </select>
+            </label>
+            {levelId && (
+              <div className="rounded-lg bg-muted/50 p-3 text-sm">
+                <p className="font-semibold">Units in {names.get(levelId)}:</p>
+                <ul className="mt-2 list-inside list-disc">
+                  {(unitsQuery.data ?? [])
+                    .filter((unit) => unit.level_id === levelId)
+                    .map((unit) => (
+                      <li key={unit.id}>{unit.title}</li>
+                    ))}
+                </ul>
+              </div>
+            )}
+            <Textarea
+              rows={3}
+              maxLength={1000}
+              placeholder="Optional message for the administration"
+              value={message}
+              onChange={(event) => setMessage(event.target.value)}
+            />
+            <Button
+              disabled={applyMutation.isPending || !levelId}
+              loading={applyMutation.isPending}
+            >
+              {applyMutation.isPending ? "Submitting…" : "Submit level application"}
+            </Button>
+          </form>
+        ) : (
+          <p className="mt-4 text-sm text-muted-foreground">
+            No higher published level is currently available for your course.
+          </p>
+        )}
+        {!!applicationsQuery.data?.length && (
+          <div className="mt-5 border-t pt-4">
+            <h3 className="font-semibold text-brand">Application history</h3>
+            <ul className="mt-2 divide-y">
+              {applicationsQuery.data.map((application) => (
+                <li key={application.id} className="py-3 text-sm">
+                  <p className="font-medium">
+                    {names.get(application.level_id) ?? "Course level"} · {application.status}
+                  </p>
+                  {application.admin_message && (
+                    <p className="mt-1 text-muted-foreground">{application.admin_message}</p>
+                  )}
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {new Date(application.created_at).toLocaleDateString("en-KE")}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function StudentFeedbackSection({ studentId }: { studentId: string }) {
+  const queryClient = useQueryClient();
+  const [category, setCategory] = useState("course");
+  const [subject, setSubject] = useState("");
+  const [body, setBody] = useState("");
+  const feedbackQuery = useQuery({
+    queryKey: ["student", "course-feedback", studentId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("student_course_feedback")
+        .select("id,category,subject,body,status,admin_reply,created_at")
+        .eq("student_id", studentId)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data;
+    },
+  });
+  const submitMutation = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase.from("student_course_feedback").insert({
+        student_id: studentId,
+        category,
+        subject: subject.trim(),
+        body: body.trim(),
+      });
+      if (error) throw error;
+    },
+    onSuccess: async () => {
+      toast.success("Feedback sent to the administration");
+      setSubject("");
+      setBody("");
+      await queryClient.invalidateQueries({ queryKey: ["student", "course-feedback", studentId] });
+    },
+    onError: (error) => toast.error("Could not submit feedback", { description: error.message }),
+  });
+  if (feedbackQuery.isLoading) return <Loading />;
+  if (feedbackQuery.error)
+    return <ErrorCard error={feedbackQuery.error.message} retry={() => feedbackQuery.refetch()} />;
+  return (
+    <div className="space-y-5">
+      <form
+        className="grid gap-3 rounded-xl border bg-card p-5 shadow-card"
+        onSubmit={(event) => {
+          event.preventDefault();
+          submitMutation.mutate();
+        }}
+      >
+        <div>
+          <h2 className="font-semibold text-brand">Share feedback or report an issue</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Tell the administration about your course, progress, curriculum, or learning experience.
+          </p>
+        </div>
+        <select
+          className="h-10 rounded-md border bg-background px-3"
+          value={category}
+          onChange={(event) => setCategory(event.target.value)}
+        >
+          <option value="course">Course experience</option>
+          <option value="progress">Progress and support</option>
+          <option value="curriculum">Curriculum or units</option>
+          <option value="other">Other report</option>
+        </select>
+        <Input
+          required
+          maxLength={160}
+          placeholder="Subject"
+          value={subject}
+          onChange={(event) => setSubject(event.target.value)}
+        />
+        <Textarea
+          required
+          minLength={1}
+          maxLength={5000}
+          rows={5}
+          placeholder="Describe your feedback or report"
+          value={body}
+          onChange={(event) => setBody(event.target.value)}
+        />
+        <Button disabled={submitMutation.isPending} loading={submitMutation.isPending}>
+          {submitMutation.isPending ? "Sending…" : "Send feedback"}
+        </Button>
+      </form>
+      {!!feedbackQuery.data?.length && (
+        <section className="rounded-xl border bg-card p-5 shadow-card">
+          <h2 className="font-semibold text-brand">Previous feedback</h2>
+          <ul className="mt-3 divide-y">
+            {feedbackQuery.data.map((item) => (
+              <li key={item.id} className="py-3">
+                <p className="font-medium">{item.subject}</p>
+                <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">
+                  {item.body}
+                </p>
+                <p className="mt-1 text-xs capitalize text-muted-foreground">
+                  {item.category} · {item.status}
+                </p>
+                {item.admin_reply && (
+                  <p className="mt-2 rounded-md bg-muted p-3 text-sm">
+                    Admin response: {item.admin_reply}
+                  </p>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+    </div>
+  );
+}
+
+function StudentMessagesSection({ studentId, userId }: { studentId: string; userId: string }) {
+  const queryClient = useQueryClient();
+  const [body, setBody] = useState("");
+  const conversationQuery = useQuery({
+    queryKey: ["portal-conversation", studentId],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc("get_or_create_student_conversation");
+      if (error) throw error;
+      return data;
+    },
+  });
+  const messagesQuery = useQuery({
+    queryKey: ["portal-messages", conversationQuery.data],
+    enabled: Boolean(conversationQuery.data),
+    refetchInterval: 10_000,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("portal_messages")
+        .select("id,sender_id,body,read_at,created_at")
+        .eq("conversation_id", conversationQuery.data!)
+        .order("created_at");
+      if (error) throw error;
+      return data;
+    },
+  });
+  useEffect(() => {
+    const unread =
+      messagesQuery.data?.filter((message) => message.sender_id !== userId && !message.read_at) ??
+      [];
+    if (!unread.length) return;
+    void supabase
+      .from("portal_messages")
+      .update({ read_at: new Date().toISOString() })
+      .in(
+        "id",
+        unread.map((message) => message.id),
+      )
+      .then(({ error }) => {
+        if (error) toast.error("Could not mark messages as read", { description: error.message });
+        else
+          void queryClient.invalidateQueries({
+            queryKey: ["portal-messages", conversationQuery.data],
+          });
+      });
+  }, [conversationQuery.data, messagesQuery.data, queryClient, userId]);
+  const sendMutation = useMutation({
+    mutationFn: async () => {
+      if (!conversationQuery.data) throw new Error("Your message thread is not ready.");
+      const { error } = await supabase.from("portal_messages").insert({
+        conversation_id: conversationQuery.data,
+        sender_id: userId,
+        body: body.trim(),
+      });
+      if (error) throw error;
+    },
+    onSuccess: async () => {
+      setBody("");
+      await queryClient.invalidateQueries({
+        queryKey: ["portal-messages", conversationQuery.data],
+      });
+    },
+    onError: (error) => toast.error("Could not send message", { description: error.message }),
+  });
+  if (conversationQuery.error)
+    return (
+      <ErrorCard
+        error={conversationQuery.error.message}
+        retry={() => conversationQuery.refetch()}
+      />
+    );
+  if (messagesQuery.error)
+    return <ErrorCard error={messagesQuery.error.message} retry={() => messagesQuery.refetch()} />;
+  return (
+    <section className="rounded-xl border bg-card p-5 shadow-card">
+      <h2 className="font-semibold text-brand">Message the administration</h2>
+      <p className="mt-1 text-sm text-muted-foreground">
+        Send a private message and receive replies here. New messages trigger in-app notifications.
+      </p>
+      {messagesQuery.isLoading ? (
+        <Loading />
+      ) : (
+        <ol className="mt-4 max-h-[28rem] space-y-3 overflow-y-auto rounded-lg bg-muted/40 p-3">
+          {messagesQuery.data?.length ? (
+            messagesQuery.data.map((message) => (
+              <li
+                key={message.id}
+                className={`max-w-[85%] rounded-lg p-3 text-sm ${message.sender_id === userId ? "ml-auto bg-primary text-primary-foreground" : "bg-background shadow-sm"}`}
+              >
+                <p className="whitespace-pre-wrap">{message.body}</p>
+                <time className="mt-2 block text-[10px] opacity-70">
+                  {new Date(message.created_at).toLocaleString("en-KE")}
+                </time>
+              </li>
+            ))
+          ) : (
+            <li className="py-8 text-center text-sm text-muted-foreground">
+              Start a conversation with the administration.
+            </li>
+          )}
+        </ol>
+      )}
+      <form
+        className="mt-4 grid gap-2"
+        onSubmit={(event) => {
+          event.preventDefault();
+          sendMutation.mutate();
+        }}
+      >
+        <Textarea
+          required
+          maxLength={5000}
+          rows={3}
+          placeholder="Write your message"
+          value={body}
+          onChange={(event) => setBody(event.target.value)}
+        />
+        <Button
+          className="justify-self-end"
+          disabled={sendMutation.isPending || !body.trim()}
+          loading={sendMutation.isPending}
+        >
+          <Mail className="mr-2 h-4 w-4" />
+          {sendMutation.isPending ? "Sending…" : "Send message"}
+        </Button>
+      </form>
+    </section>
+  );
 }
 
 function FeesSection({
@@ -1834,19 +3054,49 @@ function FeesSection({
   const balanceLabel = hasCredit ? "Credit" : "Balance";
   const balanceAmount = Math.abs(billed - paid);
   const outstanding = Math.max(0, billed - paid);
+  const ledger = [
+    ...(query.data?.fees ?? []).map((fee) => ({
+      id: `fee-${fee.id}`,
+      date: fee.created_at,
+      description: `${fee.description}${fee.due_date ? ` · Due ${fee.due_date}` : ""}`,
+      debit: Number(fee.amount),
+      credit: 0,
+      order: 0,
+    })),
+    ...(query.data?.payments ?? []).map((payment) => ({
+      id: `payment-${payment.id}`,
+      date: payment.paid_at,
+      description: `${payment.provider === "payhero" ? "M-Pesa" : payment.method}${payment.reference ? ` · ${payment.reference}` : ""}`,
+      debit: 0,
+      credit: Number(payment.amount),
+      order: 1,
+    })),
+  ]
+    .sort((left, right) => {
+      const byDate = new Date(left.date).getTime() - new Date(right.date).getTime();
+      return byDate || left.order - right.order || left.id.localeCompare(right.id);
+    })
+    .reduce<
+      Array<{
+        id: string;
+        date: string;
+        description: string;
+        debit: number;
+        credit: number;
+        balance: number;
+      }>
+    >((rows, item) => {
+      const previousBalance = rows.at(-1)?.balance ?? 0;
+      rows.push({ ...item, balance: previousBalance + item.debit - item.credit });
+      return rows;
+    }, []);
   return (
     <div className="space-y-4">
-      <section className="grid gap-3 sm:grid-cols-3">
-        {[
-          ["Total charges", billed],
-          ["Payments", paid],
-          [balanceLabel, balanceAmount],
-        ].map(([label, amount]) => (
-          <div key={String(label)} className="rounded-xl border bg-card p-4 shadow-card">
-            <p className="text-sm text-muted-foreground">{label}</p>
-            <p className="mt-2 text-xl font-bold text-brand">{formatKES(Number(amount))}</p>
-          </div>
-        ))}
+      <section className="rounded-xl border bg-card p-4 shadow-card">
+        <p className="text-sm text-muted-foreground">
+          Current running {balanceLabel.toLowerCase()}
+        </p>
+        <p className="mt-1 text-2xl font-bold text-brand">{formatKES(balanceAmount)}</p>
       </section>
       <section data-scroll-reveal className="rounded-xl border bg-card p-5 shadow-card">
         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1888,13 +3138,18 @@ function FeesSection({
               placeholder={`Balance: ${formatKES(outstanding)}`}
             />
           </label>
-          <Button type="submit" disabled={outstanding < 1 || paymentMutation.isPending}>
+          <Button
+            type="submit"
+            disabled={outstanding < 1 || paymentMutation.isPending}
+            loading={paymentMutation.isPending}
+          >
             {paymentMutation.isPending ? "Sending prompt…" : "Send payment prompt"}
           </Button>
           <Button
             type="button"
             variant="outline"
             disabled={statementMutation.isPending}
+            loading={statementMutation.isPending}
             onClick={downloadStatement}
           >
             <Download />
@@ -1907,21 +3162,44 @@ function FeesSection({
         </p>
       </section>
       <section data-scroll-reveal className="rounded-xl border bg-card p-5 shadow-card">
-        <h2 className="font-semibold text-brand">Billed charges · {studentNumber}</h2>
-        {query.data?.fees.length ? (
-          <div className="mt-3 divide-y">
-            {query.data.fees.map((fee) => (
-              <div key={fee.id} className="flex justify-between gap-3 py-3 text-sm">
-                <span>
-                  {fee.description}
-                  {fee.due_date ? ` · Due ${fee.due_date}` : ""}
-                </span>
-                <span className="font-semibold">{formatKES(fee.amount)}</span>
-              </div>
-            ))}
+        <h2 className="font-semibold text-brand">Fee statement · {studentNumber}</h2>
+        {ledger.length ? (
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full min-w-[640px] border-collapse text-left text-sm">
+              <thead>
+                <tr className="border-b text-xs uppercase text-muted-foreground">
+                  <th className="px-3 py-2">Date</th>
+                  <th className="px-3 py-2">Description</th>
+                  <th className="px-3 py-2 text-right">Fees (KES)</th>
+                  <th className="px-3 py-2 text-right">Paid (KES)</th>
+                  <th className="px-3 py-2 text-right">Running balance (KES)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {ledger.map((entry) => (
+                  <tr key={entry.id} className="border-b last:border-0">
+                    <td className="whitespace-nowrap px-3 py-3">
+                      {new Date(entry.date).toLocaleDateString("en-KE")}
+                    </td>
+                    <td className="px-3 py-3">{entry.description}</td>
+                    <td className="px-3 py-3 text-right">
+                      {entry.debit ? formatKES(entry.debit) : "—"}
+                    </td>
+                    <td className="px-3 py-3 text-right">
+                      {entry.credit ? formatKES(entry.credit) : "—"}
+                    </td>
+                    <td className="px-3 py-3 text-right font-semibold">
+                      {formatKES(entry.balance)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         ) : (
-          <p className="mt-3 text-sm text-muted-foreground">No fee charges have been recorded.</p>
+          <p className="mt-3 text-sm text-muted-foreground">
+            No fee charges or confirmed payments have been recorded.
+          </p>
         )}
       </section>
       <section data-scroll-reveal className="rounded-xl border bg-card p-5 shadow-card">
@@ -1957,6 +3235,7 @@ function FeesSection({
                     size="sm"
                     variant="ghost"
                     disabled={receiptMutation.isPending}
+                    data-document-download="false"
                     onClick={() => openReceipt(payment.id, "download")}
                     className={
                       receiptMutation.isPending &&
@@ -2202,7 +3481,9 @@ function ProfileSection({
           Address
           <Textarea rows={3} value={address} onChange={(e) => setAddress(e.target.value)} />
         </label>
-        <Button disabled={busy}>{busy ? "Saving…" : "Save contact details"}</Button>
+        <Button disabled={busy} loading={busy}>
+          {busy ? "Saving…" : "Save contact details"}
+        </Button>
       </form>
       <section className="h-fit rounded-xl border bg-card p-5 shadow-card">
         <h2 className="font-semibold text-brand">Student record</h2>

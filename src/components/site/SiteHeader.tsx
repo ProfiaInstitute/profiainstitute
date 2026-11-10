@@ -53,11 +53,11 @@ export function SiteHeader() {
           </div>
         </div>
       </div>
-      <div className="border-b bg-background/95 backdrop-blur">
-        <div className="container-site flex h-16 items-center justify-between gap-4 lg:h-20">
+      <div className="border-b border-border/70 bg-background/95 shadow-sm backdrop-blur">
+        <div className="container-site flex h-16 items-center justify-between gap-4 lg:h-[5.5rem]">
           <Link
             to="/"
-            className="flex shrink-0 items-center gap-2"
+            className="flex min-w-0 shrink-0 items-center gap-3"
             aria-label="Profia Institute home"
           >
             <img
@@ -67,6 +67,14 @@ export function SiteHeader() {
               height={56}
               className="h-11 w-auto lg:h-14"
             />
+            <span className="hidden min-w-0 sm:block">
+              <span className="block truncate text-sm font-extrabold leading-tight text-brand lg:text-base">
+                {g.institution_name}
+              </span>
+              <span className="mt-1 block truncate text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground lg:text-[11px]">
+                {g.tagline || "Institute of Professionals"}
+              </span>
+            </span>
           </Link>
           <nav className="hidden items-center gap-1 lg:flex" aria-label="Main">
             {main.map((m) =>
@@ -74,7 +82,7 @@ export function SiteHeader() {
                 <div key={m.to} className="group relative">
                   <Link
                     to="/academics"
-                    className="flex items-center gap-1 rounded-md px-3 py-2 text-sm font-semibold text-foreground hover:text-primary"
+                    className="flex items-center gap-1 rounded-md px-3 py-2 text-sm font-semibold text-foreground transition-colors hover:text-primary"
                     activeProps={{ className: "text-primary" }}
                   >
                     Academics <ChevronDown className="h-3.5 w-3.5" />
@@ -95,7 +103,7 @@ export function SiteHeader() {
                 <Link
                   key={m.to}
                   to={m.to}
-                  className="rounded-md px-3 py-2 text-sm font-semibold text-foreground hover:text-primary"
+                  className="rounded-md px-3 py-2 text-sm font-semibold text-foreground transition-colors hover:text-primary"
                   activeProps={{ className: "text-primary" }}
                   activeOptions={{ exact: m.to === "/" }}
                 >

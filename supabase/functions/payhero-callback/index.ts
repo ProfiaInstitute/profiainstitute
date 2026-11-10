@@ -44,6 +44,10 @@ Deno.serve(async (request: Request) => {
     console.error("PayHero callback verification is not configured.");
     return json({ error: "Payment verification is not configured." }, 503);
   }
+  if (reference.startsWith("PRF-HOLIDAY-")) {
+    return await handleHolidayPayment(supabase, reference, callback, credentials);
+  }
+
   let isOnlineCoursePayment = reference.startsWith("PRF-ONLINE-");
   let isFeePayment = reference.startsWith("PRF-FEE-");
   let payment = isOnlineCoursePayment
@@ -61,6 +65,16 @@ Deno.serve(async (request: Request) => {
     } else {
       payment = await findFeePayment(supabase, reference);
       isFeePayment = Boolean(payment.data);
+    }
+  }
+  if (!isOnlineCoursePayment && !isFeePayment) {
+    const holidayPayment = await findHolidayPayment(supabase, reference);
+    if (holidayPayment.error) {
+      console.error("Could not find PayHero holiday payment:", holidayPayment.error);
+      return json({ error: "Could not find the holiday program payment." }, 500);
+    }
+    if (holidayPayment.data) {
+      return await handleHolidayPayment(supabase, reference, callback, credentials);
     }
   }
   if (payment.error) {
@@ -269,12 +283,121 @@ Deno.serve(async (request: Request) => {
   return json({ received: true, verified: false }, 200);
 });
 
+async function handleHolidayPayment(
+  supabase: ReturnType<typeof createClient>,
+  reference: string,
+  callback: unknown,
+  credentials: PayHeroCredentials,
+) {
+  const paymentResult = await findHolidayPayment(supabase, reference);
+  if (paymentResult.error) {
+    console.error("Could not find PayHero holiday payment:", paymentResult.error);
+    return json({ error: "Could not find the holiday program payment." }, 500);
+  }
+  const payment = paymentResult.data;
+  if (!payment) return json({ received: true, verified: false }, 200);
+  if (!payment.provider_reference) {
+    console.error("Holiday payment has no saved PayHero reference:", payment.reference);
+    return json({ error: "The payment reference is not ready for verification." }, 409);
+  }
+
+  const callbackAmount = findValue(callback, ["Amount", "amount"]);
+  if (callbackAmount !== null && Number(callbackAmount) !== Number(payment.amount)) {
+    console.error("PayHero holiday callback amount did not match the pending payment.");
+    return json({ error: "The callback payment amount did not match the amount due." }, 409);
+  }
+
+  let verificationResponse: Response;
+  try {
+    verificationResponse = await fetch(
+      `https://backend.payhero.co.ke/api/v2/transaction-status?reference=${encodeURIComponent(payment.provider_reference)}`,
+      {
+        headers: {
+          Authorization: `Basic ${btoa(`${credentials.username}:${credentials.password}`)}`,
+          "Content-Type": "application/json",
+        },
+      },
+    );
+  } catch (error) {
+    console.error("Could not verify PayHero holiday callback:", errorMessage(error));
+    return json({ error: "Could not verify payment status with PayHero." }, 502);
+  }
+  if (!verificationResponse.ok) {
+    console.error("PayHero holiday status check returned HTTP", verificationResponse.status);
+    return json({ error: "PayHero has not confirmed this payment yet." }, 502);
+  }
+
+  const verified = await verificationResponse.json().catch(() => null);
+  if (findValue(verified, ["reference"]) !== payment.provider_reference) {
+    console.error("PayHero holiday status reference did not match the pending payment.");
+    return json({ error: "The payment reference did not match." }, 409);
+  }
+  const status = normalizeStatus(findValue(verified, ["status", "Status", "payment_status"]));
+  const resultCode = findValue(verified, ["ResultCode", "result_code", "resultCode"]);
+  const verifiedAmount = findValue(verified, ["amount", "Amount"]);
+  if (verifiedAmount !== null && Number(verifiedAmount) !== Number(payment.amount)) {
+    console.error("PayHero holiday verification amount did not match the pending payment.");
+    return json({ error: "The verified payment amount did not match the amount due." }, 409);
+  }
+  const receipt = findValue(verified, [
+    "MpesaReceiptNumber",
+    "mpesa_receipt_number",
+    "third_party_reference",
+  ]);
+
+  if (isSuccessful(status, resultCode)) {
+    if (!hasSuccessfulResponse(verified)) {
+      console.error("PayHero did not report a successful holiday transaction.");
+      return json({ error: "PayHero has not confirmed this payment yet." }, 502);
+    }
+    const { error } = await supabase.rpc("confirm_holiday_program_payment", {
+      p_payment_id: payment.id,
+      p_verified_status: status,
+      p_mpesa_receipt_number: receipt,
+    });
+    if (error) {
+      console.error("Could not record verified holiday payment:", error.message);
+      return json({ error: "Payment was verified, but could not be recorded." }, 500);
+    }
+    return json({ received: true, verified: true }, 200);
+  }
+
+  if (isFailed(status, resultCode)) {
+    const { error } = await supabase
+      .from("holiday_program_payments")
+      .update({
+        status: "failed",
+        raw: { verified: true, verified_status: status, payment_type: "holiday_program" },
+      })
+      .eq("id", payment.id)
+      .eq("status", "pending");
+    if (error) {
+      console.error("Could not record failed holiday payment:", error.message);
+      return json({ error: "The failed payment status could not be recorded." }, 500);
+    }
+    return json({ received: true, verified: true }, 200);
+  }
+
+  return json({ received: true, verified: false }, 200);
+}
+
 async function findOnlinePayment(supabase: ReturnType<typeof createClient>, reference: string) {
   const query = supabase
     .from("online_course_payments")
     .select("id,student_id,reference,amount,status,provider_checkout_id,provider_reference")
     .in("status", ["pending", "confirmed"]);
   const { data, error } = reference.startsWith("PRF-ONLINE-")
+    ? await query.eq("reference", reference).maybeSingle()
+    : await query.eq("provider_checkout_id", reference).maybeSingle();
+  return { data, error: error?.message ?? null };
+}
+
+async function findHolidayPayment(supabase: ReturnType<typeof createClient>, reference: string) {
+  const query = supabase
+    .from("holiday_program_payments")
+    .select("id,reference,amount,status,provider_reference,provider_checkout_id")
+    .in("status", ["pending", "confirmed"]);
+  const { data, error } = reference.startsWith("PRF-HOLIDAY-")
     ? await query.eq("reference", reference).maybeSingle()
     : await query.eq("provider_checkout_id", reference).maybeSingle();
   return { data, error: error?.message ?? null };

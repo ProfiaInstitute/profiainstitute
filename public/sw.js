@@ -1,11 +1,11 @@
-const CACHE_NAME = "profia-static-v1";
+const CACHE_NAME = "profia-static-v2";
 const OFFLINE_PAGE = "/offline.html";
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches
       .open(CACHE_NAME)
-      .then((cache) => cache.addAll([OFFLINE_PAGE, "/app-icon.svg"]))
+      .then((cache) => cache.addAll([OFFLINE_PAGE, "/favicon.png"]))
       .then(() => self.skipWaiting()),
   );
 });
@@ -44,7 +44,7 @@ self.addEventListener("fetch", (event) => {
   const isPublicAsset =
     url.pathname.startsWith("/assets/") ||
     url.pathname.startsWith("/images/") ||
-    ["/app-icon.svg", "/favicon.png"].includes(url.pathname);
+    url.pathname === "/favicon.png";
   if (!isPublicAsset || !["script", "style", "image", "font"].includes(request.destination)) return;
 
   event.respondWith(

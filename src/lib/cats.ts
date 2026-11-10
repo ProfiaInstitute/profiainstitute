@@ -5,6 +5,9 @@ export type CatOptionKey = "A" | "B" | "C" | "D";
 export type StudentCat = {
   id: string;
   title: string;
+  name: string;
+  downloadFilePath: string | null;
+  downloadFileName: string | null;
   instructions: string | null;
   durationMinutes: number;
   opensAt: string;
@@ -52,6 +55,8 @@ export type AdminCatAttempt = {
   id: string;
   studentNumber: string;
   studentName: string;
+  kasnebNumber: string | null;
+  levelName: string | null;
   startedAt: string;
   submittedAt: string | null;
   score: number | null;
@@ -59,11 +64,23 @@ export type AdminCatAttempt = {
   answers: { questionId: string; selectedOption: CatOptionKey }[];
 };
 
+export type AdminCatTargetStudent = {
+  id: string;
+  studentNumber: string;
+  studentName: string;
+};
+
 export type AdminCat = {
   id: string;
   courseId: string;
   courseTitle: string;
+  unitId: string | null;
   title: string;
+  name: string;
+  levelIds: string[];
+  targetStudents: AdminCatTargetStudent[];
+  downloadFilePath: string | null;
+  downloadFileName: string | null;
   instructions: string | null;
   durationMinutes: number;
   opensAt: string;
@@ -128,6 +145,12 @@ export function parseStudentCats(value: Json | null): StudentCat[] {
     return {
       id: stringValue(cat["id"], "CAT id"),
       title: stringValue(cat["title"], "CAT title"),
+      name:
+        cat["name"] === null || cat["name"] === undefined
+          ? stringValue(cat["title"], "CAT title")
+          : stringValue(cat["name"], "CAT name"),
+      downloadFilePath: nullableString(cat["download_file_path"]),
+      downloadFileName: nullableString(cat["download_file_name"]),
       instructions: nullableString(cat["instructions"]),
       durationMinutes: numberValue(cat["duration_minutes"], "CAT duration"),
       opensAt: stringValue(cat["opens_at"], "CAT opening time"),
@@ -206,6 +229,8 @@ export function parseAdminCats(value: Json | null): AdminCat[] {
         id: stringValue(attempt["id"], "attempt id"),
         studentNumber: stringValue(attempt["student_number"], "student number"),
         studentName: stringValue(attempt["student_name"], "student name"),
+        kasnebNumber: nullableString(attempt["kasneb_number"]),
+        levelName: nullableString(attempt["level_name"]),
         startedAt: stringValue(attempt["started_at"], "attempt start time"),
         submittedAt: nullableString(attempt["submitted_at"]),
         score: nullableNumber(attempt["score"]),
@@ -219,11 +244,33 @@ export function parseAdminCats(value: Json | null): AdminCat[] {
         }),
       };
     });
+    const targetStudents = (
+      cat["target_students"] === undefined ? [] : arrayValue(cat["target_students"])
+    ).map((studentEntry) => {
+      const student = objectValue(studentEntry);
+      return {
+        id: stringValue(student["id"], "target student id"),
+        studentNumber: stringValue(student["student_number"], "target student number"),
+        studentName: stringValue(student["student_name"], "target student name"),
+      };
+    });
     return {
       id: stringValue(cat["id"], "CAT id"),
       courseId: stringValue(cat["course_id"], "course id"),
       courseTitle: stringValue(cat["course_title"], "course name"),
+      unitId: nullableString(cat["unit_id"]),
       title: stringValue(cat["title"], "CAT title"),
+      name:
+        cat["name"] === null || cat["name"] === undefined
+          ? stringValue(cat["title"], "CAT title")
+          : stringValue(cat["name"], "CAT name"),
+      levelIds:
+        cat["level_ids"] === null || cat["level_ids"] === undefined
+          ? []
+          : arrayValue(cat["level_ids"]).map((levelId) => stringValue(levelId, "course level id")),
+      targetStudents,
+      downloadFilePath: nullableString(cat["download_file_path"]),
+      downloadFileName: nullableString(cat["download_file_name"]),
       instructions: nullableString(cat["instructions"]),
       durationMinutes: numberValue(cat["duration_minutes"], "CAT duration"),
       opensAt: stringValue(cat["opens_at"], "CAT opening time"),
@@ -252,4 +299,23 @@ export function catDateTimeLabel(value: string): string {
     dateStyle: "medium",
     timeStyle: "short",
   });
+}
+
+export function getDateTimeLocalMinimum(afterValue?: string, now = new Date()): string {
+  const minimum = new Date(now);
+  minimum.setSeconds(0, 0);
+  minimum.setMinutes(minimum.getMinutes() + 1);
+
+  if (afterValue) {
+    const after = new Date(afterValue);
+    if (Number.isFinite(after.getTime())) {
+      after.setSeconds(0, 0);
+      after.setMinutes(after.getMinutes() + 1);
+      if (after > minimum) minimum.setTime(after.getTime());
+    }
+  }
+
+  return new Date(minimum.getTime() - minimum.getTimezoneOffset() * 60_000)
+    .toISOString()
+    .slice(0, 16);
 }

@@ -193,6 +193,7 @@ export function FeeStatementTemplatePanel() {
           type="button"
           variant="outline"
           disabled={!courseId || saveMutation.isPending}
+          loading={saveMutation.isPending}
           onClick={() => saveMutation.mutate()}
         >
           <Save /> {saveMutation.isPending ? "Saving…" : "Save course template"}
@@ -200,6 +201,7 @@ export function FeeStatementTemplatePanel() {
         <Button
           type="button"
           disabled={!courseId || downloadMutation.isPending}
+          loading={downloadMutation.isPending}
           onClick={downloadTemplate}
         >
           <Download /> {downloadMutation.isPending ? "Preparing…" : "Download PDF template"}

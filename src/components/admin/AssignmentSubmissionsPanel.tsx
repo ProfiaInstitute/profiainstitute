@@ -5,7 +5,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { SubmissionFileDownloads } from "@/components/academics/SubmissionFileDownloads";
 import { supabase } from "@/integrations/supabase/client";
+import { submissionFilePaths } from "@/lib/assignments";
 import type { Tables } from "@/integrations/supabase/types";
 
 type AssignmentSubmission = Tables<"submissions"> & {
@@ -229,101 +231,69 @@ function AssignmentMarkingCard({
     : "Student record unavailable";
 
   return (
-    <article className="rounded-lg border bg-background p-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h3 className="font-semibold text-brand">
+    <details className="rounded-lg border bg-background p-4">
+      <summary className="flex cursor-pointer flex-wrap items-start justify-between gap-3">
+        <span>
+          <span className="block font-semibold text-brand">
             {submission.assignment?.title ?? "Assignment"}
-          </h3>
-          <p className="mt-1 text-sm">
+          </span>
+          <span className="mt-1 block text-sm">
             {studentName}
             {submission.student?.student_number ? ` · ${submission.student.student_number}` : ""}
-          </p>
-          <p className="text-xs text-muted-foreground">
+          </span>
+          <span className="block text-xs text-muted-foreground">
             Submitted {new Date(submission.submitted_at).toLocaleString("en-KE")}
-          </p>
-        </div>
+          </span>
+        </span>
         <Badge variant={submission.grade ? "default" : "secondary"}>
           {submission.grade ? "Marked" : "Needs marking"}
         </Badge>
+      </summary>
+      <div className="mt-4 border-t pt-4">
+        {submission.comment && (
+          <p className="whitespace-pre-wrap rounded-md bg-muted/50 p-3 text-sm">
+            {submission.comment}
+          </p>
+        )}
+        <SubmissionFileDownloads paths={submissionFilePaths(submission)} />
+        <form
+          className="mt-4 grid gap-3 border-t pt-4 sm:grid-cols-[minmax(120px,180px)_minmax(120px,180px)_1fr_auto]"
+          onSubmit={submit}
+        >
+          <label className="space-y-1 text-xs font-medium">
+            Score (0–100)
+            <Input
+              type="number"
+              min="0"
+              max="100"
+              step="0.01"
+              required
+              value={score}
+              onChange={(event) => setScore(event.target.value)}
+            />
+          </label>
+          <label className="space-y-1 text-xs font-medium">
+            Grade
+            <Input required value={grade} onChange={(event) => setGrade(event.target.value)} />
+          </label>
+          <label className="space-y-1 text-xs font-medium">
+            Feedback for learner
+            <Textarea
+              rows={2}
+              value={feedback}
+              onChange={(event) => setFeedback(event.target.value)}
+            />
+          </label>
+          <Button className="self-end" type="submit" size="sm" disabled={saving}>
+            {saving ? "Saving…" : submission.grade ? "Update mark" : "Save mark"}
+          </Button>
+        </form>
+        {submission.grade && (
+          <p className="mt-2 text-xs text-muted-foreground">
+            Result is recorded in the Results module and remains unpublished until staff publish it.
+          </p>
+        )}
       </div>
-      {submission.comment && (
-        <p className="mt-3 whitespace-pre-wrap rounded-md bg-muted/50 p-3 text-sm">
-          {submission.comment}
-        </p>
-      )}
-      {submission.file_path && (
-        <AdminSubmissionFile path={submission.file_path} label="Download submission" />
-      )}
-      <form
-        className="mt-4 grid gap-3 border-t pt-4 sm:grid-cols-[minmax(120px,180px)_minmax(120px,180px)_1fr_auto]"
-        onSubmit={submit}
-      >
-        <label className="space-y-1 text-xs font-medium">
-          Score (0–100)
-          <Input
-            type="number"
-            min="0"
-            max="100"
-            step="0.01"
-            required
-            value={score}
-            onChange={(event) => setScore(event.target.value)}
-          />
-        </label>
-        <label className="space-y-1 text-xs font-medium">
-          Grade
-          <Input required value={grade} onChange={(event) => setGrade(event.target.value)} />
-        </label>
-        <label className="space-y-1 text-xs font-medium">
-          Feedback for learner
-          <Textarea
-            rows={2}
-            value={feedback}
-            onChange={(event) => setFeedback(event.target.value)}
-          />
-        </label>
-        <Button className="self-end" type="submit" size="sm" disabled={saving}>
-          {saving ? "Saving…" : submission.grade ? "Update mark" : "Save mark"}
-        </Button>
-      </form>
-      {submission.grade && (
-        <p className="mt-2 text-xs text-muted-foreground">
-          Result is recorded in the Results module and remains unpublished until staff publish it.
-        </p>
-      )}
-    </article>
-  );
-}
-
-function AdminSubmissionFile({ path, label }: { path: string; label: string }) {
-  const fileQuery = useQuery({
-    queryKey: ["admin", "submission-file-url", path],
-    queryFn: async () => {
-      const { data, error } = await supabase.storage.from("submissions").createSignedUrl(path, 300);
-      if (error) throw error;
-      return data.signedUrl;
-    },
-    staleTime: 4 * 60_000,
-  });
-
-  if (fileQuery.isLoading)
-    return <p className="mt-3 text-sm text-muted-foreground">Preparing submission file…</p>;
-  if (fileQuery.error)
-    return (
-      <p role="alert" className="mt-3 text-sm text-destructive">
-        Could not open submission: {fileQuery.error.message}
-      </p>
-    );
-  return (
-    <a
-      className="mt-3 inline-flex text-sm font-medium text-primary underline"
-      href={fileQuery.data}
-      target="_blank"
-      rel="noreferrer"
-      download
-    >
-      {label} ↗
-    </a>
+    </details>
   );
 }

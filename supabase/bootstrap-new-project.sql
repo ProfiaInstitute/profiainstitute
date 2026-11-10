@@ -462,8 +462,16 @@ create trigger t1 before update on public.submissions for each row execute funct
 create table public.announcements(
   id uuid primary key default gen_random_uuid(), title text not null, body text not null default '',
   category text not null default 'general', show_on_homepage boolean not null default false, show_to_students boolean not null default true,
+  cta_label text, cta_url text,
   show_public boolean not null default true, published boolean not null default false, starts_at timestamptz, ends_at timestamptz, created_by uuid,
-  created_at timestamptz not null default now(), updated_at timestamptz not null default now());
+  created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
+  constraint announcements_cta_pair_check check (
+    (cta_label is null and cta_url is null)
+    or (
+      nullif(btrim(cta_label), '') is not null
+      and cta_url ~ '^https?://[^[:space:]]+$'
+    )
+  ));
 create table public.notifications(
   id uuid primary key default gen_random_uuid(), user_id uuid not null, title text not null, body text, category text not null default 'general',
   read boolean not null default false, created_at timestamptz not null default now());
@@ -509,7 +517,8 @@ create trigger a1 after insert or update or delete on public.articles for each r
 
 create table public.media(
   id uuid primary key default gen_random_uuid(), url text not null, file_path text, category text not null default 'homepage',
-  slot text, caption text, alt text, sort_order int not null default 0, published boolean not null default true, uploaded_by uuid,
+  slot text, caption text, alt text, link_url text check (link_url is null or link_url ~ '^https?://[^[:space:]]+$'),
+  sort_order int not null default 0, published boolean not null default true, uploaded_by uuid,
   created_at timestamptz not null default now(), updated_at timestamptz not null default now());
 create index on public.media(category, sort_order);
 grant select on public.media to anon, authenticated; grant insert, update, delete on public.media to authenticated; grant all on public.media to service_role;

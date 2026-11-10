@@ -8,7 +8,10 @@ import {
   CalendarDays,
   ChartNoAxesCombined,
   ClipboardList,
+  ClipboardCheck,
   CreditCard,
+  Eye,
+  EyeOff,
   FileText,
   GraduationCap,
   LayoutDashboard,
@@ -25,14 +28,19 @@ import {
   Trash2,
   UserPlus,
   Users,
+  UsersRound,
   Wallet,
   type LucideIcon,
 } from "lucide-react";
 import { toast } from "sonner";
+import { createExcelWorkbook, exportColumnLabel, sanitizeExportRows } from "@/lib/excel-export";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { LevelTargetPicker } from "@/components/academics/LevelTargetPicker";
+import { AdmissionLetterDownload } from "@/components/academics/AdmissionLetterDownload";
+import { EmailFileShareDialog } from "@/components/admin/EmailFileShareDialog";
 import { ProfilePhotoAvatar } from "@/components/profile/ProfilePhotoAvatar";
 import { ManagementPanel } from "@/components/admin/ManagementPanel";
 import { FaqManagementPanel } from "@/components/admin/FaqManagementPanel";
@@ -42,16 +50,26 @@ import { CatManagementPanel } from "@/components/admin/CatManagementPanel";
 import { OnlineCourseLmsPanel } from "@/components/admin/OnlineCourseLmsPanel";
 import { PayHeroSettingsPanel } from "@/components/admin/PayHeroSettingsPanel";
 import { FeeStatementTemplatePanel } from "@/components/admin/FeeStatementTemplatePanel";
+import { SiteMediaManager } from "@/components/admin/SiteMediaManager";
+import { SiteCopyManager } from "@/components/admin/SiteCopyManager";
+import { PasswordResetPage } from "@/components/auth/PasswordResetPage";
+import { PortalInboxPanel } from "@/components/admin/PortalInboxPanel";
+import { CourseFeedbackPanel } from "@/components/admin/CourseFeedbackPanel";
+import { FacilitatorManager } from "@/components/admin/FacilitatorManager";
+import { SystemUsersPanel } from "@/components/admin/SystemUsersPanel";
+import { RegulatoryActionTracker } from "@/components/admin/RegulatoryActionTracker";
+import { ExamCandidateManager } from "@/components/admin/ExamCandidateManager";
+import { HolidayProgramAdminPanel } from "@/components/admin/HolidayProgramAdminPanel";
+import { NotificationBell } from "@/components/site/NotificationBell";
 import { supabase } from "@/integrations/supabase/client";
-import { can, useRoles, useUser, type AppRole } from "@/lib/auth";
-import type { Json } from "@/integrations/supabase/types";
+import { can, signOutWithAudit, useRoles, useUser, type AppRole } from "@/lib/auth";
+import type { Enums, Json, Tables } from "@/integrations/supabase/types";
 import {
   contentKind,
   MAX_CONTENT_UPLOAD_SIZE,
   safeUploadFileName,
   supportedContentType,
 } from "@/lib/file-uploads";
-import type { Enums, Tables } from "@/integrations/supabase/types";
 import { downloadContentAttachment } from "@/lib/content-download";
 import { formatKES } from "@/lib/site";
 import { useScrollReveal } from "@/lib/motion";
@@ -66,6 +84,7 @@ type DashboardSection =
   | "courses"
   | "schools"
   | "admissions"
+  | "holiday-program"
   | "academics"
   | "results"
   | "fees"
@@ -74,13 +93,22 @@ type DashboardSection =
   | "lms"
   | "assignments"
   | "progression"
+  | "regulatory"
+  | "exam-candidates"
   | "articles"
   | "announcements"
+  | "memos"
   | "media"
+  | "site-copy"
   | "messages"
+  | "student-inbox"
+  | "course-feedback"
+  | "facilitators"
   | "reports"
+  | "online-users"
   | "audit"
   | "staff"
+  | "users"
   | "settings";
 
 type StaffAccount = {
@@ -134,6 +162,12 @@ const navItems: { id: DashboardSection; title: string; icon: LucideIcon; roles: 
     icon: CalendarDays,
     roles: ["super_admin", "admissions_admin", "academic_admin"],
   },
+  {
+    id: "holiday-program",
+    title: "Holiday program",
+    icon: CalendarDays,
+    roles: ["super_admin", "admissions_admin"],
+  },
   { id: "academics", title: "Academics", icon: BookOpen, roles: ["super_admin", "academic_admin"] },
   { id: "results", title: "Results", icon: FileText, roles: ["super_admin", "academic_admin"] },
   { id: "fees", title: "Fees", icon: Wallet, roles: ["super_admin"] },
@@ -162,6 +196,18 @@ const navItems: { id: DashboardSection; title: string; icon: LucideIcon; roles: 
     icon: GraduationCap,
     roles: ["super_admin", "academic_admin"],
   },
+  {
+    id: "regulatory",
+    title: "Regulatory & exams",
+    icon: ShieldCheck,
+    roles: ["super_admin", "admissions_admin", "academic_admin"],
+  },
+  {
+    id: "exam-candidates",
+    title: "Exam candidates",
+    icon: ClipboardCheck,
+    roles: ["super_admin", "academic_admin"],
+  },
   { id: "articles", title: "Articles", icon: Newspaper, roles: ["super_admin", "content_admin"] },
   {
     id: "announcements",
@@ -169,16 +215,43 @@ const navItems: { id: DashboardSection; title: string; icon: LucideIcon; roles: 
     icon: Megaphone,
     roles: ["super_admin"],
   },
-  { id: "media", title: "Media", icon: FileText, roles: ["super_admin", "content_admin"] },
+  { id: "memos", title: "Memos", icon: FileText, roles: ["super_admin", "content_admin"] },
+  {
+    id: "site-copy",
+    title: "Homepage & About copy",
+    icon: Newspaper,
+    roles: ["super_admin", "content_admin"],
+  },
+  {
+    id: "media",
+    title: "Site media & banners",
+    icon: FileText,
+    roles: ["super_admin", "content_admin"],
+  },
   { id: "messages", title: "Messages", icon: Mail, roles: ["super_admin", "admissions_admin"] },
+  {
+    id: "student-inbox",
+    title: "Student portal inbox",
+    icon: Mail,
+    roles: ["super_admin", "admissions_admin", "academic_admin"],
+  },
+  {
+    id: "course-feedback",
+    title: "Student feedback",
+    icon: Mail,
+    roles: ["super_admin", "admissions_admin", "academic_admin"],
+  },
   {
     id: "reports",
     title: "Reports",
     icon: ChartNoAxesCombined,
     roles: ["super_admin", "admissions_admin", "academic_admin"],
   },
+  { id: "online-users", title: "Online users", icon: UsersRound, roles: ["super_admin"] },
   { id: "audit", title: "Audit Logs", icon: Activity, roles: ["super_admin"] },
   { id: "staff", title: "Staff", icon: Users, roles: ["super_admin"] },
+  { id: "users", title: "System users", icon: UsersRound, roles: ["super_admin"] },
+  { id: "facilitators", title: "Facilitators", icon: Users, roles: ["super_admin"] },
   {
     id: "settings",
     title: "Account settings",
@@ -189,7 +262,18 @@ const navItems: { id: DashboardSection; title: string; icon: LucideIcon; roles: 
 
 const navGroups: { title: string; ids: DashboardSection[] }[] = [
   { title: "Overview", ids: ["dashboard"] },
-  { title: "Students & admissions", ids: ["applications", "students", "admissions", "messages"] },
+  {
+    title: "Students & admissions",
+    ids: [
+      "applications",
+      "students",
+      "admissions",
+      "holiday-program",
+      "messages",
+      "student-inbox",
+      "course-feedback",
+    ],
+  },
   {
     title: "Academics & finance",
     ids: [
@@ -203,29 +287,74 @@ const navGroups: { title: string; ids: DashboardSection[] }[] = [
       "lms",
       "assignments",
       "progression",
+      "regulatory",
+      "exam-candidates",
     ],
   },
-  { title: "Website content", ids: ["faqs", "articles", "announcements", "media"] },
-  { title: "Administration", ids: ["reports", "audit", "staff", "settings"] },
+  {
+    title: "Website content",
+    ids: ["faqs", "articles", "announcements", "memos", "media", "site-copy"],
+  },
+  {
+    title: "Administration",
+    ids: ["reports", "online-users", "audit", "staff", "users", "facilitators", "settings"],
+  },
 ];
 
 export function StaffDashboard() {
-  const { user, loading } = useUser();
+  const { user, loading, error: sessionError } = useUser();
   const rolesQuery = useRoles(user?.id);
   const roles = rolesQuery.data ?? [];
   const visibleNav = navItems.filter((item) => item.roles.some((role) => can(roles, [role])));
   const [section, setSection] = useState<DashboardSection>("dashboard");
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
-  useScrollReveal(contentRef, `${section}:${roles.join(",")}`, false);
+  useScrollReveal(contentRef, `${section}:${roles.join(",")}`, true);
   const [passwordSetup, setPasswordSetup] = useState(
     () =>
       typeof window !== "undefined" &&
       new URLSearchParams(window.location.search).get("setupPassword") === "1",
   );
+  const [passwordReset, setPasswordReset] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      new URLSearchParams(window.location.search).get("resetPassword") === "1",
+  );
 
-  if (loading || (user && rolesQuery.isLoading))
-    return <FullPageMessage title="Loading secure workspace…" />;
+  if (loading) return <FullPageMessage title="Loading secure workspace…" />;
+  if (sessionError)
+    return (
+      <FullPageMessage
+        title="Could not load your sign-in session"
+        detail={sessionError.message}
+        retry={() => window.location.reload()}
+      />
+    );
+  if (passwordReset) {
+    return (
+      <PasswordResetPage
+        destination="/admin"
+        forced={user?.app_metadata?.["password_reset_required"] === true}
+        onComplete={() => {
+          window.history.replaceState({}, "", "/admin");
+          setPasswordReset(false);
+        }}
+      />
+    );
+  }
+  if (user && rolesQuery.isLoading) return <FullPageMessage title="Loading secure workspace…" />;
+  if (user?.app_metadata?.["password_reset_required"] === true) {
+    return (
+      <PasswordResetPage
+        destination="/admin"
+        forced
+        onComplete={() => {
+          window.history.replaceState({}, "", "/admin");
+          setPasswordReset(false);
+        }}
+      />
+    );
+  }
   if (passwordSetup) {
     return (
       <StaffPasswordSetup
@@ -250,12 +379,36 @@ export function StaffDashboard() {
         retry={() => rolesQuery.refetch()}
       />
     );
+  if (
+    roles.includes("facilitator") &&
+    !roles.some((role) =>
+      ["super_admin", "admissions_admin", "academic_admin", "content_admin"].includes(role),
+    )
+  ) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-muted/40 p-4">
+        <section className="w-full max-w-lg rounded-xl border bg-card p-6 shadow-card">
+          <h1 className="text-xl font-bold text-brand">Use the facilitator portal</h1>
+          <p className="mt-3 text-sm text-muted-foreground">
+            This account is assigned to teach specific course units.
+          </p>
+          <Button asChild className="mt-4">
+            <a href="/facilitator">Open facilitator portal</a>
+          </Button>
+        </section>
+      </div>
+    );
+  }
   if (visibleNav.length === 0) return <InitialAdminSetup userId={user.id} email={user.email} />;
 
   const sectionTitle = navItems.find((item) => item.id === section)?.title ?? "Dashboard";
   const content =
     section === "dashboard" ? (
       <Overview onNavigate={setSection} />
+    ) : section === "media" ? (
+      <SiteMediaManager />
+    ) : section === "site-copy" ? (
+      <SiteCopyManager />
     ) : section === "applications" ? (
       <ApplicationsPanel />
     ) : section === "students" ? (
@@ -263,6 +416,8 @@ export function StaffDashboard() {
         canManage={can(roles, ["academic_admin"])}
         canViewDocuments={can(roles, ["admissions_admin"])}
         canManageDocuments={can(roles, ["admissions_admin"])}
+        canViewAcademicRecords={can(roles, ["academic_admin"])}
+        canViewFinancialRecords={can(roles, ["super_admin"])}
         userId={user.id}
       />
     ) : section === "faqs" ? (
@@ -271,14 +426,30 @@ export function StaffDashboard() {
       <ManagementPanel />
     ) : section === "reports" ? (
       <ReportsPanel />
+    ) : section === "online-users" ? (
+      <OnlineUsersPanel />
     ) : section === "audit" ? (
       <AuditLogPanel />
     ) : section === "settings" ? (
       <StaffPasswordSettings email={user.email ?? ""} />
     ) : section === "staff" ? (
       <StaffSettings />
+    ) : section === "users" ? (
+      <SystemUsersPanel />
     ) : section === "progression" ? (
       <StudentProgressionPanel />
+    ) : section === "regulatory" ? (
+      <RegulatoryActionTracker />
+    ) : section === "exam-candidates" ? (
+      <ExamCandidateManager />
+    ) : section === "student-inbox" ? (
+      <PortalInboxPanel />
+    ) : section === "course-feedback" ? (
+      <CourseFeedbackPanel />
+    ) : section === "facilitators" ? (
+      <FacilitatorManager />
+    ) : section === "holiday-program" ? (
+      <HolidayProgramAdminPanel />
     ) : section === "lms" ? (
       <OnlineCourseLmsPanel />
     ) : section === "fees" ? (
@@ -294,34 +465,56 @@ export function StaffDashboard() {
     );
 
   return (
-    <div className="min-h-screen bg-muted/40 text-foreground">
-      <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b bg-brand px-4 text-brand-foreground sm:px-6">
+    <div className="admin-workspace min-h-screen bg-muted/40 text-foreground">
+      <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border/70 bg-background/95 px-4 text-foreground shadow-sm backdrop-blur sm:px-6">
         <div className="flex items-center gap-3">
           <button
             type="button"
-            className="rounded p-2 hover:bg-brand-foreground/10 lg:hidden"
+            className="rounded-lg p-2 text-brand hover:bg-accent lg:hidden"
             aria-label="Toggle navigation"
             onClick={() => setMobileNavOpen(!mobileNavOpen)}
           >
             <LayoutDashboard className="h-5 w-5" />
           </button>
-          <a href="/" className="text-sm font-extrabold tracking-wide">
-            PROFIA{" "}
-            <span className="hidden font-medium text-brand-foreground/70 sm:inline">
-              · ADMINISTRATION
+          <a href="/" className="flex items-center gap-2.5">
+            <img src="/images/logo.png" alt="" className="h-10 w-auto" />
+            <span>
+              <span className="block text-sm font-extrabold leading-tight text-brand">PROFIA</span>
+              <span className="hidden text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground sm:block">
+                Administration
+              </span>
             </span>
           </a>
         </div>
         <div className="flex items-center gap-3">
-          <span className="hidden max-w-48 truncate text-sm text-brand-foreground/75 sm:block">
+          <NotificationBell
+            userId={user.id}
+            onNavigate={(category) =>
+              setSection(
+                category === "messages"
+                  ? "student-inbox"
+                  : category === "academics"
+                    ? "progression"
+                    : "course-feedback",
+              )
+            }
+          />
+          <span className="hidden max-w-48 truncate text-sm text-muted-foreground sm:block">
             {user.email}
           </span>
           <Button
-            variant="heroOutline"
+            variant="outline"
             size="sm"
             onClick={async () => {
-              const { error } = await supabase.auth.signOut();
-              if (error) toast.error("Could not sign out", { description: error.message });
+              const result = await signOutWithAudit();
+              if (result.error) {
+                toast.error(
+                  result.signedOut
+                    ? "Signed out, but activity recording was incomplete"
+                    : "Could not sign out",
+                  { description: result.error.message },
+                );
+              }
             }}
           >
             <LogOut /> <span className="hidden sm:inline">Sign out</span>
@@ -330,10 +523,10 @@ export function StaffDashboard() {
       </header>
       <div className="mx-auto flex max-w-[1600px]">
         <aside
-          className={`${mobileNavOpen ? "block" : "hidden"} fixed inset-y-16 left-0 z-20 w-72 overflow-y-auto border-r bg-card p-3 lg:sticky lg:top-16 lg:block lg:h-[calc(100vh-4rem)] lg:shrink-0`}
+          className={`${mobileNavOpen ? "block" : "hidden"} fixed inset-y-16 left-0 z-20 w-72 overflow-y-auto border-r bg-card p-4 shadow-card lg:sticky lg:top-16 lg:block lg:h-[calc(100vh-4rem)] lg:shrink-0 lg:shadow-none`}
         >
-          <p className="px-3 pb-2 pt-3 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-            Workspace
+          <p className="px-3 pb-2 pt-2 text-xs font-semibold uppercase tracking-widest text-primary">
+            Profia workspace
           </p>
           <nav className="space-y-5" aria-label="Admin workspace">
             {navGroups.map((group) => {
@@ -353,7 +546,7 @@ export function StaffDashboard() {
                           setSection(id);
                           setMobileNavOpen(false);
                         }}
-                        className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition ${section === id ? "bg-brand text-brand-foreground shadow-sm" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
+                        className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition ${section === id ? "bg-accent text-brand shadow-sm ring-1 ring-primary/15" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
                       >
                         <Icon className="h-4 w-4 shrink-0" />
                         {title}
@@ -364,7 +557,7 @@ export function StaffDashboard() {
               );
             })}
           </nav>
-          <div className="mt-8 rounded-xl bg-cream p-4">
+          <div className="mt-8 rounded-xl border bg-cream p-4">
             <p className="text-xs font-semibold uppercase tracking-wide text-primary">
               Signed in as
             </p>
@@ -377,8 +570,8 @@ export function StaffDashboard() {
           <div className="mx-auto max-w-6xl">
             <div className="mb-6 flex items-center justify-between gap-3">
               <div>
-                <p className="eyebrow">Profia Institute</p>
-                <h1 className="mt-1 text-2xl font-bold text-brand">{sectionTitle}</h1>
+                <p className="eyebrow">Profia Institute · Administration</p>
+                <h1 className="mt-1 text-2xl font-bold text-brand sm:text-3xl">{sectionTitle}</h1>
               </div>
               <Button
                 type="button"
@@ -466,8 +659,15 @@ function InitialAdminSetup({ userId, email }: { userId: string; email: string | 
         <Button
           variant="outline"
           onClick={async () => {
-            const { error } = await supabase.auth.signOut();
-            if (error) toast.error("Could not sign out", { description: error.message });
+            const result = await signOutWithAudit();
+            if (result.error) {
+              toast.error(
+                result.signedOut
+                  ? "Signed out, but activity recording was incomplete"
+                  : "Could not sign out",
+                { description: result.error.message },
+              );
+            }
           }}
         >
           <LogOut className="mr-2 h-4 w-4" />
@@ -553,7 +753,7 @@ function StaffPasswordSetup({
             />
           </label>
           {error && <ErrorBanner message={error} />}
-          <Button className="w-full" disabled={busy}>
+          <Button className="w-full" disabled={busy} loading={busy}>
             {busy ? "Saving password…" : "Save password and continue"}
           </Button>
         </form>
@@ -636,7 +836,9 @@ function StaffPasswordSettings({ email }: { email: string }) {
           onChange={(event) => setConfirmPassword(event.target.value)}
         />
       </label>
-      <Button disabled={busy}>{busy ? "Saving password…" : "Update password"}</Button>
+      <Button disabled={busy} loading={busy}>
+        {busy ? "Saving password…" : "Update password"}
+      </Button>
     </form>
   );
 }
@@ -644,8 +846,29 @@ function StaffPasswordSettings({ email }: { email: string }) {
 function StaffSignIn() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [recoveryBusy, setRecoveryBusy] = useState(false);
   const [error, setError] = useState("");
+
+  async function sendPasswordReset() {
+    if (!email.trim()) {
+      setError("Enter your email address first.");
+      return;
+    }
+    setRecoveryBusy(true);
+    setError("");
+    const { error: resetError } = await supabase.auth.resetPasswordForEmail(
+      email.trim().toLowerCase(),
+      { redirectTo: `${window.location.origin}/admin?resetPassword=1` },
+    );
+    setRecoveryBusy(false);
+    if (resetError) setError(resetError.message);
+    else
+      toast.success("Password reset email sent", {
+        description: "Check your inbox for the reset link.",
+      });
+  }
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -668,47 +891,98 @@ function StaffSignIn() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-brand px-4 py-10">
-      <form
-        onSubmit={submit}
-        className="w-full max-w-md space-y-5 rounded-2xl border bg-card p-7 shadow-card"
-      >
-        <a href="/" className="text-sm font-medium text-primary hover:underline">
-          ← Profia Institute website
+    <div className="min-h-screen bg-muted/50">
+      <header className="flex h-16 items-center justify-between border-b bg-background px-4 sm:px-8">
+        <a href="/" className="flex items-center gap-2.5" aria-label="Profia Institute home">
+          <img src="/images/logo.png" alt="" className="h-10 w-auto" />
+          <span>
+            <span className="block text-sm font-extrabold leading-tight text-brand">PROFIA</span>
+            <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Institute of Professionals
+            </span>
+          </span>
         </a>
-        <div>
-          <p className="eyebrow">Secure staff access</p>
-          <h1 className="mt-2 text-2xl font-bold text-brand">Admin sign in</h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Staff accounts are created by invitation from a Super Admin. If you need access, contact
-            the Institute administrator.
-          </p>
-        </div>
-        <label className="block space-y-1.5 text-sm font-medium">
-          Email
-          <Input
-            type="email"
-            required
-            autoComplete="username"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
+        <a href="/" className="text-sm font-semibold text-brand hover:text-primary">
+          ← Back to website
+        </a>
+      </header>
+      <main className="container-site grid min-h-[calc(100vh-4rem)] items-center gap-10 py-8 lg:grid-cols-[1fr_28rem] lg:py-12">
+        <section className="relative hidden min-h-[34rem] overflow-hidden rounded-3xl bg-brand text-brand-foreground shadow-card lg:block">
+          <img
+            src="/images/profia_school.webp"
+            alt="Profia Institute campus"
+            className="absolute inset-0 h-full w-full object-cover"
           />
-        </label>
-        <label className="block space-y-1.5 text-sm font-medium">
-          Password
-          <Input
-            type="password"
-            required
-            autoComplete="current-password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-          />
-        </label>
-        {error && <ErrorBanner message={error} />}
-        <Button className="w-full" disabled={busy}>
-          {busy ? "Signing in…" : "Sign in"}
-        </Button>
-      </form>
+          <div className="absolute inset-0 bg-hero-overlay" />
+          <div className="absolute inset-x-0 bottom-0 p-10">
+            <p className="text-xs font-bold uppercase tracking-[0.2em] text-primary">
+              Profia Institute · Homa Bay
+            </p>
+            <h2 className="mt-3 max-w-lg text-4xl font-extrabold leading-tight">
+              Supporting every step of the student journey.
+            </h2>
+            <p className="mt-4 max-w-md leading-7 text-white/80">
+              Manage admissions, academics and student services from your secure workspace.
+            </p>
+          </div>
+        </section>
+        <form
+          onSubmit={submit}
+          className="mx-auto w-full max-w-md space-y-5 rounded-2xl border bg-card p-7 shadow-lift sm:p-9"
+        >
+          <div>
+            <p className="eyebrow">Secure staff access</p>
+            <h1 className="mt-2 text-2xl font-bold text-brand">Admin sign in</h1>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              Staff accounts are created by invitation from a Super Admin. If you need access,
+              contact the Institute administrator.
+            </p>
+          </div>
+          <label className="block space-y-1.5 text-sm font-medium">
+            Email
+            <Input
+              type="email"
+              required
+              autoComplete="username"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+            />
+          </label>
+          <label className="block space-y-1.5 text-sm font-medium">
+            Password
+            <span className="relative block">
+              <Input
+                type={showPassword ? "text" : "password"}
+                required
+                autoComplete="current-password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                className="pr-11"
+              />
+              <button
+                type="button"
+                className="absolute inset-y-0 right-0 grid w-11 place-items-center text-muted-foreground"
+                aria-label={showPassword ? "Hide password" : "Show password"}
+                onClick={() => setShowPassword(!showPassword)}
+              >
+                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </span>
+          </label>
+          <button
+            type="button"
+            className="text-sm font-semibold text-primary underline"
+            disabled={recoveryBusy}
+            onClick={() => void sendPasswordReset()}
+          >
+            {recoveryBusy ? "Sending reset link…" : "Forgot password?"}
+          </button>
+          {error && <ErrorBanner message={error} />}
+          <Button className="w-full" disabled={busy} loading={busy}>
+            {busy ? "Signing in…" : "Sign in"}
+          </Button>
+        </form>
+      </main>
     </div>
   );
 }
@@ -900,7 +1174,7 @@ function ApplicationsPanel() {
       const { data, error } = await supabase
         .from("applications")
         .select(
-          "id,application_number,first_name,last_name,email,phone,status,created_at,admin_message,study_mode,courses(title),intakes(name)",
+          "id,application_number,first_name,last_name,email,phone,status,created_at,admin_message,study_mode,level_id,courses(title),course_levels(name),intakes(name)",
         )
         .order("created_at", { ascending: false });
       if (error) throw error;
@@ -941,6 +1215,18 @@ function ApplicationsPanel() {
       }),
     [appsQuery.data, search, status],
   );
+  const exportRows = filtered.map((app) => ({
+    "Application Number": app.application_number,
+    Name: [app.first_name, app.last_name].filter(Boolean).join(" "),
+    "Course Name": relationName(app.courses),
+    Level: relationName(app.course_levels),
+    Intake: relationName(app.intakes),
+    Email: app.email,
+    "Phone Number": app.phone,
+    "Study Mode": app.study_mode,
+    Status: statusLabel(app.status),
+    "Applied On": app.created_at,
+  }));
 
   if (appsQuery.isLoading) return <LoadingState />;
   if (appsQuery.error)
@@ -971,9 +1257,14 @@ function ApplicationsPanel() {
             </option>
           ))}
         </select>
-        <Button variant="outline" onClick={() => exportCsv("applications.csv", filtered)}>
-          <ArrowDownToLine /> Export CSV
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => exportCsv("applications.csv", exportRows)}>
+            <ArrowDownToLine /> Export CSV
+          </Button>
+          <Button variant="outline" onClick={() => exportExcel("applications.xlsx", exportRows)}>
+            <ArrowDownToLine /> Export Excel
+          </Button>
+        </div>
       </div>
       {filtered.length ? (
         filtered.map((app) => (
@@ -1000,6 +1291,7 @@ function ApplicationsPanel() {
             </div>
             <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-sm text-muted-foreground">
               <span>Course: {relationName(app.courses)}</span>
+              <span>Level: {relationName(app.course_levels)}</span>
               <span>Intake: {relationName(app.intakes)}</span>
               <span>Received: {new Date(app.created_at).toLocaleDateString("en-KE")}</span>
             </div>
@@ -1050,11 +1342,15 @@ function StudentsPanel({
   canManage,
   canViewDocuments,
   canManageDocuments,
+  canViewAcademicRecords,
+  canViewFinancialRecords,
   userId,
 }: {
   canManage: boolean;
   canViewDocuments: boolean;
   canManageDocuments: boolean;
+  canViewAcademicRecords: boolean;
+  canViewFinancialRecords: boolean;
   userId: string;
 }) {
   const queryClient = useQueryClient();
@@ -1065,7 +1361,7 @@ function StudentsPanel({
       const { data, error } = await supabase
         .from("students")
         .select(
-          "id,user_id,student_number,application_id,first_name,middle_name,last_name,email,phone,status,course_id,intake_id,study_mode,intake:intakes(name)",
+          "id,user_id,student_number,application_id,first_name,middle_name,last_name,email,phone,status,course_id,level_id,intake_id,study_mode,kasneb_number,date_of_birth,gender,county,town,address,current_semester,level:course_levels(name),intake:intakes(name)",
         )
         .order("created_at", { ascending: false });
       if (error) throw error;
@@ -1186,6 +1482,7 @@ function StudentsPanel({
   });
   const [adding, setAdding] = useState(false);
   const [editingStudentId, setEditingStudentId] = useState<string | null>(null);
+  const [detailsStudentId, setDetailsStudentId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [draft, setDraft] = useState({
     student_number: "",
@@ -1198,10 +1495,14 @@ function StudentsPanel({
   });
   const catalogue = useQuery({
     queryKey: ["admin", "student-form-options"],
-    enabled: adding || !!editingStudentId,
+    enabled: canManage && (adding || !!editingStudentId || studentsQuery.data !== undefined),
     queryFn: async () => {
       const [courses, intakes] = await Promise.all([
-        supabase.from("courses").select("id,title").order("title"),
+        supabase
+          .from("courses")
+          .select("id,title,available_online")
+          .eq("published", true)
+          .order("title"),
         supabase.from("intakes").select("id,name").order("start_date", { ascending: false }),
       ]);
       if (courses.error) throw courses.error;
@@ -1214,6 +1515,19 @@ function StudentsPanel({
       .toLowerCase()
       .includes(search.toLowerCase()),
   );
+  const exportRows = filtered.map((student) => ({
+    "Student Number": student.student_number,
+    Name: [student.first_name, student.middle_name, student.last_name].filter(Boolean).join(" "),
+    "Course Name":
+      studentCourseQuery.data?.[student.id]?.map((course) => course.title).join(", ") ||
+      "Not assigned",
+    Level: relationName(student.level),
+    Intake: relationName(student.intake),
+    Email: student.email,
+    "Phone Number": student.phone,
+    "Study Mode": student.study_mode ? statusLabel(student.study_mode) : "Not assigned",
+    Status: statusLabel(student.status),
+  }));
 
   async function saveStudent(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1297,9 +1611,22 @@ function StudentsPanel({
             onChange={(event) => setSearch(event.target.value)}
           />
         </div>
-        <Button variant="outline" onClick={() => exportCsv("students.csv", filtered)}>
-          <ArrowDownToLine /> Export CSV
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            disabled={studentCourseQuery.isLoading || !!studentCourseQuery.error}
+            onClick={() => exportCsv("students.csv", exportRows)}
+          >
+            <ArrowDownToLine /> Export CSV
+          </Button>
+          <Button
+            variant="outline"
+            disabled={studentCourseQuery.isLoading || !!studentCourseQuery.error}
+            onClick={() => exportExcel("students.xlsx", exportRows)}
+          >
+            <ArrowDownToLine /> Export Excel
+          </Button>
+        </div>
         {canManage && (
           <Button
             onClick={() => {
@@ -1439,7 +1766,7 @@ function StudentsPanel({
                 {student.phone ? ` · ${student.phone}` : ""}
               </p>
               <p className="mt-1 text-xs text-muted-foreground">
-                Intake: {relationName(student.intake)}
+                Level: {relationName(student.level)} · Intake: {relationName(student.intake)}
               </p>
               {studentCourseQuery.error ? (
                 <p role="alert" className="mt-2 text-xs text-destructive">
@@ -1477,19 +1804,53 @@ function StudentsPanel({
                               {status.replaceAll("_", " ")}
                             </Badge>
                           ))}
+                          {(canViewDocuments || canViewAcademicRecords) &&
+                            course.statuses.includes("active") && (
+                              <AdmissionLetterDownload
+                                studentId={student.id}
+                                courseId={course.course_id}
+                              />
+                            )}
                         </li>
                       ))}
                     </ul>
                   ) : (
                     <p className="mt-1 text-xs text-muted-foreground">No course enrolments.</p>
                   )}
+                  {catalogue.error && (
+                    <p role="alert" className="mt-2 text-xs text-destructive">
+                      Could not load courses for enrollment: {catalogue.error.message}
+                    </p>
+                  )}
+                  {canManage && (
+                    <StudentCourseEnrollmentManager
+                      student={student}
+                      courses={catalogue.data?.courses ?? []}
+                      intakes={catalogue.data?.intakes ?? []}
+                      enrolledCourseIds={(studentCourseQuery.data?.[student.id] ?? [])
+                        .filter((course) => course.statuses.includes("active"))
+                        .map((course) => course.course_id)}
+                      disabled={catalogue.isLoading}
+                      onEnrolled={async () => {
+                        await Promise.all([
+                          queryClient.invalidateQueries({
+                            queryKey: ["admin", "student-course-enrollments"],
+                          }),
+                          queryClient.invalidateQueries({ queryKey: ["admin", "students"] }),
+                        ]);
+                      }}
+                    />
+                  )}
                 </div>
               )}
               {canViewDocuments && (
                 <div className="mt-3 border-t pt-3">
-                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Student documents
-                  </p>
+                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Student documents
+                    </p>
+                    <EmailFileShareDialog studentId={student.id} studentEmail={student.email} />
+                  </div>
                   {enrolledStudentDocumentsQuery.isLoading ? (
                     <p className="text-xs text-muted-foreground">Loading student documents…</p>
                   ) : enrolledStudentDocumentsQuery.error ? (
@@ -1547,33 +1908,454 @@ function StudentsPanel({
                   )}
                 </div>
               )}
+              {detailsStudentId === student.id && (
+                <StudentRecordDetails
+                  student={student}
+                  canViewAcademicRecords={canViewAcademicRecords}
+                  canViewFinancialRecords={canViewFinancialRecords}
+                />
+              )}
             </div>
-            {canManage && (
-              <div className="flex flex-wrap gap-2">
-                <Button size="sm" variant="outline" onClick={() => editStudent(student)}>
-                  Edit profile
-                </Button>
-                <select
-                  aria-label={`Student status: ${student.first_name} ${student.last_name}`}
-                  className={selectClass}
-                  value={student.status}
-                  onChange={(e) =>
-                    void setStudentStatus(
-                      student.id,
-                      e.target.value as "active" | "suspended" | "graduated",
-                    )
-                  }
-                >
-                  <option value="active">Active</option>
-                  <option value="suspended">Suspended</option>
-                  <option value="graduated">Graduated</option>
-                </select>
-              </div>
-            )}
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                aria-expanded={detailsStudentId === student.id}
+                onClick={() =>
+                  setDetailsStudentId((current) => (current === student.id ? null : student.id))
+                }
+              >
+                {detailsStudentId === student.id ? "Hide details" : "View full record"}
+              </Button>
+              {canManage && (
+                <>
+                  <Button size="sm" variant="outline" onClick={() => editStudent(student)}>
+                    Edit profile
+                  </Button>
+                  <select
+                    aria-label={`Student status: ${student.first_name} ${student.last_name}`}
+                    className={selectClass}
+                    value={student.status}
+                    onChange={(e) =>
+                      void setStudentStatus(
+                        student.id,
+                        e.target.value as "active" | "suspended" | "graduated",
+                      )
+                    }
+                  >
+                    <option value="active">Active</option>
+                    <option value="suspended">Suspended</option>
+                    <option value="graduated">Graduated</option>
+                  </select>
+                </>
+              )}
+            </div>
           </article>
         ))
       ) : (
         <EmptyPanel title="No students found" detail="Try another search term or add a student." />
+      )}
+    </div>
+  );
+}
+
+function StudentRecordDetails({
+  student,
+  canViewAcademicRecords,
+  canViewFinancialRecords,
+}: {
+  student: Pick<
+    Tables<"students">,
+    | "id"
+    | "student_number"
+    | "kasneb_number"
+    | "date_of_birth"
+    | "gender"
+    | "county"
+    | "town"
+    | "address"
+    | "current_semester"
+    | "email"
+    | "phone"
+  >;
+  canViewAcademicRecords: boolean;
+  canViewFinancialRecords: boolean;
+}) {
+  const resultsQuery = useQuery({
+    queryKey: ["admin", "student-record-results", student.id],
+    enabled: canViewAcademicRecords,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("results")
+        .select("id,unit_name,score,grade,semester,academic_year,published,created_at")
+        .eq("student_id", student.id)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data;
+    },
+  });
+  const feesQuery = useQuery({
+    queryKey: ["admin", "student-record-fees", student.id],
+    enabled: canViewFinancialRecords,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("fees")
+        .select("id,description,amount,academic_year,due_date,created_at")
+        .eq("student_id", student.id)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data;
+    },
+  });
+  const paymentsQuery = useQuery({
+    queryKey: ["admin", "student-record-payments", student.id],
+    enabled: canViewFinancialRecords,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("payments")
+        .select("id,amount,method,reference,status,paid_at,provider")
+        .eq("student_id", student.id)
+        .order("paid_at", { ascending: false });
+      if (error) throw error;
+      return data;
+    },
+  });
+  const feeTotal = (feesQuery.data ?? []).reduce((total, fee) => total + Number(fee.amount), 0);
+  const confirmedPayments = (paymentsQuery.data ?? []).filter(
+    (payment) => payment.status.toLowerCase() === "confirmed",
+  );
+  const paymentTotal = confirmedPayments.reduce(
+    (total, payment) => total + Number(payment.amount),
+    0,
+  );
+
+  return (
+    <section
+      className="mt-4 space-y-4 rounded-lg border bg-muted/20 p-4"
+      aria-label="Student record details"
+    >
+      <div>
+        <h4 className="text-sm font-semibold text-brand">Personal and academic profile</h4>
+        <dl className="mt-2 grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-3">
+          <div>
+            <dt className="text-muted-foreground">Student number</dt>
+            <dd>{student.student_number}</dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">KASNEB number</dt>
+            <dd>{student.kasneb_number || "Not recorded"}</dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">Date of birth</dt>
+            <dd>{student.date_of_birth || "Not recorded"}</dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">Gender</dt>
+            <dd>{student.gender || "Not recorded"}</dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">County / town</dt>
+            <dd>{[student.county, student.town].filter(Boolean).join(" / ") || "Not recorded"}</dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">Current semester</dt>
+            <dd>{student.current_semester || "Not recorded"}</dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">Email</dt>
+            <dd>{student.email}</dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">Phone</dt>
+            <dd>{student.phone || "Not recorded"}</dd>
+          </div>
+          <div className="sm:col-span-2 lg:col-span-3">
+            <dt className="text-muted-foreground">Address</dt>
+            <dd>{student.address || "Not recorded"}</dd>
+          </div>
+        </dl>
+      </div>
+
+      {canViewAcademicRecords && (
+        <div className="border-t pt-3">
+          <h4 className="text-sm font-semibold text-brand">Academic results</h4>
+          {resultsQuery.isLoading ? (
+            <p className="mt-2 text-sm text-muted-foreground">Loading academic results…</p>
+          ) : resultsQuery.error ? (
+            <p role="alert" className="mt-2 text-sm text-destructive">
+              Could not load academic results: {resultsQuery.error.message}
+            </p>
+          ) : resultsQuery.data?.length ? (
+            <div className="mt-2 overflow-x-auto">
+              <table className="w-full min-w-[32rem] text-left text-sm">
+                <thead>
+                  <tr className="border-b text-xs text-muted-foreground">
+                    <th className="py-2 pr-3">Unit</th>
+                    <th className="py-2 pr-3">Score</th>
+                    <th className="py-2 pr-3">Grade</th>
+                    <th className="py-2 pr-3">Semester</th>
+                    <th className="py-2 pr-3">Academic year</th>
+                    <th className="py-2">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {resultsQuery.data.map((result) => (
+                    <tr key={result.id} className="border-b last:border-0">
+                      <td className="py-2 pr-3">{result.unit_name}</td>
+                      <td className="py-2 pr-3">{result.score ?? "—"}</td>
+                      <td className="py-2 pr-3">{result.grade ?? "—"}</td>
+                      <td className="py-2 pr-3">{result.semester ?? "—"}</td>
+                      <td className="py-2 pr-3">{result.academic_year ?? "—"}</td>
+                      <td className="py-2">{result.published ? "Published" : "Unpublished"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="mt-2 text-sm text-muted-foreground">No academic results recorded.</p>
+          )}
+        </div>
+      )}
+
+      {canViewFinancialRecords && (
+        <div className="grid gap-4 border-t pt-3 lg:grid-cols-2">
+          <div>
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <h4 className="text-sm font-semibold text-brand">Fee charges</h4>
+              <span className="text-sm font-semibold">Total: {formatKES(feeTotal)}</span>
+            </div>
+            {feesQuery.isLoading ? (
+              <p className="mt-2 text-sm text-muted-foreground">Loading fee records…</p>
+            ) : feesQuery.error ? (
+              <p role="alert" className="mt-2 text-sm text-destructive">
+                Could not load fees: {feesQuery.error.message}
+              </p>
+            ) : feesQuery.data?.length ? (
+              <ul className="mt-2 divide-y text-sm">
+                {feesQuery.data.map((fee) => (
+                  <li key={fee.id} className="flex justify-between gap-3 py-2">
+                    <span>
+                      {fee.description}
+                      {fee.academic_year ? ` · ${fee.academic_year}` : ""}
+                    </span>
+                    <span className="shrink-0">{formatKES(Number(fee.amount))}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-2 text-sm text-muted-foreground">No fee charges recorded.</p>
+            )}
+          </div>
+          <div>
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <h4 className="text-sm font-semibold text-brand">Payments</h4>
+              <span className="text-sm font-semibold">Confirmed: {formatKES(paymentTotal)}</span>
+            </div>
+            {paymentsQuery.isLoading ? (
+              <p className="mt-2 text-sm text-muted-foreground">Loading payment records…</p>
+            ) : paymentsQuery.error ? (
+              <p role="alert" className="mt-2 text-sm text-destructive">
+                Could not load payments: {paymentsQuery.error.message}
+              </p>
+            ) : paymentsQuery.data?.length ? (
+              <ul className="mt-2 divide-y text-sm">
+                {paymentsQuery.data.map((payment) => (
+                  <li key={payment.id} className="flex justify-between gap-3 py-2">
+                    <span>
+                      {new Date(payment.paid_at).toLocaleDateString()} · {payment.method}
+                      {payment.reference ? ` · ${payment.reference}` : ""}
+                      <Badge
+                        className="ml-2"
+                        variant={payment.status === "confirmed" ? "default" : "secondary"}
+                      >
+                        {payment.status}
+                      </Badge>
+                    </span>
+                    <span className="shrink-0">{formatKES(Number(payment.amount))}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-2 text-sm text-muted-foreground">No payment records found.</p>
+            )}
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function StudentCourseEnrollmentManager({
+  student,
+  courses,
+  intakes,
+  enrolledCourseIds,
+  disabled,
+  onEnrolled,
+}: {
+  student: Pick<Tables<"students">, "id" | "study_mode">;
+  courses: Pick<Tables<"courses">, "id" | "title" | "available_online">[];
+  intakes: Pick<Tables<"intakes">, "id" | "name">[];
+  enrolledCourseIds: string[];
+  disabled: boolean;
+  onEnrolled: () => Promise<void>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [courseId, setCourseId] = useState("");
+  const [levelId, setLevelId] = useState("");
+  const [intakeId, setIntakeId] = useState("");
+  const [saving, setSaving] = useState(false);
+  const levelsQuery = useQuery({
+    queryKey: ["admin", "enrollment-course-levels", courseId],
+    enabled: open && !!courseId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("course_levels")
+        .select("id,name,sort_order")
+        .eq("course_id", courseId)
+        .eq("published", true)
+        .order("sort_order");
+      if (error) throw error;
+      return data;
+    },
+  });
+  const availableCourses = courses.filter(
+    (course) => student.study_mode !== "online" || course.available_online,
+  );
+  const remainingCourses = availableCourses.filter(
+    (course) => !enrolledCourseIds.includes(course.id),
+  );
+
+  async function enroll(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!courseId) return;
+    setSaving(true);
+    const { data, error } = await supabase.rpc("admin_enroll_student_course", {
+      _student_id: student.id,
+      _course_id: courseId,
+      _level_id: levelId || null,
+      _intake_id: intakeId || null,
+    });
+    setSaving(false);
+    if (error) {
+      toast.error("Could not enroll student", { description: error.message });
+      return;
+    }
+    if (data === "already_enrolled") {
+      toast.info("Student is already actively enrolled in this course.");
+      return;
+    }
+    toast.success("Student enrolled in course", {
+      description:
+        data === "online"
+          ? "Online course access will continue to follow its payment requirements."
+          : "Course materials, assignments, CATs, and assigned facilitators are now available.",
+    });
+    setOpen(false);
+    setCourseId("");
+    setLevelId("");
+    setIntakeId("");
+    await onEnrolled();
+  }
+
+  if (disabled) return null;
+
+  return (
+    <div className="mt-3">
+      {!open ? (
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={!remainingCourses.length}
+          onClick={() => setOpen(true)}
+        >
+          Enroll in another course
+        </Button>
+      ) : (
+        <form
+          className="grid gap-2 rounded-lg border bg-muted/30 p-3 sm:grid-cols-2"
+          onSubmit={(event) => void enroll(event)}
+        >
+          <label className="grid gap-1 text-xs font-medium sm:col-span-2">
+            Course
+            <select
+              required
+              className={selectClass}
+              value={courseId}
+              onChange={(event) => {
+                setCourseId(event.target.value);
+                setLevelId("");
+              }}
+            >
+              <option value="">Select a course</option>
+              {remainingCourses.map((course) => (
+                <option key={course.id} value={course.id}>
+                  {course.title}
+                </option>
+              ))}
+            </select>
+          </label>
+          {levelsQuery.data?.length ? (
+            <label className="grid gap-1 text-xs font-medium">
+              Course level
+              <select
+                required
+                className={selectClass}
+                value={levelId}
+                onChange={(event) => setLevelId(event.target.value)}
+              >
+                <option value="">Select a level</option>
+                {levelsQuery.data.map((level) => (
+                  <option key={level.id} value={level.id}>
+                    {level.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : levelsQuery.isLoading ? (
+            <p className="text-xs text-muted-foreground">Loading course levels…</p>
+          ) : null}
+          <label className="grid gap-1 text-xs font-medium">
+            Intake (optional)
+            <select
+              className={selectClass}
+              value={intakeId}
+              onChange={(event) => setIntakeId(event.target.value)}
+            >
+              <option value="">No intake selected</option>
+              {intakes.map((intake) => (
+                <option key={intake.id} value={intake.id}>
+                  {intake.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          {levelsQuery.error && (
+            <p role="alert" className="text-xs text-destructive sm:col-span-2">
+              Could not load course levels: {levelsQuery.error.message}
+            </p>
+          )}
+          <div className="flex flex-wrap gap-2 sm:col-span-2">
+            <Button
+              type="submit"
+              size="sm"
+              disabled={
+                saving ||
+                !courseId ||
+                levelsQuery.isLoading ||
+                !!levelsQuery.error ||
+                (!!levelsQuery.data?.length && !levelId)
+              }
+            >
+              {saving ? "Enrolling…" : "Enroll student"}
+            </Button>
+            <Button type="button" size="sm" variant="ghost" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+          </div>
+        </form>
       )}
     </div>
   );
@@ -1650,17 +2432,36 @@ function ReportsPanel() {
   return (
     <div className="space-y-5">
       <div className="flex justify-end">
-        <Button
-          variant="outline"
-          onClick={() =>
-            exportCsv(
-              "applications-by-course.csv",
-              Object.entries(byCourse).map(([course, count]) => ({ course, applications: count })),
-            )
-          }
-        >
-          <ArrowDownToLine /> Export application report
-        </Button>
+        <div className="flex flex-wrap justify-end gap-2">
+          <Button
+            variant="outline"
+            onClick={() =>
+              exportCsv(
+                "applications-by-course.csv",
+                Object.entries(byCourse).map(([course, count]) => ({
+                  course,
+                  applications: count,
+                })),
+              )
+            }
+          >
+            <ArrowDownToLine /> Export CSV
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() =>
+              exportExcel(
+                "applications-by-course.xlsx",
+                Object.entries(byCourse).map(([course, count]) => ({
+                  course,
+                  applications: count,
+                })),
+              )
+            }
+          >
+            <ArrowDownToLine /> Export Excel
+          </Button>
+        </div>
       </div>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <ReportCard
@@ -1886,6 +2687,7 @@ function StaffSettings() {
           <option value="admissions_admin">Admissions Admin</option>
           <option value="academic_admin">Academic Admin</option>
           <option value="content_admin">Content Admin</option>
+          <option value="facilitator">Facilitator</option>
           <option value="super_admin">Super Admin</option>
         </select>
         <Button disabled={saving} onClick={() => void inviteStaff()}>
@@ -2366,6 +3168,53 @@ function FeeManagementPanel() {
   );
 }
 
+function OnlineUsersPanel() {
+  const query = useQuery({
+    queryKey: ["admin", "online-users"],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc("list_online_users");
+      if (error) throw error;
+      return data ?? [];
+    },
+    refetchInterval: 15_000,
+  });
+
+  if (query.isLoading) return <LoadingState />;
+  if (query.error) return <ErrorPanel error={query.error} retry={() => void query.refetch()} />;
+
+  return (
+    <section className="space-y-4 rounded-xl border bg-card p-5 shadow-card">
+      <div>
+        <h2 className="font-semibold text-brand">Online users</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {query.data?.length ?? 0} users currently online. This list refreshes automatically.
+        </p>
+      </div>
+      {query.data?.length ? (
+        <ul className="divide-y">
+          {query.data.map((onlineUser, index) => (
+            <li
+              key={`${onlineUser.name}-${onlineUser.role}-${index}`}
+              className="flex items-center justify-between gap-4 py-3"
+            >
+              <div className="min-w-0">
+                <p className="truncate font-medium">{onlineUser.name}</p>
+                <p className="text-sm text-muted-foreground">{onlineUser.role}</p>
+              </div>
+              <Badge variant="secondary" className="shrink-0 gap-1.5">
+                <span className="h-2 w-2 rounded-full bg-emerald-500" aria-hidden="true" />
+                Online
+              </Badge>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <EmptyPanel title="No users online" detail="Currently active users will appear here." />
+      )}
+    </section>
+  );
+}
+
 function AuditLogPanel() {
   const query = useQuery({
     queryKey: ["admin", "audit-log"],
@@ -2446,6 +3295,9 @@ function AuditLogPanel() {
 
 function DataDirectory({ section }: { section: DashboardSection }) {
   const queryClient = useQueryClient();
+  const [assignmentView, setAssignmentView] = useState<"cats" | "submissions" | "assignments">(
+    "cats",
+  );
   const [savingRecord, setSavingRecord] = useState(false);
   const [editingContentId, setEditingContentId] = useState<string | null>(null);
   const [editingFee, setEditingFee] = useState<{
@@ -2486,6 +3338,7 @@ function DataDirectory({ section }: { section: DashboardSection }) {
     assignments: { table: "assignments", label: "assignments", order: "due_date" },
     articles: { table: "articles", label: "articles", order: "created_at" },
     announcements: { table: "announcements", label: "announcements", order: "created_at" },
+    memos: { table: "announcements", label: "memos", order: "created_at" },
     media: { table: "media", label: "media items", order: "created_at" },
     messages: { table: "contact_messages", label: "messages", order: "created_at" },
     audit: { table: "audit_logs", label: "audit log entries", order: "created_at" },
@@ -2513,7 +3366,9 @@ function DataDirectory({ section }: { section: DashboardSection }) {
         case "results": {
           const result = await supabase
             .from("results")
-            .select("*")
+            .select(
+              "*,student:students(student_number,first_name,middle_name,last_name),unit:course_units(title)",
+            )
             .order("created_at", { ascending: false });
           data = result.data;
           error = result.error;
@@ -2538,7 +3393,10 @@ function DataDirectory({ section }: { section: DashboardSection }) {
           break;
         }
         case "assignments": {
-          const result = await supabase.from("assignments").select("*").order("due_date");
+          const result = await supabase
+            .from("assignments")
+            .select("*,course:courses(title),unit:course_units(title)")
+            .order("due_date");
           data = result.data;
           error = result.error;
           break;
@@ -2556,6 +3414,16 @@ function DataDirectory({ section }: { section: DashboardSection }) {
           const result = await supabase
             .from("announcements")
             .select("*")
+            .order("created_at", { ascending: false });
+          data = result.data;
+          error = result.error;
+          break;
+        }
+        case "memos": {
+          const result = await supabase
+            .from("announcements")
+            .select("*")
+            .eq("category", "memo")
             .order("created_at", { ascending: false });
           data = result.data;
           error = result.error;
@@ -2605,10 +3473,11 @@ function DataDirectory({ section }: { section: DashboardSection }) {
   if (query.isLoading) return <LoadingState />;
   if (query.error) return <ErrorPanel error={query.error} retry={() => query.refetch()} />;
   async function invalidatePublicContent() {
-    if (section === "announcements") {
+    if (section === "announcements" || section === "memos") {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["public-announcements"] }),
         queryClient.invalidateQueries({ queryKey: ["home_announcements"] }),
+        queryClient.invalidateQueries({ queryKey: ["student-announcements"] }),
       ]);
     } else if (section === "articles") {
       await Promise.all([
@@ -2656,12 +3525,15 @@ function DataDirectory({ section }: { section: DashboardSection }) {
         error = result.error;
         break;
       }
-      case "announcements": {
+      case "announcements":
+      case "memos": {
         const result = await supabase
           .from("announcements")
           .update({
             published: !row["published"],
-            ...(row["published"] ? {} : { show_public: true, show_on_homepage: true }),
+            ...(row["published"]
+              ? {}
+              : { show_public: true, show_on_homepage: true, show_to_students: true }),
           })
           .eq("id", String(row["id"]));
         error = result.error;
@@ -2708,7 +3580,7 @@ function DataDirectory({ section }: { section: DashboardSection }) {
     }
   }
   async function deleteContentRecord(row: Record<string, unknown>) {
-    if (!row["id"] || !["articles", "announcements"].includes(section)) return;
+    if (!row["id"] || !["articles", "announcements", "memos"].includes(section)) return;
     if (!window.confirm(`Delete “${String(row["title"] ?? "this item")}”? This cannot be undone.`))
       return;
     const result =
@@ -2746,51 +3618,79 @@ function DataDirectory({ section }: { section: DashboardSection }) {
     <section className="space-y-4 rounded-xl border bg-card p-5 shadow-card">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="font-semibold text-brand">{config.label}</h2>
+          <h2 className="font-semibold text-brand">
+            {section === "assignments" ? "Assignments & CATs" : config.label}
+          </h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Latest {Math.min(query.data?.length ?? 0, 200)} records
+            {section === "assignments"
+              ? "Manage CATs, assignment submissions, and published assignments."
+              : `Latest ${Math.min(query.data?.length ?? 0, 200)} records`}
           </p>
         </div>
-        <Button
-          variant="outline"
-          onClick={() =>
-            exportCsv(
-              `${section}.csv`,
-              section === "fees"
-                ? (query.data ?? []).map((row) => ({
-                    ...Object.fromEntries(
-                      Object.entries(row).filter(
-                        ([key]) => key !== "student" && key !== "id" && !key.endsWith("_id"),
-                      ),
-                    ),
-                    student: feeStudentLabel(row["student"]),
-                  }))
-                : (query.data ?? []),
-            )
-          }
-        >
-          <ArrowDownToLine /> Export CSV
-        </Button>
+        {section !== "assignments" || assignmentView === "assignments" ? (
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() =>
+                exportCsv(`${section}.csv`, directoryExportRows(section, query.data ?? []))
+              }
+            >
+              <ArrowDownToLine /> Export CSV
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() =>
+                exportExcel(`${section}.xlsx`, directoryExportRows(section, query.data ?? []))
+              }
+            >
+              <ArrowDownToLine /> Export Excel
+            </Button>
+          </div>
+        ) : null}
       </div>
-      {["schools", "academics", "results", "fees", "materials", "assignments"].includes(
-        section,
-      ) && (
-        <DirectoryCreateForm
-          section={section}
-          onSaved={() => {
-            void queryClient.invalidateQueries({ queryKey: ["admin", "directory", section] });
-            void queryClient.invalidateQueries({ queryKey: ["admin", "overview"] });
-            if (section === "fees") {
-              void queryClient.invalidateQueries({ queryKey: ["admin", "fee-management"] });
-              void queryClient.invalidateQueries({ queryKey: ["student", "fees"] });
-              void queryClient.invalidateQueries({ queryKey: ["student", "fee-total"] });
-            }
-          }}
-          setSaving={setSavingRecord}
-          saving={savingRecord}
-        />
+      {section === "assignments" && (
+        <div className="grid gap-2 rounded-lg bg-muted/40 p-1 sm:grid-cols-3">
+          {(
+            [
+              ["cats", "CAT management"],
+              ["submissions", "Assignment submissions"],
+              ["assignments", "Assignment list"],
+            ] as const
+          ).map(([view, label]) => (
+            <button
+              key={view}
+              type="button"
+              aria-pressed={assignmentView === view}
+              className={`min-h-10 rounded-md px-3 py-2 text-sm font-medium transition ${
+                assignmentView === view
+                  ? "bg-background text-brand shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+              onClick={() => setAssignmentView(view)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       )}
-      {["articles", "announcements", "media"].includes(section) && (
+      {["schools", "academics", "results", "fees", "materials", "assignments"].includes(section) &&
+        (section !== "assignments" || assignmentView === "assignments") && (
+          <DirectoryCreateForm
+            section={section}
+            onSaved={() => {
+              void queryClient.invalidateQueries({ queryKey: ["admin", "directory", section] });
+              void queryClient.invalidateQueries({ queryKey: ["admin", "overview"] });
+              if (section === "fees") {
+                void queryClient.invalidateQueries({ queryKey: ["admin", "fee-management"] });
+                void queryClient.invalidateQueries({ queryKey: ["student", "fees"] });
+                void queryClient.invalidateQueries({ queryKey: ["student", "fee-total"] });
+              }
+            }}
+            setSaving={setSavingRecord}
+            saving={savingRecord}
+          />
+        )}
+      {["articles", "announcements", "memos", "media"].includes(section) && (
         <ContentCreateForm
           section={section}
           onSaved={() =>
@@ -2801,229 +3701,238 @@ function DataDirectory({ section }: { section: DashboardSection }) {
           }
         />
       )}
-      {section === "assignments" && (
-        <>
+      {section === "assignments" &&
+        (assignmentView === "cats" ? (
           <CatManagementPanel />
+        ) : assignmentView === "submissions" ? (
           <AssignmentSubmissionsPanel />
-        </>
-      )}
-      {query.data?.length ? (
-        <div className="mt-4 overflow-x-auto">
-          <table className="w-full min-w-[640px] border-collapse text-left text-sm">
-            <thead>
-              <tr>
-                {getRowEntries(query.data[0] ?? {}).map(([key]) => (
-                  <th
-                    key={key}
-                    className="border-b px-3 py-2 text-xs font-semibold uppercase text-muted-foreground"
-                  >
-                    {key === "student" ? "Student" : key.replaceAll("_", " ")}
-                  </th>
-                ))}
-                {[
-                  "schools",
-                  "results",
-                  "materials",
-                  "assignments",
-                  "articles",
-                  "announcements",
-                  "media",
-                  "messages",
-                  "fees",
-                ].includes(section) && (
-                  <th className="border-b px-3 py-2 text-xs font-semibold uppercase text-muted-foreground">
-                    Action
-                  </th>
-                )}
-              </tr>
-            </thead>
-            <tbody>
-              {query.data.map((row, i) => (
-                <Fragment key={String(row["id"] ?? i)}>
-                  <tr className="border-b last:border-0">
-                    {getRowEntries(row).map(([key, value]) => (
-                      <td key={key} className="max-w-64 truncate px-3 py-2.5">
-                        {section === "fees" &&
-                        editingFee?.id === String(row["id"]) &&
-                        key === "description" ? (
-                          <Input
-                            aria-label="Fee charge description"
-                            value={editingFee.description}
-                            onChange={(event) =>
-                              setEditingFee({ ...editingFee, description: event.target.value })
-                            }
-                          />
-                        ) : section === "fees" &&
+        ) : null)}
+      {(section !== "assignments" || assignmentView === "assignments") &&
+        (query.data?.length ? (
+          <div className="mt-4 overflow-x-auto">
+            <table className="w-full min-w-[640px] border-collapse text-left text-sm">
+              <thead>
+                <tr>
+                  {getRowEntries(query.data[0] ?? {}).map(([key]) => (
+                    <th
+                      key={key}
+                      className="border-b px-3 py-2 text-xs font-semibold uppercase text-muted-foreground"
+                    >
+                      {key === "student" ? "Student" : key.replaceAll("_", " ")}
+                    </th>
+                  ))}
+                  {[
+                    "schools",
+                    "results",
+                    "materials",
+                    "assignments",
+                    "articles",
+                    "announcements",
+                    "memos",
+                    "media",
+                    "messages",
+                    "fees",
+                  ].includes(section) && (
+                    <th className="border-b px-3 py-2 text-xs font-semibold uppercase text-muted-foreground">
+                      Action
+                    </th>
+                  )}
+                </tr>
+              </thead>
+              <tbody>
+                {query.data.map((row, i) => (
+                  <Fragment key={String(row["id"] ?? i)}>
+                    <tr className="border-b last:border-0">
+                      {getRowEntries(row).map(([key, value]) => (
+                        <td key={key} className="max-w-64 truncate px-3 py-2.5">
+                          {section === "fees" &&
                           editingFee?.id === String(row["id"]) &&
-                          key === "amount" ? (
-                          <Input
-                            aria-label="Fee charge amount"
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            value={editingFee.amount}
-                            onChange={(event) =>
-                              setEditingFee({ ...editingFee, amount: event.target.value })
-                            }
-                          />
-                        ) : section === "fees" && key === "student" ? (
-                          feeStudentLabel(value)
-                        ) : (
-                          formatValue(value)
-                        )}
-                      </td>
-                    ))}
-                    {[
-                      "schools",
-                      "results",
-                      "materials",
-                      "assignments",
-                      "articles",
-                      "announcements",
-                      "media",
-                      "messages",
-                      "fees",
-                    ].includes(section) && (
-                      <td className="px-3 py-2.5">
-                        <div className="flex flex-wrap items-center gap-2">
-                          {(section === "materials" || section === "assignments") &&
-                            typeof row["file_path"] === "string" && (
-                              <AdminCourseFile path={row["file_path"]} />
-                            )}
-                          {(section === "articles" || section === "announcements") &&
-                            typeof row["attachment_url"] === "string" && (
-                              <ContentAttachmentDownload
-                                url={row["attachment_url"]}
-                                filename={
-                                  typeof row["attachment_file_name"] === "string"
-                                    ? row["attachment_file_name"]
-                                    : String(row["title"] ?? "attachment")
-                                }
-                              />
-                            )}
-                          {(section === "articles" || section === "announcements") && (
-                            <>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() =>
-                                  setEditingContentId(
-                                    editingContentId === String(row["id"])
-                                      ? null
-                                      : String(row["id"]),
-                                  )
-                                }
-                              >
-                                {editingContentId === String(row["id"]) ? "Close edit" : "Edit"}
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="destructive"
-                                disabled={savingRecord}
-                                onClick={() => void deleteContentRecord(row)}
-                              >
-                                Delete
-                              </Button>
-                            </>
+                          key === "description" ? (
+                            <Input
+                              aria-label="Fee charge description"
+                              value={editingFee.description}
+                              onChange={(event) =>
+                                setEditingFee({ ...editingFee, description: event.target.value })
+                              }
+                            />
+                          ) : section === "fees" &&
+                            editingFee?.id === String(row["id"]) &&
+                            key === "amount" ? (
+                            <Input
+                              aria-label="Fee charge amount"
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={editingFee.amount}
+                              onChange={(event) =>
+                                setEditingFee({ ...editingFee, amount: event.target.value })
+                              }
+                            />
+                          ) : section === "fees" && key === "student" ? (
+                            feeStudentLabel(value)
+                          ) : (
+                            formatValue(value)
                           )}
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            disabled={savingRecord || updateFeeMutation.isPending}
-                            onClick={() => {
-                              if (section !== "fees") {
-                                void updateRecord(row);
-                                return;
-                              }
-                              if (editingFee?.id !== String(row["id"])) {
-                                setEditingFee({
-                                  id: String(row["id"]),
-                                  description: String(row["description"] ?? ""),
-                                  amount: String(row["amount"] ?? ""),
-                                });
-                                return;
-                              }
-                              const amount = Number(editingFee.amount);
-                              if (
-                                !editingFee.description.trim() ||
-                                !Number.isFinite(amount) ||
-                                amount < 0
-                              ) {
-                                toast.error(
-                                  "Enter a description and a valid non-negative fee amount.",
-                                );
-                                return;
-                              }
-                              updateFeeMutation.mutate({
-                                id: editingFee.id,
-                                description: editingFee.description.trim(),
-                                amount,
-                              });
-                            }}
-                          >
-                            {section === "fees"
-                              ? editingFee?.id === String(row["id"])
-                                ? updateFeeMutation.isPending
-                                  ? "Saving…"
-                                  : "Save charge"
-                                : "Edit charge"
-                              : section === "messages"
-                                ? row["status"] === "new"
-                                  ? "Mark responded"
-                                  : "Reopen"
-                                : section === "articles"
-                                  ? row["status"] === "published"
-                                    ? "Unpublish"
-                                    : "Publish"
-                                  : row["published"]
-                                    ? "Deactivate"
-                                    : "Activate"}
-                          </Button>
-                          {section === "fees" && editingFee?.id === String(row["id"]) && (
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="ghost"
-                              disabled={updateFeeMutation.isPending}
-                              onClick={() => setEditingFee(null)}
-                            >
-                              Cancel
-                            </Button>
-                          )}
-                        </div>
-                      </td>
-                    )}
-                  </tr>
-                  {editingContentId === String(row["id"]) &&
-                    (section === "articles" || section === "announcements") && (
-                      <tr>
-                        <td colSpan={getRowEntries(row).length + 1} className="bg-muted/20 p-3">
-                          <ContentEditForm
-                            section={section}
-                            record={row}
-                            onCancel={() => setEditingContentId(null)}
-                            onSaved={async () => {
-                              setEditingContentId(null);
-                              await queryClient.invalidateQueries({
-                                queryKey: ["admin", "directory", section],
-                              });
-                              await invalidatePublicContent();
-                            }}
-                          />
                         </td>
-                      </tr>
-                    )}
-                </Fragment>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        <EmptyPanel
-          title={`No ${config.label} yet`}
-          detail="Records will appear here as they are created."
-        />
-      )}
+                      ))}
+                      {[
+                        "schools",
+                        "results",
+                        "materials",
+                        "assignments",
+                        "articles",
+                        "announcements",
+                        "memos",
+                        "media",
+                        "messages",
+                        "fees",
+                      ].includes(section) && (
+                        <td className="px-3 py-2.5">
+                          <div className="flex flex-wrap items-center gap-2">
+                            {(section === "materials" || section === "assignments") &&
+                              typeof row["file_path"] === "string" && (
+                                <AdminCourseFile path={row["file_path"]} />
+                              )}
+                            {(section === "articles" ||
+                              section === "announcements" ||
+                              section === "memos") &&
+                              typeof row["attachment_url"] === "string" && (
+                                <ContentAttachmentDownload
+                                  url={row["attachment_url"]}
+                                  filename={
+                                    typeof row["attachment_file_name"] === "string"
+                                      ? row["attachment_file_name"]
+                                      : String(row["title"] ?? "attachment")
+                                  }
+                                />
+                              )}
+                            {(section === "articles" ||
+                              section === "announcements" ||
+                              section === "memos") && (
+                              <>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() =>
+                                    setEditingContentId(
+                                      editingContentId === String(row["id"])
+                                        ? null
+                                        : String(row["id"]),
+                                    )
+                                  }
+                                >
+                                  {editingContentId === String(row["id"]) ? "Close edit" : "Edit"}
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="destructive"
+                                  disabled={savingRecord}
+                                  onClick={() => void deleteContentRecord(row)}
+                                >
+                                  Delete
+                                </Button>
+                              </>
+                            )}
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={savingRecord || updateFeeMutation.isPending}
+                              onClick={() => {
+                                if (section !== "fees") {
+                                  void updateRecord(row);
+                                  return;
+                                }
+                                if (editingFee?.id !== String(row["id"])) {
+                                  setEditingFee({
+                                    id: String(row["id"]),
+                                    description: String(row["description"] ?? ""),
+                                    amount: String(row["amount"] ?? ""),
+                                  });
+                                  return;
+                                }
+                                const amount = Number(editingFee.amount);
+                                if (
+                                  !editingFee.description.trim() ||
+                                  !Number.isFinite(amount) ||
+                                  amount < 0
+                                ) {
+                                  toast.error(
+                                    "Enter a description and a valid non-negative fee amount.",
+                                  );
+                                  return;
+                                }
+                                updateFeeMutation.mutate({
+                                  id: editingFee.id,
+                                  description: editingFee.description.trim(),
+                                  amount,
+                                });
+                              }}
+                            >
+                              {section === "fees"
+                                ? editingFee?.id === String(row["id"])
+                                  ? updateFeeMutation.isPending
+                                    ? "Saving…"
+                                    : "Save charge"
+                                  : "Edit charge"
+                                : section === "messages"
+                                  ? row["status"] === "new"
+                                    ? "Mark responded"
+                                    : "Reopen"
+                                  : section === "articles"
+                                    ? row["status"] === "published"
+                                      ? "Unpublish"
+                                      : "Publish"
+                                    : row["published"]
+                                      ? "Deactivate"
+                                      : "Activate"}
+                            </Button>
+                            {section === "fees" && editingFee?.id === String(row["id"]) && (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                disabled={updateFeeMutation.isPending}
+                                onClick={() => setEditingFee(null)}
+                              >
+                                Cancel
+                              </Button>
+                            )}
+                          </div>
+                        </td>
+                      )}
+                    </tr>
+                    {editingContentId === String(row["id"]) &&
+                      (section === "articles" ||
+                        section === "announcements" ||
+                        section === "memos") && (
+                        <tr>
+                          <td colSpan={getRowEntries(row).length + 1} className="bg-muted/20 p-3">
+                            <ContentEditForm
+                              section={section}
+                              record={row}
+                              onCancel={() => setEditingContentId(null)}
+                              onSaved={async () => {
+                                setEditingContentId(null);
+                                await queryClient.invalidateQueries({
+                                  queryKey: ["admin", "directory", section],
+                                });
+                                await invalidatePublicContent();
+                              }}
+                            />
+                          </td>
+                        </tr>
+                      )}
+                  </Fragment>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <EmptyPanel
+            title={`No ${config.label} yet`}
+            detail="Records will appear here as they are created."
+          />
+        ))}
     </section>
   );
 }
@@ -3050,7 +3959,7 @@ function DirectoryCreateForm({
         needsStudents
           ? supabase
               .from("students")
-              .select("id,student_number,first_name,last_name")
+              .select("id,student_number,first_name,last_name,course_id,level_id")
               .order("last_name")
           : Promise.resolve({ data: [], error: null }),
         needsCourses
@@ -3068,6 +3977,7 @@ function DirectoryCreateForm({
     description: "",
     course_id: "",
     student_id: "",
+    unit_id: "",
     code: "",
     semester: "",
     score: "",
@@ -3078,6 +3988,60 @@ function DirectoryCreateForm({
     url: "",
     file: null as File | null,
   });
+  const assignmentUnitsQuery = useQuery({
+    queryKey: ["admin", "assignment-unit-options", values.course_id],
+    enabled: section === "assignments" && Boolean(values.course_id),
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("course_units")
+        .select("id,title,code,level_id")
+        .eq("course_id", values.course_id)
+        .order("sort_order");
+      if (error) throw error;
+      return data;
+    },
+  });
+  const resultUnitsQuery = useQuery({
+    queryKey: ["admin", "result-unit-options", values.student_id],
+    enabled: section === "results" && Boolean(values.student_id),
+    queryFn: async () => {
+      const student = optionsQuery.data?.students.find((item) => item.id === values.student_id);
+      if (!student) return [];
+      const [enrollments, onlineEnrollments] = await Promise.all([
+        supabase
+          .from("enrollments")
+          .select("course_id,level_id")
+          .eq("student_id", student.id)
+          .eq("status", "active"),
+        supabase
+          .from("online_course_enrollments")
+          .select("course_id,level_id")
+          .eq("student_id", student.id)
+          .eq("status", "active"),
+      ]);
+      if (enrollments.error) throw enrollments.error;
+      if (onlineEnrollments.error) throw onlineEnrollments.error;
+      const activeEnrollments = [...(enrollments.data ?? []), ...(onlineEnrollments.data ?? [])];
+      const courseIds = [...new Set(activeEnrollments.map((enrollment) => enrollment.course_id))];
+      if (!courseIds.length) return [];
+      const { data, error } = await supabase
+        .from("course_units")
+        .select("id,title,code,course_id,level_id")
+        .in("course_id", courseIds)
+        .order("sort_order");
+      if (error) throw error;
+      return (data ?? []).filter((unit) =>
+        activeEnrollments.some((enrollment) => {
+          if (enrollment.course_id !== unit.course_id) return false;
+          const levelId =
+            enrollment.level_id ??
+            (student.course_id === enrollment.course_id ? student.level_id : null);
+          return unit.level_id === null || unit.level_id === levelId;
+        }),
+      );
+    },
+  });
+  const [selectedLevelIds, setSelectedLevelIds] = useState<string[]>([]);
   const formTitle: Partial<Record<DashboardSection, string>> = {
     schools: "Add school",
     academics: "Add course unit",
@@ -3099,6 +4063,25 @@ function DirectoryCreateForm({
         toast.error("Set a valid assignment submission deadline.");
         return;
       }
+      if (!values.unit_id) {
+        toast.error("Select the course unit this assignment is for.");
+        return;
+      }
+      if (!selectedLevelIds.length) {
+        toast.error("Select at least one course level for this assignment.");
+        return;
+      }
+    }
+    if (section === "results" && !values.unit_id) {
+      toast.error("Select an enrolled course unit for this result.");
+      return;
+    }
+    if (
+      section === "results" &&
+      !resultUnitsQuery.data?.some((unit) => unit.id === values.unit_id)
+    ) {
+      toast.error("Choose a course unit from the student's active enrollment.");
+      return;
     }
     const fileType = values.file ? supportedContentType(values.file) : null;
     if (values.file && (!fileType || values.file.size > MAX_CONTENT_UPLOAD_SIZE)) {
@@ -3155,9 +4138,15 @@ function DirectoryCreateForm({
         break;
       }
       case "results": {
+        const unit = resultUnitsQuery.data?.find((item) => item.id === values.unit_id);
+        if (!unit) {
+          error = { message: "Select a valid unit for this student's active enrollment." };
+          break;
+        }
         const result = await supabase.from("results").insert({
           student_id: values.student_id,
-          unit_name: values.title.trim(),
+          unit_id: unit.id,
+          unit_name: unit.title,
           score: values.score === "" ? null : Number(values.score),
           grade: values.grade.trim() || null,
           semester: values.semester.trim() || null,
@@ -3195,10 +4184,12 @@ function DirectoryCreateForm({
       case "assignments": {
         const result = await supabase.from("assignments").insert({
           course_id: values.course_id,
+          unit_id: values.unit_id,
           title: values.title.trim(),
           instructions: values.description.trim() || null,
           due_date: values.due_date ? new Date(values.due_date).toISOString() : null,
           file_path: uploadedPath,
+          level_ids: selectedLevelIds,
           created_by: user?.id ?? null,
           published: false,
         });
@@ -3226,6 +4217,7 @@ function DirectoryCreateForm({
         description: "",
         course_id: "",
         student_id: "",
+        unit_id: "",
         code: "",
         semester: "",
         score: "",
@@ -3236,6 +4228,7 @@ function DirectoryCreateForm({
         url: "",
         file: null,
       });
+      setSelectedLevelIds([]);
       onSaved();
     }
   }
@@ -3253,7 +4246,6 @@ function DirectoryCreateForm({
       <form className="mt-4 grid gap-3 sm:grid-cols-2" onSubmit={submit}>
         {(section === "schools" ||
           section === "academics" ||
-          section === "results" ||
           section === "fees" ||
           section === "materials" ||
           section === "assignments") && (
@@ -3262,11 +4254,9 @@ function DirectoryCreateForm({
             placeholder={
               section === "schools"
                 ? "School name"
-                : section === "results"
-                  ? "Unit name"
-                  : section === "fees"
-                    ? "Fee description"
-                    : "Title"
+                : section === "fees"
+                  ? "Fee description"
+                  : "Title"
             }
             value={values.title}
             onChange={(e) => setValues({ ...values, title: e.target.value })}
@@ -3293,7 +4283,10 @@ function DirectoryCreateForm({
               required
               className={selectClass}
               value={values.course_id}
-              onChange={(e) => setValues({ ...values, course_id: e.target.value })}
+              onChange={(e) => {
+                setValues({ ...values, course_id: e.target.value });
+                setSelectedLevelIds([]);
+              }}
             >
               <option value="">Select course</option>
               {optionsQuery.data?.courses.map((course) => (
@@ -3319,7 +4312,13 @@ function DirectoryCreateForm({
             required
             className={selectClass}
             value={values.student_id}
-            onChange={(e) => setValues({ ...values, student_id: e.target.value })}
+            onChange={(e) =>
+              setValues({
+                ...values,
+                student_id: e.target.value,
+                unit_id: "",
+              })
+            }
           >
             <option value="">Select student</option>
             {optionsQuery.data?.students.map((student) => (
@@ -3331,6 +4330,35 @@ function DirectoryCreateForm({
         )}
         {section === "results" && (
           <>
+            <select
+              required
+              className={selectClass}
+              value={values.unit_id}
+              onChange={(e) => {
+                const unit = resultUnitsQuery.data?.find((item) => item.id === e.target.value);
+                setValues({
+                  ...values,
+                  unit_id: e.target.value,
+                  title: unit?.title ?? "",
+                });
+              }}
+              disabled={!values.student_id || resultUnitsQuery.isLoading}
+            >
+              <option value="">
+                {resultUnitsQuery.isLoading ? "Loading enrolled units…" : "Select enrolled unit"}
+              </option>
+              {resultUnitsQuery.data?.map((unit) => (
+                <option key={unit.id} value={unit.id}>
+                  {unit.code ? `${unit.code} · ` : ""}
+                  {unit.title}
+                </option>
+              ))}
+            </select>
+            {resultUnitsQuery.error && (
+              <p role="alert" className="text-sm text-destructive sm:col-span-2">
+                Could not load the student's enrolled units: {resultUnitsQuery.error.message}
+              </p>
+            )}
             <Input
               type="number"
               min="0"
@@ -3387,7 +4415,10 @@ function DirectoryCreateForm({
               required
               className={selectClass}
               value={values.course_id}
-              onChange={(e) => setValues({ ...values, course_id: e.target.value })}
+              onChange={(e) => {
+                setValues({ ...values, course_id: e.target.value, unit_id: "" });
+                setSelectedLevelIds([]);
+              }}
             >
               <option value="">Select course</option>
               {optionsQuery.data?.courses.map((course) => (
@@ -3396,6 +4427,36 @@ function DirectoryCreateForm({
                 </option>
               ))}
             </select>
+            {section === "assignments" && (
+              <select
+                required
+                className={selectClass}
+                value={values.unit_id}
+                onChange={(e) => {
+                  const unit = assignmentUnitsQuery.data?.find(
+                    (item) => item.id === e.target.value,
+                  );
+                  setValues({ ...values, unit_id: e.target.value });
+                  setSelectedLevelIds(unit?.level_id ? [unit.level_id] : []);
+                }}
+                disabled={!values.course_id || assignmentUnitsQuery.isLoading}
+              >
+                <option value="">
+                  {assignmentUnitsQuery.isLoading ? "Loading units…" : "Select course unit"}
+                </option>
+                {assignmentUnitsQuery.data?.map((unit) => (
+                  <option key={unit.id} value={unit.id}>
+                    {unit.code ? `${unit.code} · ` : ""}
+                    {unit.title}
+                  </option>
+                ))}
+              </select>
+            )}
+            {section === "assignments" && assignmentUnitsQuery.error && (
+              <p role="alert" className="text-sm text-destructive sm:col-span-2">
+                Could not load course units: {assignmentUnitsQuery.error.message}
+              </p>
+            )}
             <Textarea
               className="sm:col-span-2"
               placeholder={section === "assignments" ? "Instructions" : "Description"}
@@ -3421,6 +4482,15 @@ function DirectoryCreateForm({
         )}
         {section === "assignments" && (
           <>
+            <LevelTargetPicker
+              courseId={values.course_id}
+              selectedLevelIds={selectedLevelIds}
+              onChange={setSelectedLevelIds}
+              allowedLevelId={
+                assignmentUnitsQuery.data?.find((unit) => unit.id === values.unit_id)?.level_id ??
+                null
+              }
+            />
             <label className="space-y-1 text-sm font-medium sm:col-span-2">
               Submission deadline (local date and time)
               <Input
@@ -3437,7 +4507,15 @@ function DirectoryCreateForm({
             />
           </>
         )}
-        <Button className="sm:col-span-2" disabled={saving || optionsQuery.isLoading}>
+        <Button
+          className="sm:col-span-2"
+          disabled={
+            saving ||
+            optionsQuery.isLoading ||
+            (section === "results" && resultUnitsQuery.isLoading) ||
+            (section === "assignments" && assignmentUnitsQuery.isLoading)
+          }
+        >
           {saving ? "Saving…" : "Save record"}
         </Button>
       </form>
@@ -3465,11 +4543,16 @@ function ContentCreateForm({
     file: null as File | null,
     starts_at: "",
     ends_at: "",
+    show_to_students: section === "memos",
+    show_to_facilitators: false,
+    cta_label: "",
+    cta_url: "",
     published: false,
   });
   const labels = {
     articles: "Write article",
     announcements: "Create announcement",
+    memos: "Add memo",
     media: "Add media item",
   };
 
@@ -3480,6 +4563,22 @@ function ContentCreateForm({
     if (startsAt && endsAt && new Date(endsAt) < new Date(startsAt)) {
       toast.error("The announcement end date must be after its start date.");
       return;
+    }
+    if (section === "memos" && !values.file) {
+      toast.error("Attach a memo document before saving.");
+      return;
+    }
+    if (section === "announcements") {
+      const hasCtaLabel = Boolean(values.cta_label.trim());
+      const hasCtaUrl = Boolean(values.cta_url.trim());
+      if (hasCtaLabel !== hasCtaUrl) {
+        toast.error("Enter both a CTA button label and URL, or leave both blank.");
+        return;
+      }
+      if (hasCtaUrl && !isSafeAnnouncementUrl(values.cta_url.trim())) {
+        toast.error("Enter a valid HTTP or HTTPS link for the announcement button.");
+        return;
+      }
     }
     const contentType = values.file ? supportedContentType(values.file) : null;
     if (values.file && (!contentType || values.file.size > MAX_CONTENT_UPLOAD_SIZE)) {
@@ -3531,10 +4630,11 @@ function ContentCreateForm({
         status: "draft",
       });
       error = result.error;
-    } else if (section === "announcements") {
+    } else if (section === "announcements" || section === "memos") {
       const result = await supabase.from("announcements").insert({
         title: values.title.trim(),
         body: values.content.trim(),
+        category: section === "memos" ? "memo" : "general",
         created_by: user?.id ?? null,
         attachment_url: uploadedUrl,
         attachment_type: contentType ? contentKind(contentType) : null,
@@ -3543,6 +4643,10 @@ function ContentCreateForm({
         ends_at: endsAt,
         show_public: true,
         show_on_homepage: true,
+        show_to_students: values.show_to_students,
+        show_to_facilitators: section === "memos" && values.show_to_facilitators,
+        cta_label: values.cta_label.trim() || null,
+        cta_url: values.cta_url.trim() || null,
         published: values.published,
       });
       error = result.error;
@@ -3571,7 +4675,9 @@ function ContentCreateForm({
       toast.success(
         section === "announcements" && values.published
           ? "Announcement published"
-          : "Content saved as a draft",
+          : section === "memos" && values.published
+            ? "Memo published"
+            : "Content saved as a draft",
       );
       setValues({
         title: "",
@@ -3584,6 +4690,10 @@ function ContentCreateForm({
         file: null,
         starts_at: "",
         ends_at: "",
+        show_to_students: section === "memos",
+        show_to_facilitators: false,
+        cta_label: "",
+        cta_url: "",
         published: false,
       });
       onSaved();
@@ -3628,7 +4738,13 @@ function ContentCreateForm({
           <>
             <Input
               required
-              placeholder={section === "articles" ? "Article title" : "Announcement title"}
+              placeholder={
+                section === "articles"
+                  ? "Article title"
+                  : section === "memos"
+                    ? "Memo title"
+                    : "Announcement title"
+              }
               value={values.title}
               onChange={(e) => setValues({ ...values, title: e.target.value })}
             />
@@ -3646,7 +4762,7 @@ function ContentCreateForm({
               value={values.content}
               onChange={(content) => setValues({ ...values, content })}
             />
-            {section === "announcements" && (
+            {(section === "announcements" || section === "memos") && (
               <>
                 <label className="flex items-center gap-2 text-sm font-medium">
                   <input
@@ -3654,8 +4770,47 @@ function ContentCreateForm({
                     checked={values.published}
                     onChange={(event) => setValues({ ...values, published: event.target.checked })}
                   />
-                  Publish announcement
+                  {section === "memos" ? "Publish memo" : "Publish announcement"}
                 </label>
+                <label className="flex items-center gap-2 text-sm font-medium">
+                  <input
+                    type="checkbox"
+                    checked={values.show_to_students}
+                    onChange={(event) =>
+                      setValues({ ...values, show_to_students: event.target.checked })
+                    }
+                  />
+                  Show in student portal
+                </label>
+                {section === "memos" && (
+                  <label className="flex items-center gap-2 text-sm font-medium">
+                    <input
+                      type="checkbox"
+                      checked={values.show_to_facilitators}
+                      onChange={(event) =>
+                        setValues({ ...values, show_to_facilitators: event.target.checked })
+                      }
+                    />
+                    Show in facilitator portal
+                  </label>
+                )}
+                {section === "announcements" && (
+                  <>
+                    <Input
+                      aria-label="Announcement call-to-action label"
+                      placeholder="Button label (optional)"
+                      value={values.cta_label}
+                      onChange={(event) => setValues({ ...values, cta_label: event.target.value })}
+                    />
+                    <Input
+                      type="url"
+                      aria-label="Announcement call-to-action URL"
+                      placeholder="Button link, e.g. https://example.com (optional)"
+                      value={values.cta_url}
+                      onChange={(event) => setValues({ ...values, cta_url: event.target.value })}
+                    />
+                  </>
+                )}
                 <label className="grid gap-1 text-sm font-medium sm:grid-cols-2">
                   Starts at
                   <Input
@@ -3679,12 +4834,18 @@ function ContentCreateForm({
               onFile={(file) => setValues({ ...values, file })}
               className="sm:col-span-2"
             />
+            {section === "memos" && (
+              <p className="text-xs text-muted-foreground">
+                Attach a memo document; students and facilitators can download it from their portals
+                when enabled above.
+              </p>
+            )}
           </>
         )}
         <Button disabled={saving}>
           {saving
             ? "Saving…"
-            : section === "announcements" && values.published
+            : (section === "announcements" || section === "memos") && values.published
               ? "Publish"
               : "Save draft"}
         </Button>
@@ -3705,6 +4866,15 @@ function dateTimeIsoOrNull(value: string) {
   return value ? new Date(value).toISOString() : null;
 }
 
+function isSafeAnnouncementUrl(value: string) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" || url.protocol === "http:";
+  } catch {
+    return false;
+  }
+}
+
 function RichTextEditor({
   value,
   onChange,
@@ -3712,7 +4882,7 @@ function RichTextEditor({
 }: {
   value: string;
   onChange: (value: string) => void;
-} & React.ComponentProps<typeof Textarea>) {
+} & Omit<React.ComponentProps<typeof Textarea>, "onChange" | "value">) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   function insertFormatting(format: "bold" | "italic" | "heading" | "list" | "link") {
     const textarea = textareaRef.current;
@@ -3781,7 +4951,7 @@ function ContentEditForm({
   onCancel,
   onSaved,
 }: {
-  section: "articles" | "announcements";
+  section: "articles" | "announcements" | "memos";
   record: Record<string, unknown>;
   onCancel: () => void;
   onSaved: () => Promise<void>;
@@ -3796,6 +4966,10 @@ function ContentEditForm({
     published: section === "articles" ? record["status"] === "published" : !!record["published"],
     starts_at: dateTimeLocalValue(record["starts_at"]),
     ends_at: dateTimeLocalValue(record["ends_at"]),
+    show_to_students: record["show_to_students"] === true,
+    show_to_facilitators: record["show_to_facilitators"] === true,
+    cta_label: String(record["cta_label"] ?? ""),
+    cta_url: String(record["cta_url"] ?? ""),
   });
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -3809,6 +4983,26 @@ function ContentEditForm({
       new Date(endsAt) < new Date(startsAt)
     ) {
       toast.error("The announcement end date must be after its start date.");
+      return;
+    }
+    if (section === "announcements") {
+      const hasCtaLabel = Boolean(values.cta_label.trim());
+      const hasCtaUrl = Boolean(values.cta_url.trim());
+      if (hasCtaLabel !== hasCtaUrl) {
+        toast.error("Enter both a CTA button label and URL, or leave both blank.");
+        return;
+      }
+      if (hasCtaUrl && !isSafeAnnouncementUrl(values.cta_url.trim())) {
+        toast.error("Enter a valid HTTP or HTTPS link for the announcement button.");
+        return;
+      }
+    }
+    if (
+      section === "memos" &&
+      !file &&
+      (removeAttachment || typeof record["attachment_url"] !== "string")
+    ) {
+      toast.error("A downloadable file is required for every memo.");
       return;
     }
     const contentType = file ? supportedContentType(file) : null;
@@ -3885,6 +5079,10 @@ function ContentEditForm({
               starts_at: startsAt,
               ends_at: endsAt,
               published: values.published,
+              show_to_students: values.show_to_students,
+              show_to_facilitators: section === "memos" && values.show_to_facilitators,
+              cta_label: section === "announcements" ? values.cta_label.trim() || null : null,
+              cta_url: section === "announcements" ? values.cta_url.trim() || null : null,
               show_public: true,
               show_on_homepage: true,
               attachment_url: attachmentUrl,
@@ -3931,7 +5129,7 @@ function ContentEditForm({
         value={values.content}
         onChange={(content) => setValues({ ...values, content })}
       />
-      {section === "announcements" && (
+      {(section === "announcements" || section === "memos") && (
         <>
           <label className="flex items-center gap-2 text-sm font-medium">
             <input
@@ -3939,8 +5137,45 @@ function ContentEditForm({
               checked={values.published}
               onChange={(event) => setValues({ ...values, published: event.target.checked })}
             />
-            Publish announcement
+            {section === "memos" ? "Publish memo" : "Publish announcement"}
           </label>
+          <label className="flex items-center gap-2 text-sm font-medium">
+            <input
+              type="checkbox"
+              checked={values.show_to_students}
+              onChange={(event) => setValues({ ...values, show_to_students: event.target.checked })}
+            />
+            Show in student portal
+          </label>
+          {section === "memos" && (
+            <label className="flex items-center gap-2 text-sm font-medium">
+              <input
+                type="checkbox"
+                checked={values.show_to_facilitators}
+                onChange={(event) =>
+                  setValues({ ...values, show_to_facilitators: event.target.checked })
+                }
+              />
+              Show in facilitator portal
+            </label>
+          )}
+          {section === "announcements" && (
+            <>
+              <Input
+                aria-label="Announcement call-to-action label"
+                placeholder="Button label (optional)"
+                value={values.cta_label}
+                onChange={(event) => setValues({ ...values, cta_label: event.target.value })}
+              />
+              <Input
+                type="url"
+                aria-label="Announcement call-to-action URL"
+                placeholder="Button link, e.g. https://example.com (optional)"
+                value={values.cta_url}
+                onChange={(event) => setValues({ ...values, cta_url: event.target.value })}
+              />
+            </>
+          )}
           <label className="grid gap-1 text-sm font-medium">
             Starts at
             <Input
@@ -3960,7 +5195,7 @@ function ContentEditForm({
         </>
       )}
       <ContentFileInput file={file} onFile={setFile} />
-      {record["attachment_file_name"] && (
+      {typeof record["attachment_file_name"] === "string" && (
         <label className="flex items-center gap-2 text-sm">
           <input
             type="checkbox"
@@ -4418,19 +5653,60 @@ function feeStudentLabel(value: unknown) {
     typeof student.student_number === "string" ? student.student_number : "No admission number";
   return `${admissionNumber} · ${name || "Name unavailable"}`;
 }
+function directoryExportRows(section: DashboardSection, rows: Record<string, unknown>[]) {
+  if (section === "results") {
+    return rows.map((row) => {
+      const student =
+        row["student"] && typeof row["student"] === "object" && !Array.isArray(row["student"])
+          ? (row["student"] as Record<string, unknown>)
+          : {};
+      const studentName = [student["first_name"], student["middle_name"], student["last_name"]]
+        .filter((part): part is string => typeof part === "string" && part.trim().length > 0)
+        .join(" ");
+      const unit = relationName(row["unit"]);
+      return {
+        "Student Number": student["student_number"] ?? "Not assigned",
+        "Student Name": studentName || "Name unavailable",
+        Unit: unit === "Not assigned" ? row["unit_name"] : unit,
+        Score: row["score"],
+        Grade: row["grade"],
+        Semester: row["semester"],
+        "Academic Year": row["academic_year"],
+        Published: row["published"],
+        "Recorded On": row["created_at"],
+      };
+    });
+  }
+  if (section === "assignments") {
+    return rows.map((row) => ({
+      Assignment: row["title"],
+      Course: relationName(row["course"]),
+      Unit: relationName(row["unit"]),
+      Instructions: row["instructions"],
+      "Due Date": row["due_date"],
+      Published: row["published"],
+      "Created On": row["created_at"],
+    }));
+  }
+  if (section === "fees") {
+    return rows.map((row) => ({
+      ...Object.fromEntries(Object.entries(row).filter(([key]) => key !== "student")),
+      Student: feeStudentLabel(row["student"]),
+    }));
+  }
+  return rows;
+}
 function exportCsv(fileName: string, rows: readonly object[]) {
   if (!rows.length) {
     toast.error("There are no records to export.");
     return;
   }
-  const columns = [...new Set(rows.flatMap((row) => Object.keys(row)))].filter(
-    (key) => !["raw", "upload_token"].includes(key),
-  );
+  const safeRows = sanitizeExportRows(rows);
+  const columns = [...new Set(safeRows.flatMap((row) => Object.keys(row)))];
   const escape = (value: unknown) => `"${String(value ?? "").replaceAll('"', '""')}"`;
   const csv = [
-    columns.map(escape).join(","),
-    ...rows.map((row) => {
-      const record = row as Record<string, unknown>;
+    columns.map((column) => escape(exportColumnLabel(column))).join(","),
+    ...safeRows.map((record) => {
       return columns
         .map((column) =>
           escape(
@@ -4446,4 +5722,27 @@ function exportCsv(fileName: string, rows: readonly object[]) {
   link.download = fileName;
   link.click();
   URL.revokeObjectURL(url);
+}
+function exportExcel(fileName: string, rows: readonly object[]) {
+  if (!rows.length) {
+    toast.error("There are no records to export.");
+    return;
+  }
+  try {
+    const workbook = createExcelWorkbook(rows);
+    const url = URL.createObjectURL(
+      new Blob([new Uint8Array(workbook)], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      }),
+    );
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = fileName.replace(/\.csv$/i, ".xlsx");
+    link.click();
+    URL.revokeObjectURL(url);
+  } catch (error) {
+    toast.error("Could not export Excel workbook", {
+      description: error instanceof Error ? error.message : String(error),
+    });
+  }
 }

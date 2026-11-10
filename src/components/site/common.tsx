@@ -1,4 +1,5 @@
 import { Link } from "@tanstack/react-router";
+import { useRouterState } from "@tanstack/react-router";
 import { useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import {
   Briefcase,
@@ -23,7 +24,7 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
 import { getYouTubeEmbedUrl } from "@/lib/content-format";
-import { formatKES, useGeneral, useMedia, whatsappLink } from "@/lib/site";
+import { useGeneral, useMedia, whatsappLink } from "@/lib/site";
 import { cn } from "@/lib/utils";
 
 type FaqSearchItem = Pick<
@@ -58,9 +59,21 @@ export function WhatsAppFloat() {
       target="_blank"
       rel="noopener noreferrer"
       aria-label="Chat with Profia on WhatsApp"
-      className="fixed bottom-4 right-4 z-40 inline-flex h-14 w-14 items-center justify-center rounded-full bg-whatsapp text-primary-foreground shadow-lift transition hover:scale-105"
+      className="fixed bottom-4 right-4 z-40 inline-flex h-14 w-14 items-center justify-center rounded-full bg-[#25D366] text-white shadow-lift transition hover:scale-105 hover:bg-[#1EBE5D] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#25D366]/40"
     >
-      <MessageCircle className="h-7 w-7" />
+      <svg aria-hidden="true" viewBox="0 0 32 32" fill="none" className="h-8 w-8">
+        <path
+          d="M16 3.25a12.25 12.25 0 0 0-10.52 18.53L4 28l6.39-1.43A12.25 12.25 0 1 0 16 3.25Z"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth="2"
+        />
+        <path
+          d="M12.04 10.77c-.25-.55-.52-.56-.76-.57h-.65c-.23 0-.61.09-.93.44-.32.35-1.22 1.19-1.22 2.9s1.25 3.36 1.42 3.59c.18.23 2.42 3.88 5.98 5.28 2.96 1.16 3.56.93 4.2.87.64-.06 2.06-.84 2.35-1.65.29-.81.29-1.51.2-1.65-.09-.15-.32-.23-.67-.41-.35-.17-2.06-1.02-2.38-1.13-.32-.12-.55-.18-.78.17-.23.35-.9 1.13-1.1 1.36-.21.23-.41.26-.76.09-.35-.18-1.47-.54-2.8-1.72-1.04-.93-1.75-2.07-1.96-2.42-.2-.35-.02-.54.16-.71.15-.15.35-.41.52-.61.17-.2.23-.35.35-.58.12-.23.06-.44-.03-.61-.09-.18-.78-1.9-1.09-2.59Z"
+          fill="currentColor"
+        />
+      </svg>
     </a>
   );
 }
@@ -78,11 +91,15 @@ export function PageHero({
   eyebrow?: string;
   children?: ReactNode;
 }) {
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
+  const pageBanners = useMedia("page-banner");
+  const pageBanner = pageBanners.data?.find((item) => item.slot === pathname);
+  const backgroundImage = pageBanner?.url || image;
   return (
     <section className="relative isolate overflow-hidden bg-brand text-brand-foreground">
-      {image && (
+      {backgroundImage && (
         <img
-          src={image}
+          src={backgroundImage}
           alt=""
           className="absolute inset-0 -z-20 h-full w-full object-cover"
           fetchPriority="high"
@@ -130,8 +147,8 @@ export function FeatureGrid({ features }: { features: { title: string; text: str
       {features.map((f, i) => {
         const Icon = featureIcons[i % featureIcons.length] ?? GraduationCap;
         return (
-          <div key={f.title} className="rounded-xl border bg-card p-6 shadow-card">
-            <span className="inline-flex h-11 w-11 items-center justify-center rounded-lg bg-accent text-primary">
+          <div key={f.title} className="motion-card rounded-xl border bg-card p-6 shadow-card">
+            <span className="motion-icon inline-flex h-11 w-11 items-center justify-center rounded-lg bg-accent text-primary">
               <Icon className="h-5 w-5" />
             </span>
             <h3 className="mt-4 font-bold text-brand">{f.title}</h3>
@@ -158,7 +175,7 @@ export type CourseLite = {
 export function CourseCard({ c }: { c: CourseLite }) {
   const [more, setMore] = useState(false);
   return (
-    <article className="flex flex-col overflow-hidden rounded-xl border bg-card shadow-card transition hover:-translate-y-0.5 hover:shadow-lift">
+    <article className="motion-card flex flex-col overflow-hidden rounded-xl border bg-card shadow-card">
       <div className="aspect-[4/3] overflow-hidden bg-muted">
         {c.image_url ? (
           <img
@@ -176,16 +193,9 @@ export function CourseCard({ c }: { c: CourseLite }) {
       <div className="flex flex-1 flex-col p-5">
         <h3 className="text-lg font-bold text-brand">{c.title}</h3>
         {c.summary && <p className="mt-1.5 text-sm text-muted-foreground">{c.summary}</p>}
-        {(c.duration || c.fees !== null) && (
+        {c.duration && (
           <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold">
-            {c.duration && (
-              <span className="rounded-full bg-accent px-2.5 py-1 text-brand">{c.duration}</span>
-            )}
-            {c.fees !== null && (
-              <span className="rounded-full bg-accent px-2.5 py-1 text-primary">
-                Fees: {formatKES(c.fees)}
-              </span>
-            )}
+            <span className="rounded-full bg-accent px-2.5 py-1 text-brand">{c.duration}</span>
           </div>
         )}
         {more && (c.description || c.requirements) && (
@@ -447,15 +457,33 @@ export function Partners() {
       <div className="container-site">
         <SectionTitle center title="Our Partners" />
         <div className="flex flex-wrap items-center justify-center gap-x-10 gap-y-6">
-          {data.map((p) => (
-            <img
-              key={p.id}
-              src={p.url}
-              alt={p.alt ?? p.caption ?? "Partner"}
-              loading="lazy"
-              className="h-14 w-auto max-w-[150px] object-contain grayscale transition hover:grayscale-0 sm:h-16"
-            />
-          ))}
+          {data.map((p) =>
+            p.link_url ? (
+              <a
+                key={p.id}
+                href={p.link_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={`Visit ${p.caption ?? p.alt ?? "partner"} website`}
+                className="rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-4"
+              >
+                <img
+                  src={p.url}
+                  alt={p.alt ?? p.caption ?? "Partner"}
+                  loading="lazy"
+                  className="h-14 w-auto max-w-[150px] object-contain sm:h-16"
+                />
+              </a>
+            ) : (
+              <img
+                key={p.id}
+                src={p.url}
+                alt={p.alt ?? p.caption ?? "Partner"}
+                loading="lazy"
+                className="h-14 w-auto max-w-[150px] object-contain sm:h-16"
+              />
+            ),
+          )}
         </div>
       </div>
     </section>
@@ -477,7 +505,10 @@ export function HomepageMedia() {
         {data.map((item) => {
           const videoUrl = getYouTubeEmbedUrl(item.url);
           return (
-            <figure key={item.id} className="overflow-hidden rounded-xl border bg-card shadow-card">
+            <figure
+              key={item.id}
+              className="motion-card group overflow-hidden rounded-xl border bg-card shadow-card"
+            >
               {videoUrl ? (
                 <iframe
                   src={videoUrl}
@@ -485,15 +516,24 @@ export function HomepageMedia() {
                   className="aspect-video w-full"
                   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                   referrerPolicy="strict-origin-when-cross-origin"
+                  loading="lazy"
                   allowFullScreen
                 />
               ) : (
-                <img
-                  src={item.url}
-                  alt={item.alt ?? item.caption ?? "Profia Institute"}
-                  loading="lazy"
-                  className="aspect-[4/3] w-full object-cover"
-                />
+                <a
+                  href={item.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label={`Open ${item.caption ?? item.alt ?? "Profia Institute gallery image"}`}
+                  className="block overflow-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
+                >
+                  <img
+                    src={item.url}
+                    alt={item.alt ?? item.caption ?? "Profia Institute"}
+                    loading="lazy"
+                    className="aspect-[4/3] w-full object-cover transition-transform duration-500 ease-out group-hover:scale-105 group-focus-within:scale-105"
+                  />
+                </a>
               )}
               {item.caption && <figcaption className="p-3 text-sm">{item.caption}</figcaption>}
             </figure>

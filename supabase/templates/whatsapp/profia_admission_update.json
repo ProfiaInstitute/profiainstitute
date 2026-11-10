@@ -1,0 +1,23 @@
+{
+  "name": "profia_admission_update",
+  "language": "en",
+  "category": "UTILITY",
+  "components": [
+    {
+      "type": "BODY",
+      "text": "Hello {{1}}, your application {{2}} has been {{3}}. Sign up or sign in to the Profia student portal using {{4}}: {{5}}. Need help? WhatsApp Profia Institute at +{{6}}.",
+      "example": {
+        "body_text": [
+          [
+            "Jane Student",
+            "PRF/2026/0001",
+            "enrolled",
+            "jane@example.com",
+            "https://www.profiainstitute.com/student",
+            "254710221122"
+          ]
+        ]
+      }
+    }
+  ]
+}

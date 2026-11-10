@@ -15,11 +15,21 @@ interface InstallContextValue {
 
 const InstallContext = createContext<InstallContextValue | null>(null);
 
-export function PwaInstallProvider({ children }: { children: ReactNode }) {
+export function PwaInstallProvider({
+  children,
+  manifestHref,
+}: {
+  children: ReactNode;
+  manifestHref: string;
+}) {
   const [installPrompt, setInstallPrompt] = useState<InstallPromptEvent | null>(null);
   const [installed, setInstalled] = useState(false);
 
   useEffect(() => {
+    setInstallPrompt(null);
+    const manifestLink = document.querySelector<HTMLLinkElement>('link[rel="manifest"]');
+    if (manifestLink) manifestLink.href = manifestHref;
+
     const standalone =
       window.matchMedia("(display-mode: standalone)").matches ||
       ("standalone" in navigator && navigator.standalone === true);
@@ -40,7 +50,7 @@ export function PwaInstallProvider({ children }: { children: ReactNode }) {
       window.removeEventListener("beforeinstallprompt", onBeforeInstall);
       window.removeEventListener("appinstalled", onInstalled);
     };
-  }, []);
+  }, [manifestHref]);
 
   async function install() {
     if (installPrompt) {
@@ -74,7 +84,13 @@ export function PwaInstallProvider({ children }: { children: ReactNode }) {
   );
 }
 
-export function InstallAppButton() {
+export function InstallAppButton({
+  label = "Install app",
+  showLabelOnMobile = false,
+}: {
+  label?: string;
+  showLabelOnMobile?: boolean;
+}) {
   const installContext = useContext(InstallContext);
   if (!installContext) throw new Error("InstallAppButton must be used within PwaInstallProvider.");
   const { install, installed } = installContext;
@@ -85,12 +101,13 @@ export function InstallAppButton() {
     <Button
       type="button"
       size="sm"
-      variant="heroOutline"
+      variant="outline"
       onClick={() => void install()}
-      aria-label="Install Profia app"
+      aria-label={label}
+      title={label}
     >
       <Download />
-      <span className="hidden sm:inline">Install app</span>
+      <span className={showLabelOnMobile ? undefined : "hidden sm:inline"}>{label}</span>
     </Button>
   );
 }
