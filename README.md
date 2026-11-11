@@ -2562,9 +2562,11 @@ imported; entries accept forms such as `1.A`, `1 a`, and `1 A: explanation`. The
 admin CAT list can be searched by CAT, course, unit, or student and filtered by
 scheduled, open, or closed status. Staff can also type or paste numbered
 questions and A–D choices into the CAT question box; complete questions are
-added to the editable form so staff can select each correct answer. If a
-document contains both complete and incomplete detected question blocks, the
-complete questions are imported and the skipped blocks are reported for review.
+added to the editable form so staff can select each correct answer. Incomplete
+detected question blocks are imported with blank fields for staff review.
+The **Assignments → CAT results** view filters submitted answer sheets by
+course, level, unit, and CAT, and supports individual downloads or one combined
+Word document for all submitted students in the selected CAT.
 Apply `drizzle/migrations/0057_individual_cat_targets.sql` to allow admins to
 create a CAT for selected active students instead of the full selected course
 levels. Individual recipients are checked against active course and level

@@ -47,6 +47,7 @@ import { FaqManagementPanel } from "@/components/admin/FaqManagementPanel";
 import { StudentProgressionPanel } from "@/components/admin/StudentProgressionPanel";
 import { AssignmentSubmissionsPanel } from "@/components/admin/AssignmentSubmissionsPanel";
 import { CatManagementPanel } from "@/components/admin/CatManagementPanel";
+import { CatResultsPanel } from "@/components/admin/CatResultsPanel";
 import { OnlineCourseLmsPanel } from "@/components/admin/OnlineCourseLmsPanel";
 import { PayHeroSettingsPanel } from "@/components/admin/PayHeroSettingsPanel";
 import { FeeStatementTemplatePanel } from "@/components/admin/FeeStatementTemplatePanel";
@@ -3295,9 +3296,9 @@ function AuditLogPanel() {
 
 function DataDirectory({ section }: { section: DashboardSection }) {
   const queryClient = useQueryClient();
-  const [assignmentView, setAssignmentView] = useState<"cats" | "submissions" | "assignments">(
-    "cats",
-  );
+  const [assignmentView, setAssignmentView] = useState<
+    "cats" | "cat-results" | "submissions" | "assignments"
+  >("cats");
   const [savingRecord, setSavingRecord] = useState(false);
   const [editingContentId, setEditingContentId] = useState<string | null>(null);
   const [editingFee, setEditingFee] = useState<{
@@ -3649,10 +3650,11 @@ function DataDirectory({ section }: { section: DashboardSection }) {
         ) : null}
       </div>
       {section === "assignments" && (
-        <div className="grid gap-2 rounded-lg bg-muted/40 p-1 sm:grid-cols-3">
+        <div className="grid gap-2 rounded-lg bg-muted/40 p-1 sm:grid-cols-4">
           {(
             [
               ["cats", "CAT management"],
+              ["cat-results", "CAT results"],
               ["submissions", "Assignment submissions"],
               ["assignments", "Assignment list"],
             ] as const
@@ -3704,6 +3706,8 @@ function DataDirectory({ section }: { section: DashboardSection }) {
       {section === "assignments" &&
         (assignmentView === "cats" ? (
           <CatManagementPanel />
+        ) : assignmentView === "cat-results" ? (
+          <CatResultsPanel />
         ) : assignmentView === "submissions" ? (
           <AssignmentSubmissionsPanel />
         ) : null)}
