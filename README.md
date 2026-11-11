@@ -2551,16 +2551,26 @@ Apply `drizzle/migrations/0056_admin_edit_cat_assessments.sql` to enable CAT
 editing for academic admins and Super Admins. If a student has started an
 attempt, questions, answer keys, schedule, and time limit are locked; descriptive
 details and downloadable files can still be updated.
-Both academic admins and facilitators with CAT permissions can import numbered
-questions from Word, text-based PDF, or plain text, then import a separate
-numbered marking scheme. Marking-scheme entries accept forms such as `1.A`,
-`1 a`, and `1 A: explanation`; explanation text is ignored. The admin CAT list
-can be searched by CAT, course, unit, or student and filtered by scheduled,
-open, or closed status.
+Both academic admins and facilitators with CAT permissions can upload a complete
+CAT paper from Word (`.docx`), PDF, plain text, or a JPG, PNG, WebP, or BMP image.
+The importer recognizes common question/choice layouts, wrapped prompts, and an
+answer key or marking scheme at the end of the same document, applying detected
+answers automatically. Scanned PDFs and images use English OCR in the browser;
+the OCR engine and language data are downloaded on first use, but uploaded files
+are not sent to an OCR service. A separate numbered marking scheme can also be
+imported; entries accept forms such as `1.A`, `1 a`, and `1 A: explanation`. The
+admin CAT list can be searched by CAT, course, unit, or student and filtered by
+scheduled, open, or closed status. Staff can also type or paste numbered
+questions and A–D choices into the CAT question box; complete questions are
+added to the editable form so staff can select each correct answer. If a
+document contains both complete and incomplete detected question blocks, the
+complete questions are imported and the skipped blocks are reported for review.
 Apply `drizzle/migrations/0057_individual_cat_targets.sql` to allow admins to
 create a CAT for selected active students instead of the full selected course
 levels. Individual recipients are checked against active course and level
-enrolments; only selected students can see or start the CAT in the portal.
+enrolments; only selected students can see or start the CAT in the portal. Apply
+`drizzle/migrations/0058_fix_targeted_cat_assessment_id_ambiguity.sql` after it
+to fix the ambiguous `assessment_id` reference when publishing a CAT.
 
 ### Holiday program applications
 

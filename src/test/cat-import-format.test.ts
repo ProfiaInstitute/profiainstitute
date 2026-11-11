@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { parseCatMarkingSchemeFromText, parseCatQuestionsFromText } from "@/lib/cat-import-format";
+import {
+  parseCatMarkingSchemeFromText,
+  parseCatQuestionsFromText,
+  parseCatQuestionsWithDiagnostics,
+} from "@/lib/cat-import-format";
 
 describe("CAT document question parsing", () => {
   it("parses numbered questions, A-D choices, and an inline answer", () => {
@@ -26,12 +30,54 @@ describe("CAT document question parsing", () => {
         "B. Green",
         "C. Blue",
         "D. Brown",
-        "Answer Key",
-        "3. C",
+        "Answer Key: 3. C",
       ].join("\n"),
     );
 
     expect(questions[0]?.correctOption).toBe("C");
+  });
+
+  it("imports wrapped prompts, parenthesized choices, and an answer scheme at the bottom", () => {
+    const questions = parseCatQuestionsFromText(
+      [
+        "Question 1",
+        "Which number is even?",
+        "(a) One",
+        "(b) Two",
+        "(c) Three",
+        "(d) Four",
+        "MARKING SCHEME",
+        "1. (B)",
+      ].join("\n"),
+    );
+
+    expect(questions).toEqual([
+      {
+        prompt: "Which number is even?",
+        options: { A: "One", B: "Two", C: "Three", D: "Four" },
+        correctOption: "B",
+      },
+    ]);
+  });
+
+  it("finds a trailing answer scheme even without a heading", () => {
+    const questions = parseCatQuestionsFromText(
+      ["1. Which number is even?", "A) One", "B) Two", "C) Three", "D) Four", "", "1. B"].join(
+        "\n",
+      ),
+    );
+
+    expect(questions[0]?.correctOption).toBe("B");
+  });
+
+  it("splits flattened PDF text when complete question choices run together", () => {
+    const questions = parseCatQuestionsFromText(
+      "1. First? A) one B) two C) three D) four 2. Second? A) red B) blue C) green D) yellow",
+    );
+
+    expect(questions).toHaveLength(2);
+    expect(questions[0]?.prompt).toBe("First?");
+    expect(questions[1]?.prompt).toBe("Second?");
   });
 
   it("parses separate marking schemes with optional explanation text", () => {
@@ -41,6 +87,14 @@ describe("CAT document question parsing", () => {
       { questionNumber: 1, correctOption: "A" },
       { questionNumber: 2, correctOption: "A" },
       { questionNumber: 3, correctOption: "A" },
+    ]);
+  });
+
+  it("parses several answers on one marking-scheme line", () => {
+    expect(parseCatMarkingSchemeFromText("Answers: 1. B, 2. A, 3. D")).toEqual([
+      { questionNumber: 1, correctOption: "B" },
+      { questionNumber: 2, correctOption: "A" },
+      { questionNumber: 3, correctOption: "D" },
     ]);
   });
 
@@ -59,6 +113,66 @@ describe("CAT document question parsing", () => {
     );
 
     expect(questions[0]?.correctOption).toBeNull();
+  });
+
+  it("keeps complete and incomplete questions available for review", () => {
+    const result = parseCatQuestionsWithDiagnostics(
+      [
+        "1. Complete question?",
+        "A. First",
+        "B. Second",
+        "C. Third",
+        "D. Fourth",
+        "2. Incomplete question?",
+        "A. Only one choice",
+      ].join("\n"),
+    );
+
+    expect(result.questions).toHaveLength(2);
+    expect(result.questions[1]).toEqual({
+      prompt: "Incomplete question?",
+      options: { A: "Only one choice", B: "", C: "", D: "" },
+      correctOption: null,
+    });
+    expect(result.incompleteQuestionNumbers).toEqual([2]);
+  });
+
+  it("keeps answers from the paper's answer scheme on incomplete questions", () => {
+    const result = parseCatQuestionsWithDiagnostics(
+      [
+        "1. Complete question?",
+        "A. First",
+        "B. Second",
+        "C. Third",
+        "D. Fourth",
+        "2. Incomplete question?",
+        "A. Only one choice",
+        "Answer Key",
+        "1. B",
+        "2. C",
+      ].join("\n"),
+    );
+
+    expect(result.questions).toHaveLength(2);
+    expect(result.questions.map((question) => question.correctOption)).toEqual(["B", "C"]);
+  });
+
+  it("keeps imported questions when an embedded answer scheme has an unreadable line", () => {
+    const result = parseCatQuestionsWithDiagnostics(
+      [
+        "1. Question?",
+        "A. First",
+        "B. Second",
+        "C. Third",
+        "D. Fourth",
+        "Answer Key",
+        "1. B",
+        "2: unclear",
+      ].join("\n"),
+    );
+
+    expect(result.questions).toHaveLength(1);
+    expect(result.questions[0]?.correctOption).toBe("B");
   });
 
   it("rejects incomplete multiple-choice questions", () => {
