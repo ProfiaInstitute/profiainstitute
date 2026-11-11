@@ -5,6 +5,7 @@ import { unzipSync } from "fflate";
 import {
   calculateAnswerSheetMetrics,
   generateMarkedAnswerSheetBlob,
+  generateMarkedAnswerSheetsBlob,
   parseAnswerSheetUnit,
 } from "@/lib/answer-sheet";
 
@@ -162,6 +163,52 @@ describe("CAT answer-sheet generation", () => {
           ?.getAttributeNS(wordNamespace, "val"),
       ).toBe("FF0000");
       expect(correctedOption?.getElementsByTagNameNS(wordNamespace, "i")).toHaveLength(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("combines multiple student answer sheets in one paginated DOCX", async () => {
+    const template = readFileSync(resolve(process.cwd(), "public/templates/ANSWER SHEET.docx"));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(template)));
+
+    try {
+      const blob = await generateMarkedAnswerSheetsBlob(
+        ["Jane Doe", "John Smith"].map((studentName) => ({
+          courseName: "Accounting",
+          unitName: "Financial Accounting",
+          unitCode: "ACC101",
+          examName: "CAT 1",
+          studentName,
+          kasnebNumber: "KAS-123",
+          questions: [{ id: "q1", selectedOption: "B" as const, correctOption: "B" as const }],
+        })),
+      );
+      const outputBytes = await new Promise<ArrayBuffer>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          if (reader.result instanceof ArrayBuffer) resolve(reader.result);
+          else reject(new Error("Could not read the generated DOCX blob."));
+        };
+        reader.onerror = () => reject(reader.error);
+        reader.readAsArrayBuffer(blob);
+      });
+      const files = unzipSync(new Uint8Array(outputBytes));
+      const documentXml = files["word/document.xml"];
+      if (!documentXml) throw new Error("Generated DOCX is missing word/document.xml.");
+      const xml = new TextDecoder().decode(documentXml);
+      const parsed = new DOMParser().parseFromString(xml, "application/xml");
+
+      expect(parsed.getElementsByTagName("parsererror")).toHaveLength(0);
+      expect(parsed.documentElement.textContent).toContain("STUDENT NAME Jane Doe");
+      expect(parsed.documentElement.textContent).toContain("STUDENT NAME John Smith");
+      expect(
+        parsed.getElementsByTagNameNS(
+          "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+          "br",
+        ),
+      ).toHaveLength(1);
+      expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1);
     } finally {
       vi.unstubAllGlobals();
     }

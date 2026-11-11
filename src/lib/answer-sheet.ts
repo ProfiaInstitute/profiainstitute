@@ -211,22 +211,10 @@ function replaceQuestionSlots(xml: string, questions: AnswerSheetQuestion[]) {
   return result;
 }
 
-export async function generateMarkedAnswerSheetBlob(payload: AnswerSheetPayload): Promise<Blob> {
-  const response = await fetch(TEMPLATE_PATH, { cache: "no-store" });
-  if (!response.ok) {
-    throw new Error(`The official answer-sheet template could not be loaded (${response.status}).`);
-  }
+function fillAnswerSheetXml(documentXml: string, payload: AnswerSheetPayload) {
   if (payload.questions.length > 50) {
     throw new Error("The official answer sheet supports a maximum of 50 CAT questions.");
   }
-  const templateBytes = new Uint8Array(await response.arrayBuffer());
-  const zipped = unzipSync(templateBytes);
-  const documentXmlBytes = zipped["word/document.xml"];
-  if (!documentXmlBytes) {
-    throw new Error("The official answer-sheet template is missing its document content.");
-  }
-  const documentXml = new TextDecoder("utf-8").decode(documentXmlBytes);
-
   let updatedXml = documentXml;
   updatedXml = replaceParagraphByUniqueText(
     updatedXml,
@@ -248,13 +236,32 @@ export async function generateMarkedAnswerSheetBlob(payload: AnswerSheetPayload)
     "STUDENT KASNEB NUMBER",
     `STUDENT KASNEB NUMBER ${payload.kasnebNumber}`,
   );
-  updatedXml = replaceQuestionSlots(updatedXml, payload.questions);
+  return replaceQuestionSlots(updatedXml, payload.questions);
+}
 
+async function loadAnswerSheetTemplate() {
+  const response = await fetch(TEMPLATE_PATH, { cache: "no-store" });
+  if (!response.ok) {
+    throw new Error(`The official answer-sheet template could not be loaded (${response.status}).`);
+  }
+  const templateBytes = new Uint8Array(await response.arrayBuffer());
+  const zipped = unzipSync(templateBytes);
+  const documentXmlBytes = zipped["word/document.xml"];
+  if (!documentXmlBytes) {
+    throw new Error("The official answer-sheet template is missing its document content.");
+  }
+  return {
+    zipped,
+    documentXml: new TextDecoder("utf-8").decode(documentXmlBytes),
+  };
+}
+
+function answerSheetBlob(zipped: Record<string, Uint8Array>, documentXml: string) {
   const nextZip = zipSync({
     ...Object.fromEntries(
       Object.entries(zipped).map(([fileName, fileBytes]) => {
         if (fileName === "word/document.xml") {
-          return [fileName, new TextEncoder().encode(updatedXml)];
+          return [fileName, new TextEncoder().encode(documentXml)];
         }
         return [fileName, fileBytes];
       }),
@@ -266,12 +273,66 @@ export async function generateMarkedAnswerSheetBlob(payload: AnswerSheetPayload)
   });
 }
 
+function mergeAnswerSheetDocuments(documents: string[]) {
+  if (!documents.length) throw new Error("There are no submitted answer sheets to combine.");
+  const firstBodyMatch = documents[0]?.match(/<w:body\b[^>]*>([\s\S]*?)<\/w:body>/);
+  if (!firstBodyMatch) throw new Error("The answer-sheet template has an invalid document body.");
+  const firstBody = firstBodyMatch[1] ?? "";
+  const sectionMatch = firstBody.match(/<w:sectPr\b[\s\S]*?<\/w:sectPr>\s*$/);
+  if (!sectionMatch) {
+    throw new Error("The answer-sheet template is missing its page layout settings.");
+  }
+  const sectionProperties = sectionMatch[0];
+  const pageBodies = documents.map((document) => {
+    const body = document.match(/<w:body\b[^>]*>([\s\S]*?)<\/w:body>/)?.[1];
+    if (!body) throw new Error("An answer sheet has an invalid document body.");
+    const content = body.replace(/<w:sectPr\b[\s\S]*?<\/w:sectPr>\s*$/, "");
+    if (!content || content === body) {
+      throw new Error("An answer sheet is missing its page layout settings.");
+    }
+    return content;
+  });
+  const pageBreak = '<w:p><w:r><w:br w:type="page"/></w:r></w:p>';
+  const bodyContent = pageBodies.join(pageBreak);
+  return documents[0]!.replace(
+    /(<w:body\b[^>]*>)[\s\S]*?(<\/w:body>)/,
+    `$1${bodyContent}${sectionProperties}$2`,
+  );
+}
+
+export async function generateMarkedAnswerSheetBlob(payload: AnswerSheetPayload): Promise<Blob> {
+  const { zipped, documentXml } = await loadAnswerSheetTemplate();
+  return answerSheetBlob(zipped, fillAnswerSheetXml(documentXml, payload));
+}
+
+export async function generateMarkedAnswerSheetsBlob(
+  payloads: AnswerSheetPayload[],
+): Promise<Blob> {
+  if (!payloads.length) throw new Error("There are no submitted answer sheets to combine.");
+  const { zipped, documentXml } = await loadAnswerSheetTemplate();
+  const filledDocuments = payloads.map((payload) => fillAnswerSheetXml(documentXml, payload));
+  return answerSheetBlob(zipped, mergeAnswerSheetDocuments(filledDocuments));
+}
+
 export async function downloadMarkedAnswerSheet(
   payload: AnswerSheetPayload,
   filename = "CAT-answer-sheet.docx",
 ): Promise<void> {
   const anchor = document.createElement("a");
   const blob = await generateMarkedAnswerSheetBlob(payload);
+  const url = URL.createObjectURL(blob);
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+export async function downloadMarkedAnswerSheets(
+  payloads: AnswerSheetPayload[],
+  filename = "CAT-answer-sheets.docx",
+): Promise<void> {
+  const anchor = document.createElement("a");
+  const blob = await generateMarkedAnswerSheetsBlob(payloads);
   const url = URL.createObjectURL(blob);
   anchor.href = url;
   anchor.download = filename;
