@@ -921,6 +921,9 @@ export function CatManagementPanel() {
                     toast.success("CAT linked to course unit");
                     await queryClient.invalidateQueries({ queryKey: ["admin", "cat-assessments"] });
                   }}
+                  onReused={async () => {
+                    await queryClient.invalidateQueries({ queryKey: ["admin", "cat-assessments"] });
+                  }}
                 />
               ))}
             </div>
@@ -1294,6 +1297,7 @@ function CatResultCard({
   units,
   onSaveChanges,
   onUnitChanged,
+  onReused,
 }: {
   cat: AdminCat;
   units: {
@@ -1306,6 +1310,7 @@ function CatResultCard({
   }[];
   onSaveChanges: (values: CatEditValues) => Promise<void>;
   onUnitChanged: (assessmentId: string, unitId: string) => Promise<void>;
+  onReused: () => Promise<void>;
 }) {
   const now = Date.now();
   const submittedAttempts = cat.attempts.filter((attempt) => attempt.submittedAt);
@@ -1394,6 +1399,13 @@ function CatResultCard({
         cat={cat}
         onSaveChanges={onSaveChanges}
       />
+      {cat.unitId && (
+        <ReuseCatAssignment
+          cat={cat}
+          unit={units.find((unit) => unit.id === cat.unitId) ?? null}
+          onReused={onReused}
+        />
+      )}
       {cat.instructions && <p className="whitespace-pre-wrap text-sm">{cat.instructions}</p>}
       {cat.downloadFilePath && cat.downloadFileName && (
         <CatDownloadButton
@@ -1469,6 +1481,269 @@ function CatResultCard({
         <p className="border-t pt-3 text-sm text-muted-foreground">No student attempts yet.</p>
       )}
     </article>
+  );
+}
+
+function ReuseCatAssignment({
+  cat,
+  unit,
+  onReused,
+}: {
+  cat: AdminCat;
+  unit: {
+    id: string;
+    title: string;
+    code: string | null;
+    course_id: string;
+    level_id: string | null;
+    level: { name: string } | null;
+  } | null;
+  onReused: () => Promise<void>;
+}) {
+  const queryClient = useQueryClient();
+  const [studentSearch, setStudentSearch] = useState("");
+  const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
+  const [openImmediately, setOpenImmediately] = useState(true);
+  const [opensAt, setOpensAt] = useState("");
+  const [closesAt, setClosesAt] = useState(() =>
+    dateTimeLocalValue(new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()),
+  );
+  const effectiveLevelIds = unit?.level_id ? [unit.level_id] : cat.levelIds;
+  const studentsQuery = useQuery({
+    queryKey: ["admin", "cat-reuse-students", cat.courseId, effectiveLevelIds],
+    enabled: Boolean(unit),
+    queryFn: async () => {
+      const [studentsResult, enrollmentsResult, onlineEnrollmentsResult] = await Promise.all([
+        supabase
+          .from("students")
+          .select("id,student_number,first_name,middle_name,last_name,level_id")
+          .eq("course_id", cat.courseId)
+          .eq("status", "active"),
+        supabase
+          .from("enrollments")
+          .select("student_id,level_id")
+          .eq("course_id", cat.courseId)
+          .eq("status", "active"),
+        supabase
+          .from("online_course_enrollments")
+          .select("student_id,level_id")
+          .eq("course_id", cat.courseId)
+          .eq("status", "active"),
+      ]);
+      if (studentsResult.error) throw studentsResult.error;
+      if (enrollmentsResult.error) throw enrollmentsResult.error;
+      if (onlineEnrollmentsResult.error) throw onlineEnrollmentsResult.error;
+
+      const enrollments = [...enrollmentsResult.data, ...onlineEnrollmentsResult.data];
+      const assignedStudentIds = new Set(
+        enrollments.filter((entry) => entry.level_id).map((entry) => entry.student_id),
+      );
+      const studentIds = new Set(
+        enrollments
+          .filter(
+            (entry) =>
+              !effectiveLevelIds.length ||
+              (entry.level_id !== null && effectiveLevelIds.includes(entry.level_id)),
+          )
+          .map((entry) => entry.student_id),
+      );
+      for (const student of studentsResult.data) {
+        if (
+          !assignedStudentIds.has(student.id) &&
+          (!effectiveLevelIds.length ||
+            (student.level_id !== null && effectiveLevelIds.includes(student.level_id)))
+        ) {
+          studentIds.add(student.id);
+        }
+      }
+
+      return studentsResult.data
+        .filter((student) => studentIds.has(student.id))
+        .sort((left, right) => {
+          const leftName = [left.last_name, left.first_name].filter(Boolean).join(" ");
+          const rightName = [right.last_name, right.first_name].filter(Boolean).join(" ");
+          return leftName.localeCompare(rightName);
+        });
+    },
+  });
+  const students = studentsQuery.data ?? [];
+  const visibleStudents = students.filter((student) =>
+    [student.student_number, student.first_name, student.middle_name, student.last_name]
+      .filter(Boolean)
+      .join(" ")
+      .toLocaleLowerCase()
+      .includes(studentSearch.trim().toLocaleLowerCase()),
+  );
+  const reuseMutation = useMutation({
+    mutationFn: async () => {
+      if (!unit?.code?.trim()) {
+        throw new Error("Add a unit code before reusing this CAT.");
+      }
+      if (!selectedStudentIds.length) throw new Error("Select at least one student.");
+      if (selectedStudentIds.length > 500) {
+        throw new Error("A CAT can be assigned to at most 500 students at once.");
+      }
+      const now = new Date();
+      const openingTime = openImmediately ? now : new Date(opensAt);
+      const closingTime = new Date(closesAt);
+      if (
+        !Number.isFinite(openingTime.getTime()) ||
+        !Number.isFinite(closingTime.getTime()) ||
+        (!openImmediately && openingTime.getTime() <= now.getTime()) ||
+        closingTime.getTime() <= openingTime.getTime()
+      ) {
+        throw new Error(
+          "Choose a future opening time and a closing time later than the opening time.",
+        );
+      }
+      const { error } = await supabase.rpc("create_targeted_cat_assessment", {
+        _course_id: cat.courseId,
+        _title: cat.title,
+        _name: cat.name,
+        _level_ids: effectiveLevelIds,
+        _instructions: cat.instructions,
+        _duration_minutes: cat.durationMinutes,
+        _opens_at: openImmediately ? null : openingTime.toISOString(),
+        _closes_at: closingTime.toISOString(),
+        _questions: cat.questions.map((question) => ({
+          prompt: question.prompt,
+          option_a: question.options.A,
+          option_b: question.options.B,
+          option_c: question.options.C,
+          option_d: question.options.D,
+          correct_option: question.correctOption,
+          points: question.points,
+        })),
+        _download_file_path: cat.downloadFilePath,
+        _download_file_name: cat.downloadFileName,
+        _unit_id: unit.id,
+        _student_ids: selectedStudentIds,
+      });
+      if (error) throw error;
+    },
+    onSuccess: async () => {
+      toast.success("CAT copy published for selected students");
+      setSelectedStudentIds([]);
+      setStudentSearch("");
+      await Promise.all([
+        onReused(),
+        queryClient.invalidateQueries({ queryKey: ["admin", "cat-results"] }),
+      ]);
+    },
+    onError: (error: Error) =>
+      toast.error("Could not publish CAT for selected students", { description: error.message }),
+  });
+
+  return (
+    <details className="rounded-lg border bg-muted/20 p-3">
+      <summary className="cursor-pointer text-sm font-semibold text-brand">
+        Reuse CAT and answer scheme for other students
+      </summary>
+      <div className="mt-3 space-y-3">
+        <p className="text-sm text-muted-foreground">
+          Creates a separate copy with the same questions, answer key, unit, and downloadable paper.
+          The original CAT and its results stay unchanged.
+        </p>
+        {!unit ? (
+          <p role="alert" className="text-sm text-destructive">
+            Link this CAT to a course unit before reusing it.
+          </p>
+        ) : !unit.code?.trim() ? (
+          <p role="alert" className="text-sm text-destructive">
+            Add a unit code before reusing this CAT.
+          </p>
+        ) : (
+          <>
+            <Input
+              aria-label="Search students for reused CAT"
+              placeholder="Search students by name or student number"
+              value={studentSearch}
+              onChange={(event) => setStudentSearch(event.target.value)}
+            />
+            {studentsQuery.isLoading ? (
+              <p className="text-sm text-muted-foreground">Loading eligible students…</p>
+            ) : studentsQuery.error ? (
+              <p role="alert" className="text-sm text-destructive">
+                Could not load eligible students: {studentsQuery.error.message}
+              </p>
+            ) : visibleStudents.length ? (
+              <div className="max-h-56 space-y-1 overflow-y-auto rounded-md border bg-background p-2">
+                {visibleStudents.map((student) => (
+                  <label
+                    key={student.id}
+                    className="flex items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedStudentIds.includes(student.id)}
+                      onChange={(event) =>
+                        setSelectedStudentIds((current) =>
+                          event.target.checked
+                            ? [...new Set([...current, student.id])]
+                            : current.filter((id) => id !== student.id),
+                        )
+                      }
+                    />
+                    {[student.first_name, student.middle_name, student.last_name]
+                      .filter(Boolean)
+                      .join(" ")}{" "}
+                    · {student.student_number}
+                  </label>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                {students.length
+                  ? "No students match your search."
+                  : "No active students are enrolled in this CAT’s course and level."}
+              </p>
+            )}
+            <p className="text-xs text-muted-foreground" aria-live="polite">
+              {selectedStudentIds.length} selected · the original CAT will not be changed.
+            </p>
+            <label className="flex items-center gap-2 text-sm font-medium">
+              <input
+                type="checkbox"
+                checked={openImmediately}
+                onChange={(event) => setOpenImmediately(event.target.checked)}
+              />
+              Open immediately for selected students
+            </label>
+            {!openImmediately && (
+              <label className="grid gap-1 text-sm font-medium">
+                Opens (local date and time)
+                <Input
+                  type="datetime-local"
+                  min={getDateTimeLocalMinimum()}
+                  value={opensAt}
+                  onChange={(event) => setOpensAt(event.target.value)}
+                />
+              </label>
+            )}
+            <label className="grid gap-1 text-sm font-medium">
+              Closes (local date and time)
+              <Input
+                required
+                type="datetime-local"
+                min={getDateTimeLocalMinimum(openImmediately ? undefined : opensAt)}
+                value={closesAt}
+                onChange={(event) => setClosesAt(event.target.value)}
+              />
+            </label>
+            <Button
+              type="button"
+              disabled={!selectedStudentIds.length || reuseMutation.isPending}
+              loading={reuseMutation.isPending}
+              onClick={() => reuseMutation.mutate()}
+            >
+              {reuseMutation.isPending
+                ? "Publishing CAT copy…"
+                : "Publish CAT copy to selected students"}
+            </Button>
+          </>
+        )}
+      </div>
+    </details>
   );
 }
 

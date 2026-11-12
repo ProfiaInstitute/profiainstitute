@@ -30,6 +30,9 @@ verify_jwt = true
 [functions.admin-send-email]
 verify_jwt = true
 
+[functions.admin-reply-contact-message]
+verify_jwt = true
+
 [functions.generate-fee-statement-template]
 verify_jwt = true
 

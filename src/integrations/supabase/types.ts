@@ -571,6 +571,50 @@ export type Database = {
         };
         Relationships: [];
       };
+      contact_message_replies: {
+        Row: {
+          attachment_names: string[];
+          body: string;
+          created_at: string;
+          id: string;
+          message_id: string;
+          sender_id: string;
+          sent_at: string | null;
+          status: string;
+          subject: string;
+        };
+        Insert: {
+          attachment_names?: string[];
+          body: string;
+          created_at?: string;
+          id?: string;
+          message_id: string;
+          sender_id: string;
+          sent_at?: string | null;
+          status?: string;
+          subject: string;
+        };
+        Update: {
+          attachment_names?: string[];
+          body?: string;
+          created_at?: string;
+          id?: string;
+          message_id?: string;
+          sender_id?: string;
+          sent_at?: string | null;
+          status?: string;
+          subject?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "contact_message_replies_message_id_fkey";
+            columns: ["message_id"];
+            isOneToOne: false;
+            referencedRelation: "contact_messages";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       course_levels: {
         Row: {
           code: string | null;

@@ -539,6 +539,24 @@ create policy "contact staff upd" on public.contact_messages for update to authe
 create policy "contact staff del" on public.contact_messages for delete to authenticated using (public.has_role(auth.uid(),'super_admin'));
 create trigger t1 before update on public.contact_messages for each row execute function public.touch_updated_at();
 
+create table public.contact_message_replies(
+  id uuid primary key default gen_random_uuid(),
+  message_id uuid not null references public.contact_messages(id) on delete cascade,
+  sender_id uuid not null references auth.users(id),
+  subject text not null,
+  body text not null,
+  attachment_names text[] not null default '{}',
+  status text not null default 'pending' check (status in ('pending','sent','failed')),
+  created_at timestamptz not null default now(),
+  sent_at timestamptz);
+create index contact_message_replies_message_idx on public.contact_message_replies(message_id,created_at);
+alter table public.contact_message_replies enable row level security;
+revoke all on public.contact_message_replies from public, anon, authenticated;
+grant select on public.contact_message_replies to authenticated;
+grant all on public.contact_message_replies to service_role;
+create policy "contact message replies staff read" on public.contact_message_replies for select to authenticated
+  using (public.has_any_role(auth.uid(), array['super_admin','admissions_admin']::public.app_role[]));
+
 create or replace function public.claim_first_super_admin() returns boolean language plpgsql security definer set search_path=public as $$
 begin
   if auth.uid() is null then return false; end if;

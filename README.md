@@ -2566,7 +2566,11 @@ added to the editable form so staff can select each correct answer. Incomplete
 detected question blocks are imported with blank fields for staff review.
 The **Assignments → CAT results** view filters submitted answer sheets by
 course, level, unit, and CAT, and supports individual downloads or one combined
-Word document for all submitted students in the selected CAT.
+Word document for all submitted students in the selected CAT. Existing CATs can
+also be reused from CAT management to publish a separate copy with the same
+questions, answer key, unit, and downloadable paper to selected eligible
+students, either immediately or on a schedule; the original CAT and its results
+remain unchanged.
 Apply `drizzle/migrations/0057_individual_cat_targets.sql` to allow admins to
 create a CAT for selected active students instead of the full selected course
 levels. Individual recipients are checked against active course and level
@@ -2957,13 +2961,16 @@ undelivered.
 
 Apply `drizzle/migrations/0050_admission_letter_data.sql` and
 `drizzle/migrations/0051_admin_email_sharing.sql`, then deploy the
-`supabase/functions/admin-send-email` Edge Function. It uses the existing
-`RESEND_API_KEY` and `SCHOOL_EMAIL_FROM` secrets. Super Admins and Admissions
-Admins can send an email to one address with selected application/student
-documents, admission letters, fee statements, receipts, and up to 10 files
-from their computer (5 MB each, 15 MB total). Attachments are staged in a
-private bucket and removed after the send attempt. Keep provider and
-service-role credentials out of the browser and source control.
+`supabase/functions/admin-send-email` Edge Function. Apply
+`drizzle/migrations/0059_contact_message_replies.sql` after migrations 0050–0058
+and deploy
+`supabase/functions/admin-reply-contact-message` to enable full contact-message
+reading and replies in Admin → Messages. Replies are sent to the email stored
+with the original message and support up to 10 attachments (5 MB each, 15 MB
+total). Successful replies are retained in the message thread. Both functions
+use the existing `RESEND_API_KEY` and `SCHOOL_EMAIL_FROM` secrets. Attachments
+are staged in a private bucket and removed after the send attempt. Keep provider
+and service-role credentials out of the browser and source control.
 
 ### Profia-branded authentication emails
 
