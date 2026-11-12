@@ -4,6 +4,7 @@ import { ArrowDownToLine } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
 import {
   buildAnswerSheetQuestionList,
@@ -19,11 +20,16 @@ function safeFilePart(value: string) {
   return value.replace(/[^a-z0-9-]+/gi, "-").replace(/^-|-$/g, "");
 }
 
+function normalizeCatSearch(value: string) {
+  return value.toLocaleLowerCase().replace(/[\s_-]+/g, "");
+}
+
 export function CatResultsPanel() {
   const [courseId, setCourseId] = useState("");
   const [levelId, setLevelId] = useState("");
   const [unitId, setUnitId] = useState("");
   const [assessmentId, setAssessmentId] = useState("");
+  const [catSearch, setCatSearch] = useState("");
   const [downloadingAttemptId, setDownloadingAttemptId] = useState("");
   const [downloadingAll, setDownloadingAll] = useState(false);
 
@@ -77,6 +83,10 @@ export function CatResultsPanel() {
       submittedAttempts: cat.attempts.filter((attempt) => attempt.submittedAt),
     }))
     .filter(({ submittedAttempts }) => submittedAttempts.length);
+  const normalizedCatSearch = normalizeCatSearch(catSearch.trim());
+  const matchingCats = catsWithSubmittedAttempts.filter(({ cat }) =>
+    [cat.name, cat.title].some((value) => normalizeCatSearch(value).includes(normalizedCatSearch)),
+  );
   const selectedResult = catsWithSubmittedAttempts.find(({ cat }) => cat.id === assessmentId);
   const submittedAttempts = selectedResult?.submittedAttempts ?? [];
   const canDownloadSheets = Boolean(selectedUnit?.code?.trim());
@@ -182,6 +192,7 @@ export function CatResultsPanel() {
                   setLevelId("");
                   setUnitId("");
                   setAssessmentId("");
+                  setCatSearch("");
                 }}
               >
                 <option value="">Select course</option>
@@ -202,6 +213,7 @@ export function CatResultsPanel() {
                   setLevelId(event.target.value);
                   setUnitId("");
                   setAssessmentId("");
+                  setCatSearch("");
                 }}
               >
                 <option value="">
@@ -228,6 +240,7 @@ export function CatResultsPanel() {
                 onChange={(event) => {
                   setUnitId(event.target.value);
                   setAssessmentId("");
+                  setCatSearch("");
                 }}
               >
                 <option value="">{unitsQuery.isLoading ? "Loading units…" : "Select unit"}</option>
@@ -245,6 +258,19 @@ export function CatResultsPanel() {
               </p>
             )}
             <label className="grid gap-1 text-sm font-medium">
+              Search CAT name
+              <Input
+                type="search"
+                placeholder="Search CAT 1, CAT 2, or title"
+                value={catSearch}
+                disabled={!unitId}
+                onChange={(event) => {
+                  setCatSearch(event.target.value);
+                  setAssessmentId("");
+                }}
+              />
+            </label>
+            <label className="grid gap-1 text-sm font-medium">
               Completed CAT
               <select
                 className={selectClass}
@@ -253,13 +279,23 @@ export function CatResultsPanel() {
                 onChange={(event) => setAssessmentId(event.target.value)}
               >
                 <option value="">Select CAT</option>
-                {catsWithSubmittedAttempts.map(({ cat, submittedAttempts: attempts }) => (
+                {matchingCats.map(({ cat, submittedAttempts: attempts }) => (
                   <option key={cat.id} value={cat.id}>
-                    {cat.title} · {attempts.length} submitted
+                    {cat.name}
+                    {cat.title.toLocaleLowerCase() !== cat.name.toLocaleLowerCase()
+                      ? ` · ${cat.title}`
+                      : ""}
+                    {" · "}
+                    {attempts.length} submitted
                   </option>
                 ))}
               </select>
             </label>
+            {unitId && catSearch.trim() && !matchingCats.length && (
+              <p className="text-sm text-muted-foreground sm:col-span-2">
+                No completed CAT matches “{catSearch}”. Search checks both the CAT name and title.
+              </p>
+            )}
           </div>
 
           {unitId && !unitsQuery.isLoading && !catsWithSubmittedAttempts.length && (

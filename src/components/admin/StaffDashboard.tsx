@@ -46,6 +46,7 @@ import { ManagementPanel } from "@/components/admin/ManagementPanel";
 import { FaqManagementPanel } from "@/components/admin/FaqManagementPanel";
 import { StudentProgressionPanel } from "@/components/admin/StudentProgressionPanel";
 import { AssignmentSubmissionsPanel } from "@/components/admin/AssignmentSubmissionsPanel";
+import { ContactMessagesPanel } from "@/components/admin/ContactMessagesPanel";
 import { CatManagementPanel } from "@/components/admin/CatManagementPanel";
 import { CatResultsPanel } from "@/components/admin/CatResultsPanel";
 import { OnlineCourseLmsPanel } from "@/components/admin/OnlineCourseLmsPanel";
@@ -3347,7 +3348,7 @@ function DataDirectory({ section }: { section: DashboardSection }) {
   const config = configuration[section];
   const query = useQuery({
     queryKey: ["admin", "directory", section],
-    enabled: !!config,
+    enabled: !!config && section !== "messages",
     queryFn: async () => {
       let data: unknown[] | null = null;
       let error: { message: string } | null = null;
@@ -3471,6 +3472,7 @@ function DataDirectory({ section }: { section: DashboardSection }) {
         detail="Ask a Super Admin to check your role permissions."
       />
     );
+  if (section === "messages") return <ContactMessagesPanel />;
   if (query.isLoading) return <LoadingState />;
   if (query.error) return <ErrorPanel error={query.error} retry={() => query.refetch()} />;
   async function invalidatePublicContent() {
@@ -3878,17 +3880,13 @@ function DataDirectory({ section }: { section: DashboardSection }) {
                                     ? "Saving…"
                                     : "Save charge"
                                   : "Edit charge"
-                                : section === "messages"
-                                  ? row["status"] === "new"
-                                    ? "Mark responded"
-                                    : "Reopen"
-                                  : section === "articles"
-                                    ? row["status"] === "published"
-                                      ? "Unpublish"
-                                      : "Publish"
-                                    : row["published"]
-                                      ? "Deactivate"
-                                      : "Activate"}
+                                : section === "articles"
+                                  ? row["status"] === "published"
+                                    ? "Unpublish"
+                                    : "Publish"
+                                  : row["published"]
+                                    ? "Deactivate"
+                                    : "Activate"}
                             </Button>
                             {section === "fees" && editingFee?.id === String(row["id"]) && (
                               <Button

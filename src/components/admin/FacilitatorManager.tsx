@@ -5,7 +5,20 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
+import type { Tables } from "@/integrations/supabase/types";
 import { useUser } from "@/lib/auth";
+
+type FacilitatorAssignment = Pick<
+  Tables<"facilitator_unit_assignments">,
+  | "id"
+  | "facilitator_id"
+  | "unit_id"
+  | "active"
+  | "can_manage_materials"
+  | "can_manage_assignments"
+  | "can_manage_cats"
+  | "can_manage_results"
+>;
 
 type Permissions = {
   active: boolean;
@@ -22,6 +35,7 @@ const noPermissions: Permissions = {
   can_manage_cats: false,
   can_manage_results: false,
 };
+const noLevelValue = "no-level";
 
 async function getInvitationErrorMessage(error: unknown): Promise<string> {
   if (error instanceof FunctionsHttpError && error.context instanceof Response) {
@@ -48,6 +62,8 @@ export function FacilitatorManager() {
   const { user } = useUser();
   const queryClient = useQueryClient();
   const [email, setEmail] = useState("");
+  const [selectedCourse, setSelectedCourse] = useState("");
+  const [selectedLevel, setSelectedLevel] = useState("");
   const [selectedFacilitator, setSelectedFacilitator] = useState("");
   const [selectedUnit, setSelectedUnit] = useState("");
   const [permissions, setPermissions] = useState(noPermissions);
@@ -55,9 +71,10 @@ export function FacilitatorManager() {
   const directoryQuery = useQuery({
     queryKey: ["admin", "facilitator-management"],
     queryFn: async () => {
-      const [roles, units, assignments] = await Promise.all([
+      const [roles, units, levels, assignments] = await Promise.all([
         supabase.from("user_roles").select("user_id").eq("role", "facilitator"),
         supabase.from("course_units").select("id,course_id,title,level_id").order("title"),
+        supabase.from("course_levels").select("id,course_id,name").order("name"),
         supabase
           .from("facilitator_unit_assignments")
           .select(
@@ -66,6 +83,7 @@ export function FacilitatorManager() {
       ]);
       if (roles.error) throw roles.error;
       if (units.error) throw units.error;
+      if (levels.error) throw levels.error;
       if (assignments.error) throw assignments.error;
       const userIds = [...new Set(roles.data.map((role) => role.user_id))];
       const courseIds = [...new Set(units.data.map((unit) => unit.course_id))];
@@ -82,6 +100,7 @@ export function FacilitatorManager() {
       return {
         facilitators: profiles.data ?? [],
         units: units.data,
+        levels: levels.data,
         assignments: assignments.data,
         courses: courses.data ?? [],
       };
@@ -107,6 +126,37 @@ export function FacilitatorManager() {
     () => new Map(directoryQuery.data?.courses.map((course) => [course.id, course.title]) ?? []),
     [directoryQuery.data?.courses],
   );
+  const availableLevels =
+    directoryQuery.data?.levels?.filter((level) => level.course_id === selectedCourse) ?? [];
+  const availableUnits =
+    directoryQuery.data?.units?.filter(
+      (unit) =>
+        unit.course_id === selectedCourse &&
+        (selectedLevel === noLevelValue ? unit.level_id === null : unit.level_id === selectedLevel),
+    ) ?? [];
+
+  function editAssignment(row: FacilitatorAssignment) {
+    const unit = directoryQuery.data?.units.find((item) => item.id === row.unit_id);
+    if (!unit) {
+      toast.error("Could not find the course unit for this assignment.");
+      return;
+    }
+    setSelectedCourse(unit.course_id);
+    setSelectedLevel(unit.level_id ?? noLevelValue);
+    setSelectedUnit(unit.id);
+    setSelectedFacilitator(row.facilitator_id);
+    setPermissions({
+      active: row.active,
+      can_manage_materials: row.can_manage_materials,
+      can_manage_assignments: row.can_manage_assignments,
+      can_manage_cats: row.can_manage_cats,
+      can_manage_results: row.can_manage_results,
+    });
+    document.getElementById("facilitator-unit-assignment")?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+  }
 
   async function invite() {
     const normalizedEmail = email.trim().toLowerCase();
@@ -200,26 +250,55 @@ export function FacilitatorManager() {
       </section>
       <section className="space-y-4 rounded-xl border bg-card p-5 shadow-card">
         <div>
-          <h2 className="font-semibold text-brand">Assign units and enable teaching tools</h2>
+          <h2 className="font-semibold text-brand">Assign or edit a facilitator unit</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Facilitators only see students enrolled in the level of their assigned unit. Enable each
-            activity separately.
+            Choose a course, level, unit, and facilitator. Existing assignments can be edited here.
+            Facilitators only see students enrolled in the level of their assigned unit.
           </p>
         </div>
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div id="facilitator-unit-assignment" className="grid gap-3 sm:grid-cols-2">
           <label className="grid gap-1.5 text-sm font-medium">
-            Facilitator
+            Course
             <select
               className="h-10 rounded-md border bg-background px-3"
-              value={selectedFacilitator}
-              onChange={(event) => setSelectedFacilitator(event.target.value)}
+              value={selectedCourse}
+              onChange={(event) => {
+                setSelectedCourse(event.target.value);
+                setSelectedLevel("");
+                setSelectedUnit("");
+              }}
             >
-              <option value="">Select facilitator</option>
-              {directoryQuery.data.facilitators.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.full_name || item.email || item.id}
+              <option value="">Select course</option>
+              {directoryQuery.data.courses
+                .slice()
+                .sort((left, right) => left.title.localeCompare(right.title))
+                .map((course) => (
+                  <option key={course.id} value={course.id}>
+                    {course.title}
+                  </option>
+                ))}
+            </select>
+          </label>
+          <label className="grid gap-1.5 text-sm font-medium">
+            Level
+            <select
+              className="h-10 rounded-md border bg-background px-3"
+              value={selectedLevel}
+              disabled={!selectedCourse}
+              onChange={(event) => {
+                setSelectedLevel(event.target.value);
+                setSelectedUnit("");
+              }}
+            >
+              <option value="">Select level</option>
+              {availableLevels.map((level) => (
+                <option key={level.id} value={level.id}>
+                  {level.name}
                 </option>
               ))}
+              {directoryQuery.data.units.some(
+                (unit) => unit.course_id === selectedCourse && unit.level_id === null,
+              ) && <option value={noLevelValue}>Units without a level</option>}
             </select>
           </label>
           <label className="grid gap-1.5 text-sm font-medium">
@@ -227,12 +306,29 @@ export function FacilitatorManager() {
             <select
               className="h-10 rounded-md border bg-background px-3"
               value={selectedUnit}
+              disabled={!selectedCourse || !selectedLevel}
               onChange={(event) => setSelectedUnit(event.target.value)}
             >
               <option value="">Select unit</option>
-              {directoryQuery.data.units.map((unit) => (
+              {availableUnits.map((unit) => (
                 <option key={unit.id} value={unit.id}>
-                  {courseById.get(unit.course_id) ?? "Course"} · {unit.title}
+                  {unit.title}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="grid gap-1.5 text-sm font-medium">
+            Facilitator
+            <select
+              className="h-10 rounded-md border bg-background px-3"
+              value={selectedFacilitator}
+              disabled={!selectedUnit}
+              onChange={(event) => setSelectedFacilitator(event.target.value)}
+            >
+              <option value="">Select facilitator</option>
+              {directoryQuery.data.facilitators.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.full_name || item.email || item.id}
                 </option>
               ))}
             </select>
@@ -278,29 +374,61 @@ export function FacilitatorManager() {
         </Button>
       </section>
       <section className="rounded-xl border bg-card p-5 shadow-card">
-        <h2 className="font-semibold text-brand">Current unit assignments</h2>
-        <ul className="mt-3 divide-y">
-          {directoryQuery.data.assignments.map((row) => {
-            const facilitator = directoryQuery.data.facilitators.find(
-              (item) => item.id === row.facilitator_id,
-            );
-            const unit = directoryQuery.data.units.find((item) => item.id === row.unit_id);
-            return (
-              <li key={row.id} className="flex flex-wrap justify-between gap-2 py-3 text-sm">
-                <span>
-                  {facilitator?.full_name || facilitator?.email || "Facilitator"} ·{" "}
-                  {courseById.get(unit?.course_id ?? "") ?? "Course"} · {unit?.title ?? "Unit"}
-                </span>
-                <span className={row.active ? "text-success" : "text-muted-foreground"}>
-                  {row.active ? "Active" : "Disabled"}
-                </span>
-              </li>
-            );
-          })}
-          {!directoryQuery.data.assignments.length && (
-            <li className="py-3 text-sm text-muted-foreground">No units assigned yet.</li>
-          )}
-        </ul>
+        <h2 className="font-semibold text-brand">Edit facilitator unit assignments</h2>
+        <div className="mt-3 overflow-x-auto rounded-lg border">
+          <table className="w-full min-w-[700px] text-left text-sm">
+            <thead className="bg-muted/40">
+              <tr>
+                <th className="border-b px-3 py-2">Facilitator</th>
+                <th className="border-b px-3 py-2">Course</th>
+                <th className="border-b px-3 py-2">Level</th>
+                <th className="border-b px-3 py-2">Unit</th>
+                <th className="border-b px-3 py-2">Status</th>
+                <th className="border-b px-3 py-2">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {directoryQuery.data.assignments.map((row) => {
+                const facilitator = directoryQuery.data.facilitators.find(
+                  (item) => item.id === row.facilitator_id,
+                );
+                const unit = directoryQuery.data.units.find((item) => item.id === row.unit_id);
+                const levelName = directoryQuery.data.levels.find(
+                  (level) => level.id === unit?.level_id,
+                )?.name;
+                return (
+                  <tr key={row.id} className="border-b last:border-0">
+                    <td className="px-3 py-2">
+                      {facilitator?.full_name || facilitator?.email || "Facilitator"}
+                    </td>
+                    <td className="px-3 py-2">
+                      {courseById.get(unit?.course_id ?? "") ?? "Course"}
+                    </td>
+                    <td className="px-3 py-2">{levelName ?? "No level"}</td>
+                    <td className="px-3 py-2">{unit?.title ?? "Unit"}</td>
+                    <td
+                      className={`px-3 py-2 ${row.active ? "text-success" : "text-muted-foreground"}`}
+                    >
+                      {row.active ? "Active" : "Disabled"}
+                    </td>
+                    <td className="px-3 py-2">
+                      <Button size="sm" variant="outline" onClick={() => editAssignment(row)}>
+                        Edit
+                      </Button>
+                    </td>
+                  </tr>
+                );
+              })}
+              {!directoryQuery.data.assignments.length && (
+                <tr>
+                  <td colSpan={6} className="px-3 py-4 text-muted-foreground">
+                    No units assigned yet.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </section>
     </div>
   );
