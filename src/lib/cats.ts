@@ -89,6 +89,95 @@ export type AdminCat = {
   attempts: AdminCatAttempt[];
 };
 
+export type CatUnitReportRow = {
+  unit: string;
+  student: string;
+  student_number: string;
+  kasneb_number: string;
+  cat_1_score: string;
+  cat_2_score: string;
+  combined_score: string;
+  combined_percentage: number | null;
+};
+
+export function buildCatUnitReportRows(
+  units: { id: string; title: string; code: string | null }[],
+  cats: AdminCat[],
+): CatUnitReportRow[] {
+  const rows: CatUnitReportRow[] = [];
+
+  for (const unit of units) {
+    const studentResults = new Map<
+      string,
+      {
+        studentName: string;
+        studentNumber: string;
+        kasnebNumber: string | null;
+        cat1Score: number;
+        cat1Maximum: number;
+        cat2Score: number;
+        cat2Maximum: number;
+      }
+    >();
+    const unitCats = cats.filter((cat) => cat.unitId === unit.id);
+
+    for (const cat of unitCats) {
+      const catNumber = /\bCAT\s*[-#:]?\s*1\b/i.test(`${cat.name} ${cat.title}`)
+        ? 1
+        : /\bCAT\s*[-#:]?\s*2\b/i.test(`${cat.name} ${cat.title}`)
+          ? 2
+          : null;
+      if (catNumber === null) continue;
+
+      for (const attempt of cat.attempts) {
+        if (!attempt.submittedAt || attempt.score === null || attempt.maxScore === null) continue;
+        const student = studentResults.get(attempt.studentNumber) ?? {
+          studentName: attempt.studentName,
+          studentNumber: attempt.studentNumber,
+          kasnebNumber: attempt.kasnebNumber,
+          cat1Score: 0,
+          cat1Maximum: 0,
+          cat2Score: 0,
+          cat2Maximum: 0,
+        };
+        student.kasnebNumber ??= attempt.kasnebNumber;
+
+        if (catNumber === 1) {
+          student.cat1Score += attempt.score;
+          student.cat1Maximum += attempt.maxScore;
+        } else {
+          student.cat2Score += attempt.score;
+          student.cat2Maximum += attempt.maxScore;
+        }
+        studentResults.set(attempt.studentNumber, student);
+      }
+    }
+
+    for (const student of studentResults.values()) {
+      const combinedScore = student.cat1Score + student.cat2Score;
+      const combinedMaximum = student.cat1Maximum + student.cat2Maximum;
+      rows.push({
+        unit: `${unit.code ? `${unit.code} · ` : ""}${unit.title}`,
+        student: student.studentName,
+        student_number: student.studentNumber,
+        kasneb_number: student.kasnebNumber ?? "",
+        cat_1_score: student.cat1Maximum ? `${student.cat1Score}/${student.cat1Maximum}` : "",
+        cat_2_score: student.cat2Maximum ? `${student.cat2Score}/${student.cat2Maximum}` : "",
+        combined_score: `${combinedScore}/${combinedMaximum}`,
+        combined_percentage:
+          combinedMaximum > 0 ? Number(((combinedScore / combinedMaximum) * 100).toFixed(1)) : null,
+      });
+    }
+  }
+
+  return rows.sort(
+    (left, right) =>
+      left.unit.localeCompare(right.unit) ||
+      left.student.localeCompare(right.student) ||
+      left.student_number.localeCompare(right.student_number),
+  );
+}
+
 function objectValue(value: Json | undefined): Record<string, Json | undefined> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error("The CAT service returned an invalid response.");

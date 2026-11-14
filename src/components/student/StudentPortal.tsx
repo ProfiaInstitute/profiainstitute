@@ -769,8 +769,8 @@ function StudentWorkspace({
   };
 
   return (
-    <div className="student-app-shell student-workspace min-h-screen bg-muted/40">
-      <header className="student-app-header sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-border/70 bg-background/95 px-4 py-3 text-foreground shadow-sm backdrop-blur sm:px-6">
+    <div className="portal-workspace student-app-shell student-workspace min-h-dvh bg-muted/40">
+      <header className="portal-topbar student-app-header sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-border/70 bg-background/95 px-4 py-3 text-foreground backdrop-blur-xl sm:px-6">
         <div className="flex min-w-0 items-center gap-3">
           <a
             href="/"
@@ -893,8 +893,8 @@ function StudentWorkspace({
       )}
       <StudentAnnouncements studentId={student.id} />
       <div className="mx-auto flex max-w-7xl flex-col lg:flex-row">
-        <aside className="hidden border-b bg-card p-4 lg:sticky lg:top-[65px] lg:block lg:h-[calc(100vh-65px)] lg:w-64 lg:shrink-0 lg:border-b-0 lg:border-r">
-          <div className="hidden rounded-xl border bg-cream p-4 lg:block">
+        <aside className="portal-sidebar hidden border-b bg-card p-4 lg:sticky lg:top-[65px] lg:block lg:h-[calc(100vh-65px)] lg:w-64 lg:shrink-0 lg:border-b-0 lg:border-r">
+          <div className="portal-identity-card hidden rounded-2xl border bg-cream p-4 lg:block">
             <p className="text-xs font-semibold uppercase tracking-wide text-primary">My account</p>
             <ProfilePhotoAvatar
               src={profilePhotoQuery.data?.url}
@@ -909,7 +909,7 @@ function StudentWorkspace({
             </p>
           </div>
           <nav
-            className="flex gap-1 overflow-x-auto lg:mt-5 lg:flex-col lg:gap-4"
+            className="portal-sidebar-nav flex gap-1 overflow-x-auto lg:mt-5 lg:flex-col lg:gap-4"
             aria-label="Student portal"
           >
             {visibleGroups.map((group) => (
@@ -925,7 +925,7 @@ function StudentWorkspace({
                       type="button"
                       onClick={() => onSection(id)}
                       aria-current={section === id ? "page" : undefined}
-                      className={`flex shrink-0 items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${section === id ? "bg-accent text-brand shadow-sm ring-1 ring-primary/15" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
+                      className={`portal-nav-link flex shrink-0 items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${section === id ? "is-active bg-accent text-brand shadow-sm ring-1 ring-primary/15" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
                     >
                       <Icon className="h-4 w-4" />
                       {title}
@@ -935,11 +935,11 @@ function StudentWorkspace({
             ))}
           </nav>
         </aside>
-        <main className="student-app-content min-w-0 flex-1 p-4 pb-8 sm:p-6 lg:p-8">
+        <main className="portal-main student-app-content min-w-0 flex-1 p-4 pb-8 sm:p-6 lg:p-8">
           <div
             key={section}
             ref={contentRef}
-            className="dashboard-section-transition mx-auto max-w-5xl"
+            className="portal-content dashboard-section-transition mx-auto max-w-6xl"
           >
             <p className="eyebrow">Student services / {student.student_number}</p>
             <h1 className="mb-6 mt-1 text-2xl font-bold text-brand sm:text-3xl">
@@ -981,7 +981,12 @@ function StudentWorkspace({
                 userId={userId}
               />
             )}
-            {section === "progression" && <StudentProgressionSection student={student} />}
+            {section === "progression" && (
+              <StudentProgressionSection
+                student={student}
+                activeCourseId={activeCourse?.course_id ?? null}
+              />
+            )}
             {section === "feedback" && <StudentFeedbackSection studentId={student.id} />}
             {section === "messages" && (
               <StudentMessagesSection studentId={student.id} userId={userId} />
@@ -1004,7 +1009,7 @@ function StudentWorkspace({
         </main>
       </div>
       <nav
-        className="student-mobile-nav fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t bg-background/95 px-2 pt-1 shadow-[0_-8px_24px_-16px_rgba(20,10,10,0.35)] backdrop-blur-lg lg:hidden"
+        className="portal-mobile-nav student-mobile-nav fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t bg-background/95 px-2 pt-1 backdrop-blur-xl lg:hidden"
         aria-label="Student app"
       >
         {mobileLinks.map((id) => {
@@ -1017,7 +1022,7 @@ function StudentWorkspace({
               type="button"
               onClick={() => onSection(id)}
               aria-current={section === id ? "page" : undefined}
-              className={`flex min-w-0 flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-1 text-[10px] font-semibold ${section === id ? "text-brand" : "text-muted-foreground"}`}
+              className={`portal-mobile-link flex min-w-0 flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-1 text-[10px] font-semibold ${section === id ? "is-active text-brand" : "text-muted-foreground"}`}
             >
               <Icon className="h-5 w-5" />
               <span className="max-w-full truncate">{mobileLabels[id] ?? link.title}</span>
@@ -2369,11 +2374,169 @@ function showReceiptPopup(windowRef: Window, ready: boolean) {
     : `<main role="status" aria-live="polite"><div class="printer"><div class="printer-top"><span class="brand" aria-hidden="true">P</span><span class="home">PROFIA INSTITUTE</span></div><div class="screen"><div class="summary"><div><div class="plan">Fee payment</div><div class="caption">Preparing official receipt</div></div><div class="plan">PDF</div></div><div class="status"><span class="status-mark">•</span>Printing your receipt</div></div><div class="slot"></div></div><div class="paper-window" aria-hidden="true"><div class="paper"><div class="paper-brand">PROFIA INSTITUTE</div><div class="paper-title">OFFICIAL FEE RECEIPT</div><hr class="rule"><div class="paper-line"><span>Document</span><strong>PDF RECEIPT</strong></div><hr class="rule"><div class="paper-line"><strong>Thank you for your payment</strong></div><div class="barcode"></div><div class="order-code">SECURE RECEIPT</div></div></div><p class="message">Preparing your receipt</p><p class="detail">Creating your secure, school-branded PDF…</p></main>`;
 }
 
-function StudentProgressionSection({ student }: { student: Student }) {
+function StudentCourseUnitPicker({ student, courseId }: { student: Student; courseId: string }) {
+  const queryClient = useQueryClient();
+  const [selectedUnitIds, setSelectedUnitIds] = useState<string[]>([]);
+  const unitsQuery = useQuery({
+    queryKey: ["student", "course-unit-selections", student.id, courseId],
+    queryFn: async () => {
+      const [academic, online, units, selections] = await Promise.all([
+        supabase
+          .from("enrollments")
+          .select("level_id")
+          .eq("student_id", student.id)
+          .eq("course_id", courseId)
+          .eq("status", "active"),
+        supabase
+          .from("online_course_enrollments")
+          .select("level_id")
+          .eq("student_id", student.id)
+          .eq("course_id", courseId)
+          .eq("status", "active"),
+        supabase
+          .from("course_units")
+          .select("id,code,title,semester,level_id")
+          .eq("course_id", courseId)
+          .order("sort_order")
+          .order("title"),
+        supabase
+          .from("student_course_units")
+          .select("unit_id")
+          .eq("student_id", student.id)
+          .eq("course_id", courseId),
+      ]);
+      if (academic.error) throw academic.error;
+      if (online.error) throw online.error;
+      if (units.error) throw units.error;
+      if (selections.error) throw selections.error;
+      const activeEnrollments = [...(academic.data ?? []), ...(online.data ?? [])];
+      if (!activeEnrollments.length && student.course_id !== courseId) {
+        throw new Error("You are not actively enrolled in this course.");
+      }
+      const activeLevelIds = new Set(
+        activeEnrollments.flatMap((enrollment) =>
+          enrollment.level_id ? [enrollment.level_id] : [],
+        ),
+      );
+      if (!activeLevelIds.size && student.course_id === courseId && student.level_id) {
+        activeLevelIds.add(student.level_id);
+      }
+      return {
+        units: (units.data ?? []).filter(
+          (unit) =>
+            unit.level_id === null || !activeLevelIds.size || activeLevelIds.has(unit.level_id),
+        ),
+        selectedIds: (selections.data ?? []).map((selection) => selection.unit_id),
+      };
+    },
+  });
+  useEffect(() => {
+    setSelectedUnitIds(unitsQuery.data?.selectedIds ?? []);
+  }, [unitsQuery.data]);
+  const saveUnits = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase.rpc("save_my_course_unit_selections", {
+        _course_id: courseId,
+        _unit_ids: selectedUnitIds,
+      });
+      if (error) throw error;
+    },
+    onSuccess: async () => {
+      toast.success("Your course unit choices are saved");
+      await queryClient.invalidateQueries({
+        queryKey: ["student", "course-unit-selections", student.id, courseId],
+      });
+    },
+    onError: (error) =>
+      toast.error("Could not save your unit choices", { description: error.message }),
+  });
+
+  if (unitsQuery.isLoading)
+    return (
+      <section className="rounded-xl border bg-card p-5 shadow-card">
+        <h2 className="font-semibold text-brand">Choose your course units</h2>
+        <p className="mt-2 text-sm text-muted-foreground">Loading available units…</p>
+      </section>
+    );
+  if (unitsQuery.error)
+    return (
+      <section className="rounded-xl border bg-card p-5 shadow-card">
+        <h2 className="font-semibold text-brand">Choose your course units</h2>
+        <p role="alert" className="mt-2 text-sm text-destructive">
+          Could not load course units: {unitsQuery.error.message}
+        </p>
+      </section>
+    );
+  const units = unitsQuery.data?.units ?? [];
+  return (
+    <section className="rounded-xl border bg-card p-5 shadow-card">
+      <h2 className="font-semibold text-brand">Choose your course units</h2>
+      <p className="mt-1 text-sm text-muted-foreground">
+        Select the units you are taking. You can change your selections at any time.
+      </p>
+      {units.length ? (
+        <ul className="mt-4 grid gap-2 sm:grid-cols-2">
+          {units.map((unit) => (
+            <li key={unit.id}>
+              <label className="flex h-full cursor-pointer gap-2 rounded-lg border p-3 text-sm">
+                <input
+                  type="checkbox"
+                  checked={selectedUnitIds.includes(unit.id)}
+                  onChange={(event) =>
+                    setSelectedUnitIds((current) =>
+                      event.target.checked
+                        ? [...current, unit.id]
+                        : current.filter((id) => id !== unit.id),
+                    )
+                  }
+                />
+                <span>
+                  {unit.code ? `${unit.code} · ` : ""}
+                  {unit.title}
+                  {unit.semester && (
+                    <span className="block text-xs text-muted-foreground">{unit.semester}</span>
+                  )}
+                </span>
+              </label>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="mt-3 text-sm text-muted-foreground">
+          No units have been configured for this course level yet.
+        </p>
+      )}
+      <Button
+        type="button"
+        className="mt-4"
+        disabled={saveUnits.isPending || !units.length}
+        onClick={() => saveUnits.mutate()}
+      >
+        {saveUnits.isPending ? "Saving choices…" : "Save unit choices"}
+      </Button>
+    </section>
+  );
+}
+
+function StudentProgressionSection({
+  student,
+  activeCourseId,
+}: {
+  student: Student;
+  activeCourseId: string | null;
+}) {
   const queryClient = useQueryClient();
   const [levelId, setLevelId] = useState("");
   const [message, setMessage] = useState("");
-  const courseId = student.course_id;
+  const courseId = activeCourseId ?? student.course_id;
+  const studentCoursesQuery = useQuery({
+    queryKey: ["student", "course-enrollments", student.id],
+    queryFn: () => fetchStudentCourses(student),
+    staleTime: 20_000,
+  });
+  const selectedCourse = studentCoursesQuery.data?.find((course) => course.course_id === courseId);
+  const currentLevelId =
+    selectedCourse?.level_id ?? (courseId === student.course_id ? student.level_id : null);
   const levelsQuery = useQuery({
     queryKey: ["student", "course-levels", courseId],
     enabled: Boolean(courseId),
@@ -2440,26 +2603,33 @@ function StudentProgressionSection({ student }: { student: Student }) {
     return (
       <PortalMessage title="Course not assigned" detail="Contact the administration for help." />
     );
-  if (levelsQuery.isLoading || unitsQuery.isLoading || applicationsQuery.isLoading)
+  if (
+    levelsQuery.isLoading ||
+    unitsQuery.isLoading ||
+    applicationsQuery.isLoading ||
+    studentCoursesQuery.isLoading
+  )
     return <Loading />;
-  if (levelsQuery.error || unitsQuery.error || applicationsQuery.error)
+  if (levelsQuery.error || unitsQuery.error || applicationsQuery.error || studentCoursesQuery.error)
     return (
       <ErrorCard
         error={
           levelsQuery.error?.message ??
           unitsQuery.error?.message ??
           applicationsQuery.error?.message ??
+          studentCoursesQuery.error?.message ??
           "Could not load course levels."
         }
         retry={() => {
           void levelsQuery.refetch();
           void unitsQuery.refetch();
           void applicationsQuery.refetch();
+          void studentCoursesQuery.refetch();
         }}
       />
     );
   const levels = levelsQuery.data ?? [];
-  const currentLevel = levels.find((level) => level.id === student.level_id) ?? levels[0];
+  const currentLevel = levels.find((level) => level.id === currentLevelId) ?? levels[0];
   const nextLevels = levels.filter((level) => level.sort_order > (currentLevel?.sort_order ?? 0));
   const names = new Map(levels.map((level) => [level.id, level.name]));
   const hasPending = applicationsQuery.data?.some(
@@ -2467,6 +2637,7 @@ function StudentProgressionSection({ student }: { student: Student }) {
   );
   return (
     <div className="space-y-5">
+      {courseId && <StudentCourseUnitPicker student={student} courseId={courseId} />}
       <section className="rounded-xl border bg-card p-5 shadow-card">
         <h2 className="font-semibold text-brand">Course curriculum by level</h2>
         <div className="mt-4 space-y-3">
@@ -2476,11 +2647,11 @@ function StudentProgressionSection({ student }: { student: Student }) {
               <details
                 key={level.id}
                 className="rounded-lg border p-4"
-                open={level.id === student.level_id}
+                open={level.id === currentLevelId}
               >
                 <summary className="cursor-pointer font-semibold">
                   {level.name}
-                  {level.id === student.level_id ? " · Current level" : ""}
+                  {level.id === currentLevelId ? " · Current level" : ""}
                   {level.total_fee > 0 ? ` · ${formatKES(level.total_fee)}` : ""}
                 </summary>
                 {level.description && (
@@ -2508,94 +2679,96 @@ function StudentProgressionSection({ student }: { student: Student }) {
           })}
         </div>
       </section>
-      <section className="rounded-xl border bg-card p-5 shadow-card">
-        <h2 className="font-semibold text-brand">Apply to progress to another level</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Review the curriculum above before applying. Administration approval is required before
-          your student record and units are moved to the new level.
-        </p>
-        {hasPending ? (
-          <p className="mt-4 rounded-lg bg-muted p-3 text-sm" role="status">
-            Your level application is awaiting review.
+      {courseId === student.course_id && (
+        <section className="rounded-xl border bg-card p-5 shadow-card">
+          <h2 className="font-semibold text-brand">Apply to progress to another level</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Review the curriculum above before applying. Administration approval is required before
+            your student record and units are moved to the new level.
           </p>
-        ) : nextLevels.length ? (
-          <form
-            className="mt-4 grid gap-3"
-            onSubmit={(event) => {
-              event.preventDefault();
-              applyMutation.mutate();
-            }}
-          >
-            <label className="grid gap-1.5 text-sm font-medium">
-              Requested level
-              <select
-                className="h-10 rounded-md border bg-background px-3"
-                required
-                value={levelId}
-                onChange={(event) => setLevelId(event.target.value)}
-              >
-                <option value="">Select a higher level</option>
-                {nextLevels.map((level) => (
-                  <option key={level.id} value={level.id}>
-                    {level.name} ·{" "}
-                    {(unitsQuery.data ?? []).filter((unit) => unit.level_id === level.id).length}{" "}
-                    units
-                  </option>
-                ))}
-              </select>
-            </label>
-            {levelId && (
-              <div className="rounded-lg bg-muted/50 p-3 text-sm">
-                <p className="font-semibold">Units in {names.get(levelId)}:</p>
-                <ul className="mt-2 list-inside list-disc">
-                  {(unitsQuery.data ?? [])
-                    .filter((unit) => unit.level_id === levelId)
-                    .map((unit) => (
-                      <li key={unit.id}>{unit.title}</li>
-                    ))}
-                </ul>
-              </div>
-            )}
-            <Textarea
-              rows={3}
-              maxLength={1000}
-              placeholder="Optional message for the administration"
-              value={message}
-              onChange={(event) => setMessage(event.target.value)}
-            />
-            <Button
-              disabled={applyMutation.isPending || !levelId}
-              loading={applyMutation.isPending}
+          {hasPending ? (
+            <p className="mt-4 rounded-lg bg-muted p-3 text-sm" role="status">
+              Your level application is awaiting review.
+            </p>
+          ) : nextLevels.length ? (
+            <form
+              className="mt-4 grid gap-3"
+              onSubmit={(event) => {
+                event.preventDefault();
+                applyMutation.mutate();
+              }}
             >
-              {applyMutation.isPending ? "Submitting…" : "Submit level application"}
-            </Button>
-          </form>
-        ) : (
-          <p className="mt-4 text-sm text-muted-foreground">
-            No higher published level is currently available for your course.
-          </p>
-        )}
-        {!!applicationsQuery.data?.length && (
-          <div className="mt-5 border-t pt-4">
-            <h3 className="font-semibold text-brand">Application history</h3>
-            <ul className="mt-2 divide-y">
-              {applicationsQuery.data.map((application) => (
-                <li key={application.id} className="py-3 text-sm">
-                  <p className="font-medium">
-                    {names.get(application.level_id) ?? "Course level"} · {application.status}
-                  </p>
-                  {application.admin_message && (
-                    <p className="mt-1 text-muted-foreground">{application.admin_message}</p>
-                  )}
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {new Date(application.created_at).toLocaleDateString("en-KE")}
-                  </p>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </section>
+              <label className="grid gap-1.5 text-sm font-medium">
+                Requested level
+                <select
+                  className="h-10 rounded-md border bg-background px-3"
+                  required
+                  value={levelId}
+                  onChange={(event) => setLevelId(event.target.value)}
+                >
+                  <option value="">Select a higher level</option>
+                  {nextLevels.map((level) => (
+                    <option key={level.id} value={level.id}>
+                      {level.name} ·{" "}
+                      {(unitsQuery.data ?? []).filter((unit) => unit.level_id === level.id).length}{" "}
+                      units
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {levelId && (
+                <div className="rounded-lg bg-muted/50 p-3 text-sm">
+                  <p className="font-semibold">Units in {names.get(levelId)}:</p>
+                  <ul className="mt-2 list-inside list-disc">
+                    {(unitsQuery.data ?? [])
+                      .filter((unit) => unit.level_id === levelId)
+                      .map((unit) => (
+                        <li key={unit.id}>{unit.title}</li>
+                      ))}
+                  </ul>
+                </div>
+              )}
+              <Textarea
+                rows={3}
+                maxLength={1000}
+                placeholder="Optional message for the administration"
+                value={message}
+                onChange={(event) => setMessage(event.target.value)}
+              />
+              <Button
+                disabled={applyMutation.isPending || !levelId}
+                loading={applyMutation.isPending}
+              >
+                {applyMutation.isPending ? "Submitting…" : "Submit level application"}
+              </Button>
+            </form>
+          ) : (
+            <p className="mt-4 text-sm text-muted-foreground">
+              No higher published level is currently available for your course.
+            </p>
+          )}
+          {!!applicationsQuery.data?.length && (
+            <div className="mt-5 border-t pt-4">
+              <h3 className="font-semibold text-brand">Application history</h3>
+              <ul className="mt-2 divide-y">
+                {applicationsQuery.data.map((application) => (
+                  <li key={application.id} className="py-3 text-sm">
+                    <p className="font-medium">
+                      {names.get(application.level_id) ?? "Course level"} · {application.status}
+                    </p>
+                    {application.admin_message && (
+                      <p className="mt-1 text-muted-foreground">{application.admin_message}</p>
+                    )}
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {new Date(application.created_at).toLocaleDateString("en-KE")}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </section>
+      )}
     </div>
   );
 }

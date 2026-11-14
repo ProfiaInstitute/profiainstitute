@@ -97,12 +97,14 @@ export function can(roles: AppRole[] | undefined, allowed: AppRole[]) {
   return roles.includes("super_admin") || roles.some((r) => allowed.includes(r));
 }
 
-export async function signOutWithAudit(): Promise<{ error: Error | null; signedOut: boolean }> {
+export async function signOutWithAudit(
+  scope: "global" | "local" | "others" = "global",
+): Promise<{ error: Error | null; signedOut: boolean }> {
   const [auditResult, presenceResult] = await Promise.allSettled([
     supabase.rpc("log_auth_event", { _event: "sign_out" }),
     supabase.rpc("remove_my_presence"),
   ]);
-  const { error: signOutError } = await supabase.auth.signOut();
+  const { error: signOutError } = await supabase.auth.signOut({ scope });
   if (signOutError) return { error: signOutError, signedOut: false };
 
   const loggingErrors = [auditResult, presenceResult].flatMap((result) => {

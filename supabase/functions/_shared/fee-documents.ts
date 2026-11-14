@@ -340,7 +340,6 @@ async function buildFeePdf({
         color: cream,
       },
     );
-    if (type === "receipt") drawPaidStamp();
     page.drawText(
       type === "receipt"
         ? "PAYMENT RECEIPT"
@@ -363,37 +362,37 @@ async function buildFeePdf({
     }
     y = 695;
   };
-  const drawPaidStamp = () => {
+  const drawPaidStamp = (centerX: number, centerY: number) => {
     page.drawEllipse({
-      x: 520,
-      y: 800,
+      x: centerX,
+      y: centerY,
       xScale: 34,
       yScale: 27,
       borderColor: accent,
       borderWidth: 1.5,
     });
     page.drawEllipse({
-      x: 520,
-      y: 800,
+      x: centerX,
+      y: centerY,
       xScale: 29,
       yScale: 22,
-      borderColor: cream,
+      borderColor: brand,
       borderWidth: 0.7,
     });
     page.drawText("PAID", {
-      x: 505,
-      y: 799,
+      x: centerX - 15,
+      y: centerY - 1,
       size: 13,
       font: bold,
-      color: cream,
+      color: brand,
       rotate: degrees(-7),
     });
     page.drawText("PROFIA  |  VERIFIED", {
-      x: 495,
-      y: 784,
+      x: centerX - 25,
+      y: centerY - 15,
       size: 4.5,
       font,
-      color: cream,
+      color: muted,
     });
   };
   const ensureSpace = (height = 22) => {
@@ -476,70 +475,91 @@ async function buildFeePdf({
       .filter(Boolean)
       .join("  |  ");
 
-    page.drawRectangle({ x: 0, y: 730, width: pageSize[0], height: 112, color: brand });
-    page.drawRectangle({ x: 0, y: 838, width: pageSize[0], height: 4, color: brandDeep });
-    page.drawRectangle({ x: 0, y: 730, width: pageSize[0], height: 4, color: accent });
+    page.drawRectangle({
+      x: 34,
+      y: 739,
+      width: 527,
+      height: 88,
+      color: cream,
+      borderColor: rgb(0.9, 0.86, 0.82),
+      borderWidth: 0.8,
+    });
+    page.drawRectangle({ x: 34, y: 739, width: 7, height: 88, color: brand });
+    page.drawRectangle({ x: 34, y: 824, width: 527, height: 3, color: accent });
     if (logo) {
-      const logoSize = 46;
+      const logoSize = 58;
       const scale = Math.min(logoSize / logo.width, logoSize / logo.height);
-      page.drawRectangle({ x: 38, y: 762, width: 54, height: 54, color: cream });
+      page.drawRectangle({
+        x: 53,
+        y: 754,
+        width: 66,
+        height: 66,
+        color: rgb(1, 1, 1),
+        borderColor: rgb(0.9, 0.86, 0.82),
+        borderWidth: 0.6,
+      });
       page.drawImage(logo, {
-        x: 42 + (logoSize - logo.width * scale) / 2,
-        y: 766 + (logoSize - logo.height * scale) / 2,
+        x: 57 + (logoSize - logo.width * scale) / 2,
+        y: 758 + (logoSize - logo.height * scale) / 2,
         width: logo.width * scale,
         height: logo.height * scale,
       });
     }
-    page.drawText(safeText(documentSettings.institutionName), {
-      x: 108,
-      y: 805,
-      size: 16,
+    const institutionName = safeText(documentSettings.institutionName).toUpperCase();
+    const institutionNameWidth = bold.widthOfTextAtSize(institutionName, 17);
+    const institutionFontSize = institutionNameWidth > 313 ? (17 * 313) / institutionNameWidth : 17;
+    page.drawText(institutionName, {
+      x: 132,
+      y: 799,
+      size: institutionFontSize,
       font: bold,
-      color: rgb(1, 1, 1),
+      color: brand,
     });
-    page.drawText("OFFICIAL FEE PAYMENT RECEIPT", {
-      x: 108,
-      y: 785,
-      size: 8,
+    page.drawText("INSTITUTE OF PROFESSIONALS", {
+      x: 132,
+      y: 783,
+      size: 7,
       font: bold,
-      color: cream,
+      color: accent,
     });
-    for (const [index, contactLine] of wrapText(institutionContacts, font, 6.5, 365)
+    for (const [index, contactLine] of wrapText(institutionContacts, font, 6.5, 305)
       .slice(0, 2)
       .entries()) {
       page.drawText(contactLine, {
-        x: 108,
-        y: 767 - index * 10,
+        x: 132,
+        y: 768 - index * 9,
         size: 6.5,
         font,
-        color: cream,
+        color: muted,
       });
     }
-    page.drawEllipse({
-      x: 515,
-      y: 790,
-      xScale: 34,
-      yScale: 27,
-      borderColor: accent,
-      borderWidth: 1.5,
+    page.drawLine({
+      start: { x: 451, y: 753 },
+      end: { x: 451, y: 812 },
+      thickness: 0.7,
+      color: rgb(0.9, 0.86, 0.82),
     });
-    page.drawEllipse({
-      x: 515,
-      y: 790,
-      xScale: 29,
-      yScale: 22,
-      borderColor: cream,
-      borderWidth: 0.7,
-    });
-    page.drawText("PAID", {
-      x: 500,
-      y: 789,
-      size: 13,
+    page.drawText("OFFICIAL", {
+      x: 467,
+      y: 800,
+      size: 6,
       font: bold,
-      color: cream,
-      rotate: degrees(-7),
+      color: muted,
     });
-    page.drawText("VERIFIED", { x: 500, y: 776, size: 5, font, color: cream });
+    page.drawText("FEE", {
+      x: 467,
+      y: 783,
+      size: 15,
+      font: bold,
+      color: brand,
+    });
+    page.drawText("RECEIPT", {
+      x: 467,
+      y: 766,
+      size: 9,
+      font: bold,
+      color: accent,
+    });
 
     page.drawText("FEE PAYMENT RECEIPT", {
       x: 42,
@@ -711,6 +731,7 @@ async function buildFeePdf({
       font,
       color: muted,
     });
+    drawPaidStamp(506, 225);
   };
 
   if (type === "receipt" && payment) {

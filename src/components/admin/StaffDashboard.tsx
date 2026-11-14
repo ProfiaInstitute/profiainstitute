@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useRef, useState, type FormEvent } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Activity,
@@ -18,6 +18,7 @@ import {
   LogOut,
   Mail,
   Megaphone,
+  Menu,
   MonitorPlay,
   Newspaper,
   Search,
@@ -30,6 +31,7 @@ import {
   Users,
   UsersRound,
   Wallet,
+  X,
   type LucideIcon,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -52,6 +54,7 @@ import { CatResultsPanel } from "@/components/admin/CatResultsPanel";
 import { OnlineCourseLmsPanel } from "@/components/admin/OnlineCourseLmsPanel";
 import { PayHeroSettingsPanel } from "@/components/admin/PayHeroSettingsPanel";
 import { FeeStatementTemplatePanel } from "@/components/admin/FeeStatementTemplatePanel";
+import { FeeBalanceReminderPanel } from "@/components/admin/FeeBalanceReminderPanel";
 import { SiteMediaManager } from "@/components/admin/SiteMediaManager";
 import { SiteCopyManager } from "@/components/admin/SiteCopyManager";
 import { PasswordResetPage } from "@/components/auth/PasswordResetPage";
@@ -467,16 +470,18 @@ export function StaffDashboard() {
     );
 
   return (
-    <div className="admin-workspace min-h-screen bg-muted/40 text-foreground">
-      <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border/70 bg-background/95 px-4 text-foreground shadow-sm backdrop-blur sm:px-6">
+    <div className="admin-workspace min-h-dvh bg-muted/40 text-foreground">
+      <header className="admin-topbar sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border/70 bg-background/95 px-4 text-foreground backdrop-blur-xl sm:px-6">
         <div className="flex items-center gap-3">
           <button
             type="button"
             className="rounded-lg p-2 text-brand hover:bg-accent lg:hidden"
             aria-label="Toggle navigation"
+            aria-expanded={mobileNavOpen}
+            aria-controls="admin-workspace-navigation"
             onClick={() => setMobileNavOpen(!mobileNavOpen)}
           >
-            <LayoutDashboard className="h-5 w-5" />
+            {mobileNavOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </button>
           <a href="/" className="flex items-center gap-2.5">
             <img src="/images/logo.png" alt="" className="h-10 w-auto" />
@@ -524,8 +529,17 @@ export function StaffDashboard() {
         </div>
       </header>
       <div className="mx-auto flex max-w-[1600px]">
+        {mobileNavOpen && (
+          <button
+            type="button"
+            className="fixed inset-x-0 bottom-0 top-16 z-10 bg-brand/20 backdrop-blur-[2px] lg:hidden"
+            aria-label="Close navigation"
+            onClick={() => setMobileNavOpen(false)}
+          />
+        )}
         <aside
-          className={`${mobileNavOpen ? "block" : "hidden"} fixed inset-y-16 left-0 z-20 w-72 overflow-y-auto border-r bg-card p-4 shadow-card lg:sticky lg:top-16 lg:block lg:h-[calc(100vh-4rem)] lg:shrink-0 lg:shadow-none`}
+          id="admin-workspace-navigation"
+          className={`admin-sidebar ${mobileNavOpen ? "block" : "hidden"} fixed inset-y-16 left-0 z-20 w-72 overflow-y-auto border-r bg-card p-4 lg:sticky lg:top-16 lg:block lg:h-[calc(100vh-4rem)] lg:shrink-0`}
         >
           <p className="px-3 pb-2 pt-2 text-xs font-semibold uppercase tracking-widest text-primary">
             Profia workspace
@@ -544,11 +558,12 @@ export function StaffDashboard() {
                       <button
                         key={id}
                         type="button"
+                        aria-current={section === id ? "page" : undefined}
                         onClick={() => {
                           setSection(id);
                           setMobileNavOpen(false);
                         }}
-                        className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition ${section === id ? "bg-accent text-brand shadow-sm ring-1 ring-primary/15" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
+                        className={`admin-nav-link flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium transition ${section === id ? "is-active bg-accent text-brand shadow-sm ring-1 ring-primary/15" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
                       >
                         <Icon className="h-4 w-4 shrink-0" />
                         {title}
@@ -559,7 +574,7 @@ export function StaffDashboard() {
               );
             })}
           </nav>
-          <div className="mt-8 rounded-xl border bg-cream p-4">
+          <div className="admin-account-card mt-8 rounded-2xl border bg-cream p-4">
             <p className="text-xs font-semibold uppercase tracking-wide text-primary">
               Signed in as
             </p>
@@ -568,9 +583,9 @@ export function StaffDashboard() {
             </p>
           </div>
         </aside>
-        <main className="min-w-0 flex-1 p-4 sm:p-6 lg:p-8">
-          <div className="mx-auto max-w-6xl">
-            <div className="mb-6 flex items-center justify-between gap-3">
+        <main className="admin-main min-w-0 flex-1 p-4 sm:p-6 lg:p-8">
+          <div className="mx-auto max-w-7xl">
+            <div className="admin-page-heading mb-7 flex items-center justify-between gap-3">
               <div>
                 <p className="eyebrow">Profia Institute · Administration</p>
                 <h1 className="mt-1 text-2xl font-bold text-brand sm:text-3xl">{sectionTitle}</h1>
@@ -1176,11 +1191,40 @@ function ApplicationsPanel() {
       const { data, error } = await supabase
         .from("applications")
         .select(
-          "id,application_number,first_name,last_name,email,phone,status,created_at,admin_message,study_mode,level_id,courses(title),course_levels(name),intakes(name)",
+          "id,application_number,first_name,last_name,email,phone,status,created_at,admin_message,study_mode,course_id,level_id,courses(title),course_levels(name),intakes(name)",
         )
         .order("created_at", { ascending: false });
       if (error) throw error;
       return data;
+    },
+  });
+  const applicationIds = (appsQuery.data ?? []).map((application) => application.id);
+  const applicationUnitsQuery = useQuery({
+    queryKey: ["admin", "application-unit-selections", applicationIds],
+    enabled: applicationIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("application_unit_selections")
+        .select("application_id,unit_id")
+        .in("application_id", applicationIds);
+      if (error) throw error;
+      const unitIds = [...new Set(data.map((selection) => selection.unit_id))];
+      const { data: units, error: unitsError } = unitIds.length
+        ? await supabase.from("course_units").select("id,code,title").in("id", unitIds)
+        : { data: [], error: null };
+      if (unitsError) throw unitsError;
+      const unitById = new Map(units.map((unit) => [unit.id, unit]));
+      return Object.fromEntries(
+        applicationIds.map((applicationId) => [
+          applicationId,
+          data
+            .filter((selection) => selection.application_id === applicationId)
+            .flatMap((selection) => {
+              const unit = unitById.get(selection.unit_id);
+              return unit ? [{ id: unit.id, title: unit.title, code: unit.code }] : [];
+            }),
+        ]),
+      );
     },
   });
   const enroll = async (id: string) => {
@@ -1230,9 +1274,17 @@ function ApplicationsPanel() {
     "Applied On": app.created_at,
   }));
 
-  if (appsQuery.isLoading) return <LoadingState />;
-  if (appsQuery.error)
-    return <ErrorPanel error={appsQuery.error} retry={() => appsQuery.refetch()} />;
+  if (appsQuery.isLoading || applicationUnitsQuery.isLoading) return <LoadingState />;
+  if (appsQuery.error || applicationUnitsQuery.error)
+    return (
+      <ErrorPanel
+        error={appsQuery.error ?? applicationUnitsQuery.error}
+        retry={() => {
+          void appsQuery.refetch();
+          void applicationUnitsQuery.refetch();
+        }}
+      />
+    );
 
   return (
     <div className="space-y-4">
@@ -1297,6 +1349,41 @@ function ApplicationsPanel() {
               <span>Intake: {relationName(app.intakes)}</span>
               <span>Received: {new Date(app.created_at).toLocaleDateString("en-KE")}</span>
             </div>
+            <div className="mt-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Requested units
+              </p>
+              {(applicationUnitsQuery.data?.[app.id] ?? []).length ? (
+                <ul className="mt-1 flex flex-wrap gap-1.5">
+                  {(applicationUnitsQuery.data?.[app.id] ?? []).map((unit) => (
+                    <li
+                      key={unit.id}
+                      className="rounded-full bg-muted px-2.5 py-1 text-xs text-foreground"
+                    >
+                      {unit.code ? `${unit.code} · ` : ""}
+                      {unit.title}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-1 text-xs text-muted-foreground">No units selected.</p>
+              )}
+              {app.status !== "enrolled" && app.course_id && app.level_id && (
+                <ApplicationUnitEditor
+                  applicationId={app.id}
+                  courseId={app.course_id}
+                  levelId={app.level_id}
+                  selectedUnitIds={(applicationUnitsQuery.data?.[app.id] ?? []).map(
+                    (unit) => unit.id,
+                  )}
+                  onSaved={() =>
+                    queryClient.invalidateQueries({
+                      queryKey: ["admin", "application-unit-selections"],
+                    })
+                  }
+                />
+              )}
+            </div>
             <div className="mt-4 flex flex-wrap items-center gap-2">
               <select
                 aria-label={`Update status for ${app.application_number}`}
@@ -1325,6 +1412,123 @@ function ApplicationsPanel() {
           title="No applications found"
           detail="Try changing the search or status filter."
         />
+      )}
+    </div>
+  );
+}
+
+function ApplicationUnitEditor({
+  applicationId,
+  courseId,
+  levelId,
+  selectedUnitIds,
+  onSaved,
+}: {
+  applicationId: string;
+  courseId: string;
+  levelId: string;
+  selectedUnitIds: string[];
+  onSaved: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [unitIds, setUnitIds] = useState(selectedUnitIds);
+  const unitsQuery = useQuery({
+    queryKey: ["admin", "application-unit-options", courseId, levelId],
+    enabled: open,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("course_units")
+        .select("id,code,title,semester,level_id")
+        .eq("course_id", courseId)
+        .order("sort_order")
+        .order("title");
+      if (error) throw error;
+      return data.filter((unit) => unit.level_id === null || unit.level_id === levelId);
+    },
+  });
+  const saveUnits = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase.rpc("admin_save_application_unit_selections", {
+        _application_id: applicationId,
+        _unit_ids: unitIds,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Application unit choices updated");
+      setOpen(false);
+      onSaved();
+    },
+    onError: (error) =>
+      toast.error("Could not update application units", { description: error.message }),
+  });
+
+  return (
+    <div className="mt-2">
+      {!open ? (
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          onClick={() => {
+            setUnitIds(selectedUnitIds);
+            setOpen(true);
+          }}
+        >
+          Manage application units
+        </Button>
+      ) : (
+        <div className="mt-2 rounded-lg border bg-muted/30 p-3">
+          {unitsQuery.isLoading ? (
+            <p className="text-sm text-muted-foreground">Loading course units…</p>
+          ) : unitsQuery.error ? (
+            <p role="alert" className="text-sm text-destructive">
+              Could not load course units: {unitsQuery.error.message}
+            </p>
+          ) : unitsQuery.data?.length ? (
+            <ul className="grid gap-2 sm:grid-cols-2">
+              {unitsQuery.data.map((unit) => (
+                <li key={unit.id}>
+                  <label className="flex cursor-pointer gap-2 rounded-md bg-background p-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={unitIds.includes(unit.id)}
+                      onChange={(event) =>
+                        setUnitIds((current) =>
+                          event.target.checked
+                            ? [...current, unit.id]
+                            : current.filter((id) => id !== unit.id),
+                        )
+                      }
+                    />
+                    <span>
+                      {unit.code ? `${unit.code} · ` : ""}
+                      {unit.title}
+                      {unit.semester && (
+                        <span className="block text-xs text-muted-foreground">{unit.semester}</span>
+                      )}
+                    </span>
+                  </label>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm text-muted-foreground">No units are configured for this level.</p>
+          )}
+          <div className="mt-3 flex gap-2">
+            <Button
+              type="button"
+              size="sm"
+              disabled={saveUnits.isPending || unitsQuery.isLoading || !!unitsQuery.error}
+              onClick={() => saveUnits.mutate()}
+            >
+              {saveUnits.isPending ? "Saving…" : "Save unit choices"}
+            </Button>
+            <Button type="button" size="sm" variant="ghost" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -1401,11 +1605,11 @@ function StudentsPanel({
       const [academic, online] = await Promise.all([
         supabase
           .from("enrollments")
-          .select("student_id,course_id,status")
+          .select("student_id,course_id,level_id,status")
           .in("student_id", studentIds),
         supabase
           .from("online_course_enrollments")
-          .select("student_id,course_id,status")
+          .select("student_id,course_id,level_id,status")
           .in("student_id", studentIds),
       ]);
       if (academic.error) throw academic.error;
@@ -1420,36 +1624,89 @@ function StudentsPanel({
           ...(online.data ?? []).map((enrollment) => enrollment.course_id),
         ]),
       ];
+      const levelIds = [
+        ...new Set([
+          ...(studentsQuery.data ?? []).flatMap((student) =>
+            student.level_id ? [student.level_id] : [],
+          ),
+          ...(academic.data ?? []).flatMap((enrollment) =>
+            enrollment.level_id ? [enrollment.level_id] : [],
+          ),
+          ...(online.data ?? []).flatMap((enrollment) =>
+            enrollment.level_id ? [enrollment.level_id] : [],
+          ),
+        ]),
+      ];
       const { data: courses, error: coursesError } = courseIds.length
         ? await supabase.from("courses").select("id,title").in("id", courseIds)
         : { data: [], error: null };
       if (coursesError) throw coursesError;
+      const { data: levels, error: levelsError } = levelIds.length
+        ? await supabase.from("course_levels").select("id,name").in("id", levelIds)
+        : { data: [], error: null };
+      if (levelsError) throw levelsError;
       const courseNames = new Map(courses.map((course) => [course.id, course.title]));
+      const levelNames = new Map(levels.map((level) => [level.id, level.name]));
       const rows = new Map<
         string,
-        Map<string, { title: string; modes: Set<string>; statuses: Set<string> }>
+        Map<
+          string,
+          {
+            title: string;
+            modes: Set<string>;
+            statuses: Set<string>;
+            levelIds: Set<string>;
+            levelNames: Set<string>;
+          }
+        >
       >();
-      const addCourse = (studentId: string, courseId: string, mode: string, status: string) => {
+      const addCourse = (
+        studentId: string,
+        courseId: string,
+        levelId: string | null,
+        mode: string,
+        status: string,
+      ) => {
         const studentCourses = rows.get(studentId) ?? new Map();
         const course = studentCourses.get(courseId) ?? {
           title: courseNames.get(courseId) ?? "Course no longer available",
           modes: new Set<string>(),
           statuses: new Set<string>(),
+          levelIds: new Set<string>(),
+          levelNames: new Set<string>(),
         };
         course.modes.add(mode);
         course.statuses.add(status);
+        if (levelId) {
+          course.levelIds.add(levelId);
+          const levelName = levelNames.get(levelId);
+          if (levelName) course.levelNames.add(levelName);
+        }
         studentCourses.set(courseId, course);
         rows.set(studentId, studentCourses);
       };
       for (const enrollment of academic.data ?? [])
-        addCourse(enrollment.student_id, enrollment.course_id, "Academic", enrollment.status);
+        addCourse(
+          enrollment.student_id,
+          enrollment.course_id,
+          enrollment.level_id,
+          "Academic",
+          enrollment.status,
+        );
       for (const enrollment of online.data ?? [])
-        addCourse(enrollment.student_id, enrollment.course_id, "Online", enrollment.status);
+        addCourse(
+          enrollment.student_id,
+          enrollment.course_id,
+          enrollment.level_id,
+          "Online",
+          enrollment.status,
+        );
       for (const student of studentsQuery.data ?? []) {
         if (student.course_id && !rows.get(student.id)?.has(student.course_id)) {
           addCourse(
             student.id,
             student.course_id,
+            student.level_id,
             student.study_mode === "online" ? "Online" : "Academic",
             "assigned",
           );
@@ -1464,6 +1721,8 @@ function StudentsPanel({
             title: course.title,
             modes: [...course.modes],
             statuses: [...course.statuses],
+            level_ids: [...course.levelIds],
+            level_names: [...course.levelNames],
           })),
         ]),
       );
@@ -1796,6 +2055,11 @@ function StudentsPanel({
                           className="flex flex-wrap items-center gap-1.5 text-xs"
                         >
                           <span className="font-medium">{course.title}</span>
+                          {course.level_names.map((levelName) => (
+                            <Badge key={`${course.course_id}-${levelName}`} variant="outline">
+                              {levelName}
+                            </Badge>
+                          ))}
                           {course.modes.map((mode) => (
                             <Badge key={`${course.course_id}-${mode}`} variant="outline">
                               {mode}
@@ -1829,9 +2093,7 @@ function StudentsPanel({
                       student={student}
                       courses={catalogue.data?.courses ?? []}
                       intakes={catalogue.data?.intakes ?? []}
-                      enrolledCourseIds={(studentCourseQuery.data?.[student.id] ?? [])
-                        .filter((course) => course.statuses.includes("active"))
-                        .map((course) => course.course_id)}
+                      enrolledCourses={studentCourseQuery.data?.[student.id] ?? []}
                       disabled={catalogue.isLoading}
                       onEnrolled={async () => {
                         await Promise.all([
@@ -2192,14 +2454,19 @@ function StudentCourseEnrollmentManager({
   student,
   courses,
   intakes,
-  enrolledCourseIds,
+  enrolledCourses,
   disabled,
   onEnrolled,
 }: {
-  student: Pick<Tables<"students">, "id" | "study_mode">;
+  student: Pick<Tables<"students">, "id" | "study_mode" | "course_id" | "level_id">;
   courses: Pick<Tables<"courses">, "id" | "title" | "available_online">[];
   intakes: Pick<Tables<"intakes">, "id" | "name">[];
-  enrolledCourseIds: string[];
+  enrolledCourses: {
+    course_id: string;
+    title: string;
+    statuses: string[];
+    level_ids: string[];
+  }[];
   disabled: boolean;
   onEnrolled: () => Promise<void>;
 }) {
@@ -2225,8 +2492,13 @@ function StudentCourseEnrollmentManager({
   const availableCourses = courses.filter(
     (course) => student.study_mode !== "online" || course.available_online,
   );
-  const remainingCourses = availableCourses.filter(
-    (course) => !enrolledCourseIds.includes(course.id),
+  const currentCourse = enrolledCourses.find(
+    (course) => course.course_id === courseId && course.statuses.includes("active"),
+  );
+  const currentCourseLevelId =
+    currentCourse?.level_ids[0] ?? (student.course_id === courseId ? student.level_id : null);
+  const existingCourse = enrolledCourses.some(
+    (course) => course.course_id === courseId && course.statuses.includes("active"),
   );
 
   async function enroll(event: FormEvent<HTMLFormElement>) {
@@ -2248,12 +2520,19 @@ function StudentCourseEnrollmentManager({
       toast.info("Student is already actively enrolled in this course.");
       return;
     }
-    toast.success("Student enrolled in course", {
-      description:
-        data === "online"
-          ? "Online course access will continue to follow its payment requirements."
-          : "Course materials, assignments, CATs, and assigned facilitators are now available.",
-    });
+    toast.success(
+      data === "updated_online" || data === "updated_academic"
+        ? "Student course level updated"
+        : "Student enrolled in course",
+      {
+        description:
+          data === "updated_online" || data === "updated_academic"
+            ? "Existing fee and payment records are unchanged. Contact finance if charges need adjustment."
+            : data === "online"
+              ? "Online course access will continue to follow its payment requirements."
+              : "Course materials, assignments, CATs, and assigned facilitators are now available.",
+      },
+    );
     setOpen(false);
     setCourseId("");
     setLevelId("");
@@ -2266,14 +2545,8 @@ function StudentCourseEnrollmentManager({
   return (
     <div className="mt-3">
       {!open ? (
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          disabled={!remainingCourses.length}
-          onClick={() => setOpen(true)}
-        >
-          Enroll in another course
+        <Button type="button" size="sm" variant="outline" onClick={() => setOpen(true)}>
+          Manage courses and units
         </Button>
       ) : (
         <form
@@ -2288,13 +2561,25 @@ function StudentCourseEnrollmentManager({
               value={courseId}
               onChange={(event) => {
                 setCourseId(event.target.value);
-                setLevelId("");
+                const existing = enrolledCourses.find(
+                  (course) => course.course_id === event.target.value,
+                );
+                setLevelId(
+                  existing?.level_ids[0] ??
+                    (student.course_id === event.target.value ? (student.level_id ?? "") : ""),
+                );
               }}
             >
               <option value="">Select a course</option>
-              {remainingCourses.map((course) => (
+              {availableCourses.map((course) => (
                 <option key={course.id} value={course.id}>
                   {course.title}
+                  {enrolledCourses.some(
+                    (enrollment) =>
+                      enrollment.course_id === course.id && enrollment.statuses.includes("active"),
+                  )
+                    ? " · currently enrolled"
+                    : ""}
                 </option>
               ))}
             </select>
@@ -2319,6 +2604,17 @@ function StudentCourseEnrollmentManager({
           ) : levelsQuery.isLoading ? (
             <p className="text-xs text-muted-foreground">Loading course levels…</p>
           ) : null}
+          {existingCourse && (
+            <p className="text-xs text-muted-foreground sm:col-span-2">
+              Changing the level does not rewrite existing fee or payment records. Contact finance
+              separately if charges need adjustment.
+            </p>
+          )}
+          {levelsQuery.data?.length === 0 && !levelsQuery.isLoading && courseId && (
+            <p className="text-xs text-muted-foreground">
+              No published levels are configured for this course.
+            </p>
+          )}
           <label className="grid gap-1 text-xs font-medium">
             Intake (optional)
             <select
@@ -2351,7 +2647,13 @@ function StudentCourseEnrollmentManager({
                 (!!levelsQuery.data?.length && !levelId)
               }
             >
-              {saving ? "Enrolling…" : "Enroll student"}
+              {saving
+                ? existingCourse
+                  ? "Updating…"
+                  : "Enrolling…"
+                : existingCourse
+                  ? "Update course level"
+                  : "Enroll student"}
             </Button>
             <Button type="button" size="sm" variant="ghost" onClick={() => setOpen(false)}>
               Cancel
@@ -2359,6 +2661,139 @@ function StudentCourseEnrollmentManager({
           </div>
         </form>
       )}
+      {open && existingCourse && courseId && levelId && (
+        <AdminStudentCourseUnitPicker
+          studentId={student.id}
+          courseId={courseId}
+          levelId={levelId}
+          levelChanged={currentCourseLevelId !== levelId}
+        />
+      )}
+    </div>
+  );
+}
+
+function AdminStudentCourseUnitPicker({
+  studentId,
+  courseId,
+  levelId,
+  levelChanged,
+}: {
+  studentId: string;
+  courseId: string;
+  levelId: string;
+  levelChanged: boolean;
+}) {
+  const queryClient = useQueryClient();
+  const [unitIds, setUnitIds] = useState<string[]>([]);
+  const unitsQuery = useQuery({
+    queryKey: ["admin", "student-course-units", studentId, courseId, levelId],
+    queryFn: async () => {
+      const [units, selected] = await Promise.all([
+        supabase
+          .from("course_units")
+          .select("id,code,title,semester,level_id")
+          .eq("course_id", courseId)
+          .order("sort_order")
+          .order("title"),
+        supabase
+          .from("student_course_units")
+          .select("unit_id")
+          .eq("student_id", studentId)
+          .eq("course_id", courseId),
+      ]);
+      if (units.error) throw units.error;
+      if (selected.error) throw selected.error;
+      return {
+        units: units.data.filter((unit) => unit.level_id === null || unit.level_id === levelId),
+        selectedIds: selected.data.map((selection) => selection.unit_id),
+      };
+    },
+  });
+  useEffect(() => {
+    setUnitIds(unitsQuery.data?.selectedIds ?? []);
+  }, [unitsQuery.data]);
+  const saveUnits = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase.rpc("admin_save_student_course_unit_selections", {
+        _student_id: studentId,
+        _course_id: courseId,
+        _unit_ids: unitIds,
+      });
+      if (error) throw error;
+    },
+    onSuccess: async () => {
+      toast.success("Student unit selections updated");
+      await queryClient.invalidateQueries({
+        queryKey: ["admin", "student-course-units", studentId, courseId],
+      });
+    },
+    onError: (error) =>
+      toast.error("Could not update student units", { description: error.message }),
+  });
+
+  return (
+    <div className="rounded-lg border bg-card p-3 sm:col-span-2">
+      <p className="text-sm font-semibold text-brand">Student unit selections</p>
+      <p className="mt-1 text-xs text-muted-foreground">
+        {levelChanged
+          ? "Update the course level before changing unit selections."
+          : "Manage the units currently selected for this course."}
+      </p>
+      {unitsQuery.isLoading ? (
+        <p className="mt-2 text-sm text-muted-foreground">Loading units…</p>
+      ) : unitsQuery.error ? (
+        <p role="alert" className="mt-2 text-sm text-destructive">
+          Could not load student units: {unitsQuery.error.message}
+        </p>
+      ) : unitsQuery.data?.units.length ? (
+        <ul className="mt-3 grid gap-2 sm:grid-cols-2">
+          {unitsQuery.data.units.map((unit) => (
+            <li key={unit.id}>
+              <label className="flex cursor-pointer gap-2 rounded-md bg-muted/40 p-2 text-sm">
+                <input
+                  type="checkbox"
+                  disabled={levelChanged}
+                  checked={unitIds.includes(unit.id)}
+                  onChange={(event) =>
+                    setUnitIds((current) =>
+                      event.target.checked
+                        ? [...current, unit.id]
+                        : current.filter((id) => id !== unit.id),
+                    )
+                  }
+                />
+                <span>
+                  {unit.code ? `${unit.code} · ` : ""}
+                  {unit.title}
+                  {unit.semester && (
+                    <span className="block text-xs text-muted-foreground">{unit.semester}</span>
+                  )}
+                </span>
+              </label>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="mt-2 text-sm text-muted-foreground">
+          No units are configured for this level.
+        </p>
+      )}
+      <Button
+        type="button"
+        size="sm"
+        className="mt-3"
+        disabled={
+          levelChanged ||
+          saveUnits.isPending ||
+          unitsQuery.isLoading ||
+          !!unitsQuery.error ||
+          !unitsQuery.data?.units.length
+        }
+        onClick={() => saveUnits.mutate()}
+      >
+        {saveUnits.isPending ? "Saving units…" : "Save student units"}
+      </Button>
     </div>
   );
 }
@@ -3078,6 +3513,7 @@ function FeeManagementPanel() {
           <p className="text-sm text-muted-foreground">No student fee accounts are available.</p>
         )}
       </div>
+      <FeeBalanceReminderPanel students={accounts} />
       <div>
         <h3 className="mb-2 text-sm font-semibold text-brand">Latest payment transactions</h3>
         {payments.length ? (

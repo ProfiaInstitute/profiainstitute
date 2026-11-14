@@ -11,6 +11,8 @@ const allowedRoles = ["super_admin", "admissions_admin"];
 const maxAttachments = 10;
 const maxAttachmentBytes = 5 * 1024 * 1024;
 const maxTotalBytes = 15 * 1024 * 1024;
+const hasControlCharacters = (value: string) =>
+  /[\r\n]/.test(value) || value.includes(String.fromCharCode(0));
 
 type ShareDocument = {
   id: string;
@@ -102,7 +104,7 @@ Deno.serve(async (request: Request) => {
   if (!isEmail(to)) return json({ error: "Enter a valid recipient email address." }, 400);
   if (!subject || subject.length > 200)
     return json({ error: "Enter a subject of 1–200 characters." }, 400);
-  if (/[\r\n\u0000]/.test(subject))
+  if (hasControlCharacters(subject))
     return json({ error: "The email subject cannot contain line breaks." }, 400);
   if (message.length > 10_000)
     return json({ error: "The email message must be 10,000 characters or fewer." }, 400);

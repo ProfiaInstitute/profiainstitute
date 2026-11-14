@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { Json } from "@/integrations/supabase/types";
 import {
+  buildCatUnitReportRows,
   getDateTimeLocalMinimum,
   parseAdminCats,
   parseStudentCatAttempt,
   parseStudentCats,
+  type AdminCat,
+  type AdminCatAttempt,
 } from "@/lib/cats";
 
 describe("CAT local date and time validation", () => {
@@ -164,5 +167,99 @@ describe("CAT response parsing", () => {
 
   it("rejects malformed service responses instead of hiding invalid CAT data", () => {
     expect(() => parseStudentCats({})).toThrow("invalid list");
+  });
+});
+
+describe("CAT unit reports", () => {
+  it("combines submitted CAT 1 and CAT 2 marks by selected unit and student", () => {
+    const makeAttempt = (
+      id: string,
+      studentNumber: string,
+      studentName: string,
+      score: number | null,
+      maxScore: number | null,
+      submittedAt: string | null,
+      kasnebNumber: string | null = null,
+    ): AdminCatAttempt => ({
+      id,
+      studentNumber,
+      studentName,
+      kasnebNumber,
+      levelName: "Level 1",
+      startedAt: "2026-10-25T08:00:00.000Z",
+      submittedAt,
+      score,
+      maxScore,
+      answers: [],
+    });
+    const makeCat = (
+      id: string,
+      name: string,
+      unitId: string,
+      attempts: AdminCatAttempt[],
+    ): AdminCat => ({
+      id,
+      courseId: "course-1",
+      courseTitle: "Course",
+      unitId,
+      title: name,
+      name,
+      levelIds: [],
+      targetStudents: [],
+      downloadFilePath: null,
+      downloadFileName: null,
+      instructions: null,
+      durationMinutes: 30,
+      opensAt: "2026-10-25T08:00:00.000Z",
+      closesAt: "2026-10-25T10:00:00.000Z",
+      questions: [],
+      attempts,
+    });
+    const cats = [
+      makeCat("cat-1", "CAT 1 Finance", "unit-1", [
+        makeAttempt(
+          "attempt-1",
+          "S001",
+          "Ada Student",
+          6,
+          10,
+          "2026-10-25T08:30:00.000Z",
+          "KASNEB-001",
+        ),
+      ]),
+      makeCat("cat-2", "CAT 2 Finance", "unit-1", [
+        makeAttempt("attempt-2", "S001", "Ada Student", 10, 20, "2026-10-25T09:30:00.000Z"),
+        makeAttempt("attempt-3", "S002", "Ben Student", 8, 10, "2026-10-25T09:40:00.000Z"),
+        makeAttempt("attempt-4", "S003", "Cal Student", null, null, null),
+      ]),
+      makeCat("cat-3", "CAT 1 Another Unit", "unit-2", [
+        makeAttempt("attempt-5", "S004", "Dee Student", 5, 5, "2026-10-25T09:00:00.000Z"),
+      ]),
+    ];
+
+    expect(
+      buildCatUnitReportRows([{ id: "unit-1", title: "Finance", code: "FIN1" }], cats),
+    ).toEqual([
+      {
+        unit: "FIN1 · Finance",
+        student: "Ada Student",
+        student_number: "S001",
+        kasneb_number: "KASNEB-001",
+        cat_1_score: "6/10",
+        cat_2_score: "10/20",
+        combined_score: "16/30",
+        combined_percentage: 53.3,
+      },
+      {
+        unit: "FIN1 · Finance",
+        student: "Ben Student",
+        student_number: "S002",
+        kasneb_number: "",
+        cat_1_score: "",
+        cat_2_score: "8/10",
+        combined_score: "8/10",
+        combined_percentage: 80,
+      },
+    ]);
   });
 });

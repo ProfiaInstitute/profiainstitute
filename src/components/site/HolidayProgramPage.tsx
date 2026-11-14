@@ -1,6 +1,19 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { CalendarDays, CheckCircle2, Clock3, MapPin, Monitor, UsersRound } from "lucide-react";
+import {
+  BookOpen,
+  CalendarDays,
+  CheckCircle2,
+  Clock3,
+  Gamepad2,
+  MapPin,
+  Monitor,
+  Palette,
+  Puzzle,
+  Rocket,
+  Sparkles,
+  UsersRound,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -40,6 +53,7 @@ export function HolidayProgramPage({
   const [paymentType, setPaymentType] = useState<"deposit" | "custom">("deposit");
   const [customPaymentAmount, setCustomPaymentAmount] = useState("");
   const [paymentReference, setPaymentReference] = useState("");
+  const isKidsProgram = trackKey === "kids";
   const query = useQuery({
     queryKey: ["public-holiday-program", trackKey],
     queryFn: async () => {
@@ -258,31 +272,71 @@ export function HolidayProgramPage({
 
   return (
     <div>
-      <section className="bg-brand-deep py-10 text-brand-foreground sm:py-14">
+      <section
+        className={
+          isKidsProgram
+            ? "relative overflow-hidden bg-gradient-to-br from-amber-100 via-rose-50 to-cyan-100 py-10 text-brand-deep sm:py-14"
+            : "bg-brand-deep py-10 text-brand-foreground sm:py-14"
+        }
+      >
         <div className="container-site">
-          <div className="mx-auto max-w-5xl">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">
-              Profia Institute of Professionals
-            </p>
-            <h1 className="mt-3 text-3xl font-extrabold sm:text-5xl">
-              {trackKey === "kids" ? "Kids Holiday Program" : "Holiday Computer Training"}
-            </h1>
-            <p className="mt-3 max-w-2xl text-base text-white/75 sm:text-lg">
-              {track?.description ||
-                "Build practical digital skills during the holidays with hands-on learning at Profia Institute."}
-            </p>
-            <div className="mt-6 flex flex-wrap gap-2">
-              {(["general", "kids"] as const).map((key) => (
-                <Button
-                  key={key}
-                  variant={trackKey === key ? "hero" : "heroOutline"}
-                  onClick={() => setTrackKey(key)}
-                  aria-pressed={trackKey === key}
-                >
-                  {key === "kids" ? "Kids holiday program" : "General holiday training"}
-                </Button>
-              ))}
+          <div
+            className={
+              isKidsProgram
+                ? "grid items-center gap-8 lg:grid-cols-[minmax(0,1.1fr)_minmax(320px,0.9fr)]"
+                : "mx-auto max-w-5xl"
+            }
+          >
+            <div className={isKidsProgram ? "relative z-10" : ""}>
+              <p
+                className={`text-xs font-semibold uppercase tracking-[0.18em] ${
+                  isKidsProgram ? "text-fuchsia-700" : "text-primary"
+                }`}
+              >
+                Profia Institute of Professionals
+              </p>
+              <h1 className="mt-3 text-3xl font-extrabold sm:text-5xl">
+                {isKidsProgram ? "Kids Holiday Program" : "Holiday Computer Training"}
+              </h1>
+              <p
+                className={`mt-3 max-w-2xl text-base sm:text-lg ${
+                  isKidsProgram ? "text-brand-deep/75" : "text-white/75"
+                }`}
+              >
+                {track?.description ||
+                  (isKidsProgram
+                    ? "Make the school break brighter with fun, hands-on activities where children can play, create, and discover new skills."
+                    : "Build practical digital skills during the holidays with hands-on learning at Profia Institute.")}
+              </p>
+              <div className="mt-6 flex flex-wrap gap-2">
+                {(["general", "kids"] as const).map((key) => (
+                  <Button
+                    key={key}
+                    variant={
+                      isKidsProgram
+                        ? trackKey === key
+                          ? "default"
+                          : "outline"
+                        : trackKey === key
+                          ? "hero"
+                          : "heroOutline"
+                    }
+                    className={
+                      isKidsProgram
+                        ? trackKey === key
+                          ? "border-fuchsia-700 bg-fuchsia-700 text-white hover:bg-fuchsia-800"
+                          : "border-fuchsia-300 bg-white/70 text-brand-deep hover:bg-white"
+                        : undefined
+                    }
+                    onClick={() => setTrackKey(key)}
+                    aria-pressed={trackKey === key}
+                  >
+                    {key === "kids" ? "Kids holiday program" : "General holiday training"}
+                  </Button>
+                ))}
+              </div>
             </div>
+            {isKidsProgram && <KidsHolidayArtwork />}
           </div>
         </div>
       </section>
@@ -310,8 +364,18 @@ export function HolidayProgramPage({
         ) : (
           <>
             <div className="space-y-6">
-              <article className="overflow-hidden rounded-2xl border bg-card shadow-card">
-                <div className="bg-gradient-to-r from-brand-deep to-brand px-6 py-7 text-white sm:px-8">
+              <article
+                className={`overflow-hidden rounded-2xl border bg-card shadow-card ${
+                  isKidsProgram ? "border-fuchsia-200" : ""
+                }`}
+              >
+                <div
+                  className={`px-6 py-7 text-white sm:px-8 ${
+                    isKidsProgram
+                      ? "bg-gradient-to-r from-fuchsia-700 via-rose-500 to-amber-500"
+                      : "bg-gradient-to-r from-brand-deep to-brand"
+                  }`}
+                >
                   <div className="flex items-start justify-between gap-5">
                     <div>
                       <Badge variant="outline" className="border-white/30 text-white">
@@ -322,13 +386,18 @@ export function HolidayProgramPage({
                         {track.subtitle || track.description}
                       </p>
                     </div>
-                    <Monitor className="hidden h-12 w-12 shrink-0 text-white/35 sm:block" />
+                    {isKidsProgram ? (
+                      <Sparkles className="hidden h-12 w-12 shrink-0 text-white/70 sm:block" />
+                    ) : (
+                      <Monitor className="hidden h-12 w-12 shrink-0 text-white/35 sm:block" />
+                    )}
                   </div>
                 </div>
                 {track.description && (
                   <div className="grid gap-3 p-5 sm:grid-cols-2 sm:p-6">
                     <InfoTile
                       icon={Clock3}
+                      accented={isKidsProgram}
                       label="Duration"
                       value={
                         selectedPeriod
@@ -338,16 +407,19 @@ export function HolidayProgramPage({
                     />
                     <InfoTile
                       icon={MapPin}
+                      accented={isKidsProgram}
                       label="Location"
                       value={selectedPeriod?.location || track.location || "Contact the Institute"}
                     />
                     <InfoTile
                       icon={CalendarDays}
+                      accented={isKidsProgram}
                       label="Schedule"
                       value={selectedPeriod?.schedule || "See period details"}
                     />
                     <InfoTile
                       icon={UsersRound}
+                      accented={isKidsProgram}
                       label="Who can apply"
                       value={
                         track.track_key === "kids"
@@ -382,7 +454,13 @@ export function HolidayProgramPage({
               ) : null}
             </div>
 
-            <div className="rounded-2xl border bg-card p-5 shadow-card sm:p-7">
+            <div
+              className={`rounded-2xl border bg-card p-5 shadow-card sm:p-7 ${
+                isKidsProgram
+                  ? "border-fuchsia-200 bg-gradient-to-br from-white via-rose-50/40 to-amber-50/60"
+                  : ""
+              }`}
+            >
               {confirmationCode ? (
                 <div className="py-6">
                   <CheckCircle2 className="mx-auto h-12 w-12 text-emerald-600" />
@@ -556,7 +634,11 @@ export function HolidayProgramPage({
               ) : (
                 <form className="space-y-5" onSubmit={submitApplication}>
                   <div>
-                    <p className="text-xs font-semibold uppercase tracking-widest text-primary">
+                    <p
+                      className={`text-xs font-semibold uppercase tracking-widest ${
+                        isKidsProgram ? "text-fuchsia-700" : "text-primary"
+                      }`}
+                    >
                       Registration
                     </p>
                     <h2 className="mt-1 text-xl font-bold text-brand">Apply for a place</h2>
@@ -609,7 +691,9 @@ export function HolidayProgramPage({
                           availableModules.map((module) => (
                             <label
                               key={module.id}
-                              className="flex cursor-pointer items-start gap-3 rounded-lg border p-3 text-sm"
+                              className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 text-sm ${
+                                isKidsProgram ? "border-fuchsia-200 hover:bg-fuchsia-50" : ""
+                              }`}
                             >
                               <input
                                 className="mt-1"
@@ -706,7 +790,11 @@ export function HolidayProgramPage({
                       </label>
                       <Button
                         type="submit"
-                        className="w-full"
+                        className={
+                          isKidsProgram
+                            ? "w-full bg-fuchsia-700 text-white hover:bg-fuchsia-800"
+                            : "w-full"
+                        }
                         disabled={
                           submitMutation.isPending ||
                           periods.length === 0 ||
@@ -735,17 +823,56 @@ function InfoTile({
   icon: Icon,
   label,
   value,
+  accented = false,
 }: {
   icon: typeof Clock3;
   label: string;
   value: string;
+  accented?: boolean;
 }) {
   return (
-    <div className="rounded-xl border bg-background p-4">
+    <div
+      className={`rounded-xl border p-4 ${
+        accented ? "border-amber-200 bg-amber-50/70" : "bg-background"
+      }`}
+    >
       <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
         <Icon className="h-4 w-4 text-primary" /> {label}
       </p>
       <p className="mt-2 font-semibold text-brand">{value}</p>
+    </div>
+  );
+}
+
+function KidsHolidayArtwork() {
+  return (
+    <div
+      aria-hidden="true"
+      className="relative mx-auto aspect-[1.25] w-full max-w-[34rem] overflow-hidden rounded-[2rem] border-4 border-white/80 bg-gradient-to-br from-fuchsia-400 via-orange-300 to-cyan-300 shadow-xl"
+    >
+      <div className="absolute -right-7 -top-8 h-36 w-36 rounded-full bg-yellow-200/90" />
+      <div className="absolute left-[10%] top-[12%] h-5 w-5 rotate-12 rounded-sm bg-white/90" />
+      <Sparkles className="absolute right-[24%] top-[19%] h-8 w-8 text-white" />
+      <div className="absolute -bottom-12 -left-7 h-36 w-44 rotate-12 rounded-[45%] bg-emerald-400/90" />
+      <div className="absolute -bottom-14 right-[-8%] h-40 w-64 -rotate-6 rounded-[50%] bg-cyan-500/80" />
+      <div className="absolute bottom-[19%] left-[10%] grid h-16 w-16 rotate-[-9deg] place-items-center rounded-2xl border-4 border-white bg-fuchsia-600 text-white shadow-lg sm:h-20 sm:w-20">
+        <Puzzle className="h-8 w-8 sm:h-10 sm:w-10" />
+      </div>
+      <div className="absolute left-[38%] top-[18%] grid h-14 w-14 rotate-6 place-items-center rounded-2xl border-4 border-white bg-amber-400 text-white shadow-lg sm:h-16 sm:w-16">
+        <Palette className="h-7 w-7 sm:h-8 sm:w-8" />
+      </div>
+      <div className="absolute bottom-[20%] right-[9%] grid h-16 w-16 rotate-[8deg] place-items-center rounded-2xl border-4 border-white bg-cyan-700 text-white shadow-lg sm:h-20 sm:w-20">
+        <Gamepad2 className="h-8 w-8 sm:h-10 sm:w-10" />
+      </div>
+      <div className="absolute bottom-[14%] left-1/2 grid h-[30%] w-[25%] -translate-x-1/2 place-items-center rounded-t-[45%] rounded-b-2xl border-4 border-white bg-white/95 text-fuchsia-700 shadow-xl">
+        <BookOpen className="h-10 w-10 sm:h-14 sm:w-14" />
+      </div>
+      <div className="absolute left-[17%] top-[40%] grid h-11 w-11 -rotate-6 place-items-center rounded-full bg-rose-600 text-white shadow-lg">
+        <Rocket className="h-6 w-6" />
+      </div>
+      <div className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full border border-white/60 bg-white/90 px-4 py-2 text-center text-xs font-extrabold uppercase tracking-[0.18em] text-fuchsia-800 shadow-md sm:text-sm">
+        Play · Create · Discover
+      </div>
     </div>
   );
 }

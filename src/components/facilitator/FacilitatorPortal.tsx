@@ -795,8 +795,8 @@ function FacilitatorWorkspace({ userId, email }: { userId: string; email: string
   const activeSectionTitle =
     navigationItems.find((item) => item.id === activeSection)?.title ?? "Dashboard";
   return (
-    <div className="student-app-shell student-workspace min-h-screen bg-muted/40">
-      <header className="student-app-header sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-border/70 bg-background/95 px-4 py-3 text-foreground shadow-sm backdrop-blur sm:px-6">
+    <div className="portal-workspace student-app-shell student-workspace min-h-dvh bg-muted/40">
+      <header className="portal-topbar student-app-header sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-border/70 bg-background/95 px-4 py-3 text-foreground backdrop-blur-xl sm:px-6">
         <div className="flex min-w-0 items-center gap-3">
           <a
             href="/facilitator"
@@ -853,8 +853,8 @@ function FacilitatorWorkspace({ userId, email }: { userId: string; email: string
         </div>
       </header>
       <div className="mx-auto flex max-w-[90rem] flex-col lg:flex-row">
-        <aside className="hidden border-b bg-card p-4 lg:sticky lg:top-[65px] lg:block lg:h-[calc(100vh-65px)] lg:w-64 lg:shrink-0 lg:border-b-0 lg:border-r">
-          <div className="rounded-xl border bg-cream p-4">
+        <aside className="portal-sidebar hidden border-b bg-card p-4 lg:sticky lg:top-[65px] lg:block lg:h-[calc(100vh-65px)] lg:w-64 lg:shrink-0 lg:border-b-0 lg:border-r">
+          <div className="portal-identity-card rounded-2xl border bg-cream p-4">
             <p className="text-xs font-semibold uppercase tracking-wide text-primary">Teaching</p>
             {profileQuery.data?.photoUrl ? (
               <img
@@ -872,7 +872,10 @@ function FacilitatorWorkspace({ userId, email }: { userId: string; email: string
             </p>
             <p className="mt-1 text-xs text-muted-foreground">{activeUnit.course.title}</p>
           </div>
-          <nav className="mt-5 flex flex-col gap-1" aria-label="Facilitator portal">
+          <nav
+            className="portal-sidebar-nav mt-5 flex flex-col gap-1"
+            aria-label="Facilitator portal"
+          >
             {navigationItems.map(({ id, title, icon: Icon }) => (
               <PortalNavLink
                 key={id}
@@ -885,8 +888,12 @@ function FacilitatorWorkspace({ userId, email }: { userId: string; email: string
             ))}
           </nav>
         </aside>
-        <main className="student-app-content min-w-0 flex-1 p-4 pb-8 sm:p-6 lg:p-8">
-          <div ref={contentRef} className="mx-auto w-full max-w-5xl space-y-5">
+        <main className="portal-main student-app-content min-w-0 flex-1 p-4 pb-8 sm:p-6 lg:p-8">
+          <div
+            key={activeSection}
+            ref={contentRef}
+            className="portal-content mx-auto w-full max-w-6xl space-y-5"
+          >
             <p className="eyebrow">Facilitator services / {activeUnit.course.title}</p>
             <h1 className="text-2xl font-bold text-brand sm:text-3xl">
               {activeSection === "dashboard" ? "Teaching workspace" : activeSectionTitle}
@@ -1724,7 +1731,7 @@ function FacilitatorWorkspace({ userId, email }: { userId: string; email: string
         </main>
       </div>
       <nav
-        className="student-mobile-nav fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t bg-background/95 px-2 pt-1 shadow-[0_-8px_24px_-16px_rgba(20,10,10,0.35)] backdrop-blur-lg lg:hidden"
+        className="portal-mobile-nav student-mobile-nav fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t bg-background/95 px-2 pt-1 backdrop-blur-xl lg:hidden"
         aria-label="Facilitator app"
       >
         {mobileNavigationItems.map(({ id, title, icon: Icon }) => (
@@ -1733,7 +1740,7 @@ function FacilitatorWorkspace({ userId, email }: { userId: string; email: string
             type="button"
             onClick={() => selectSection(id)}
             aria-current={activeSection === id ? "page" : undefined}
-            className={`flex min-w-0 flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-1 text-[10px] font-semibold ${activeSection === id ? "text-brand" : "text-muted-foreground hover:text-brand"}`}
+            className={`portal-mobile-link flex min-w-0 flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-1 text-[10px] font-semibold ${activeSection === id ? "is-active text-brand" : "text-muted-foreground hover:text-brand"}`}
           >
             <Icon className="h-5 w-5" />
             <span className="max-w-full truncate">{title}</span>
@@ -1795,7 +1802,7 @@ function PortalNavLink({
         onSelect();
       }}
       aria-current={isActive ? "location" : undefined}
-      className={`flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-sm transition ${isActive ? "bg-accent font-medium text-brand shadow-sm ring-1 ring-primary/15" : "text-muted-foreground hover:bg-muted hover:text-brand"}`}
+      className={`portal-nav-link flex shrink-0 items-center gap-2 rounded-xl px-3 py-2.5 text-sm transition ${isActive ? "is-active bg-accent font-semibold text-brand shadow-sm ring-1 ring-primary/15" : "text-muted-foreground hover:bg-muted hover:text-brand"}`}
     >
       {children}
     </a>

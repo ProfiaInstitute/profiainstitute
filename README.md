@@ -2,7 +2,6 @@
 
 PROFIA INSTITUTE — COMPLETE WEBSITE REBUILD + STUDENT PORTAL + ADMIN SYSTEM
 
-
 ## Course billing and PayHero fee payments
 
 Course charges are snapshotted to student fee statements at enrollment. From
@@ -65,33 +64,19 @@ public staff sign-up and post-sign-up role assignment are disabled. Apply
 `PUBLIC_SITE_URL`, and allow the `/admin?setupPassword=1` redirect in Supabase
 Auth URL settings before using invitations.
 
-
-
 Rebuild the existing Profia Institute website into a modern, professional, fully responsive and fully functional education platform.
 
-
-
 IMPORTANT: THIS IS A REBUILD OF AN EXISTING WEBSITE, NOT A BRAND REDESIGN.
-
-
 
 Existing website:
 
 https://www.profiainstitute.com/
 
-
-
 1. MOST IMPORTANT DESIGN RULE
-
-
 
 DO NOT CHANGE THE EXISTING PROFIA INSTITUTE BRAND IDENTITY.
 
-
-
 Preserve the existing:
-
-
 
 - Logo
 
@@ -113,11 +98,7 @@ Preserve the existing:
 
 - Overall professional feel
 
-
-
 Use the existing website as the primary visual reference.
-
-
 
 Do NOT introduce a new colour palette.
 
@@ -127,31 +108,17 @@ Do NOT invent a new logo.
 
 Do NOT redesign the institution into a completely different-looking website.
 
-
-
 Where possible, retrieve/reuse the actual existing Profia images and assets from the current website.
-
-
 
 If an existing image cannot technically be reused, create the image slot so that the administrator can upload and replace it from the admin dashboard.
 
-
-
 ---
-
-
 
 2. TECHNOLOGY
 
-
-
 Build this as a production-ready full-stack web application.
 
-
-
 Preferred stack:
-
-
 
 - React
 
@@ -179,11 +146,7 @@ Preferred stack:
 
 - Form validation
 
-
-
 The application must work properly on:
-
-
 
 - Android phones
 
@@ -195,27 +158,15 @@ The application must work properly on:
 
 - Desktop computers
 
-
-
 Mobile experience is extremely important because many Profia students will access the system using phones.
-
-
 
 ---
 
-
-
 3. PUBLIC WEBSITE
-
-
 
 Rebuild all important sections of the existing Profia Institute website.
 
-
-
 Main navigation:
-
-
 
 HOME
 
@@ -233,47 +184,25 @@ NEWS & UPDATES
 
 CONTACT
 
-
-
 Include a prominent:
-
-
 
 APPLY NOW
 
-
-
 button.
-
-
 
 ---
 
-
-
 4. HOMEPAGE
-
-
 
 Recreate the current Profia homepage using the existing content, photographs and visual identity.
 
-
-
 The homepage should include:
-
-
 
 Hero section
 
-
-
 Use the existing Profia hero imagery and messaging.
 
-
-
 Include:
-
-
 
 - January/next intake messaging where applicable
 
@@ -283,35 +212,19 @@ Include:
 
 - Course/academic CTA
 
-
-
 Promotional sections
-
-
 
 Recreate the current promotional content, including:
 
-
-
 CPA promotion
-
-
 
 "Become a Certified Public Accountant at Profia Institute"
 
-
-
 Include the existing CTA.
-
-
 
 CBC Digital Skills Training
 
-
-
 Include the existing information about:
-
-
 
 - Introduction to Computers & Computer Packages
 
@@ -319,55 +232,29 @@ Include the existing information about:
 
 - Programming with Scratch, Kodu & JavaScript
 
-
-
 Include:
-
-
 
 "Register Now"
 
-
-
 and the existing pricing/location information where currently displayed.
-
-
 
 Web Development promotion
 
-
-
 Include the current web development promotional section and its existing imagery.
-
-
 
 Statistics
 
-
-
 Preserve the existing statistics displayed on the website, including:
-
-
 
 1.2K+ Students since 2018
 
-
-
 98% Employment rate
-
-
 
 Do not invent replacement statistics.
 
-
-
 Academics
 
-
-
 Create cards for:
-
-
 
 - School of Business
 
@@ -379,43 +266,23 @@ Create cards for:
 
 - School of Engineering
 
-
-
 Each card must link to its respective school page.
-
-
 
 News & Updates
 
-
-
 Display latest articles/blog posts dynamically from the database.
-
-
 
 If there are no published articles, show a professional empty state.
 
-
-
 Partners
-
-
 
 Recreate the existing partners section using the actual partner images/logos.
 
-
-
 Footer
-
-
 
 Recreate the existing footer structure and information.
 
-
-
 Include:
-
-
 
 - Navigation
 
@@ -431,59 +298,31 @@ Include:
 
 - Admission CTA
 
-
-
 ---
-
-
 
 5. ABOUT US PAGE
 
-
-
 Recreate the existing About Us content.
-
-
 
 Use the current information including:
 
-
-
 Profia Institute is a dynamic and innovative educational institution dedicated to empowering individuals and driving sustainable development through professional development programs.
-
-
 
 The site currently describes Profia as a TVET-accredited college offering courses across business, accounting, ICT, hospitality and related areas.
 
-
-
 Include:
-
-
 
 Who We Are
 
-
-
 Mission
-
-
 
 "To equip the society with ICT and business developmental competence through pursuit of learning and its practical application in real-world setting."
 
-
-
 Vision
-
-
 
 "To be a leading college for business and ICT."
 
-
-
 Core Values
-
-
 
 - Innovation
 
@@ -493,39 +332,21 @@ Core Values
 
 - Transformation
 
-
-
 Our History
-
-
 
 Preserve the existing historical information about Profia's establishment in October 2018, its beginning as a business school, expansion into additional programs, and its development within Homa Bay County and the Nyanza region.
 
-
-
 Do not replace genuine existing information with generic AI-generated institutional content.
-
-
 
 Where the existing website contains placeholder/filler content, flag it for admin editing rather than presenting it as factual information.
 
-
-
 ---
-
-
 
 6. ACADEMICS
 
-
-
 Create a central Academics page showing all schools.
 
-
-
 Schools:
-
-
 
 1. School of Business
 
@@ -537,27 +358,15 @@ Schools:
 
 5. School of Engineering
 
-
-
 Each school gets its own dedicated page.
-
-
 
 ---
 
-
-
 7. SCHOOL OF BUSINESS
-
-
 
 Recreate the current School of Business page.
 
-
-
 Include:
-
-
 
 - Introduction
 
@@ -575,11 +384,7 @@ Include:
 
 - Apply Now CTA
 
-
-
 Courses currently listed include:
-
-
 
 - Certified Public Accountant (CPA)
 
@@ -593,15 +398,9 @@ Courses currently listed include:
 
 - Certificate in Accounting and Management Skills
 
-
-
 Do not hard-code these courses permanently.
 
-
-
 They must come from the database so an administrator can:
-
-
 
 - Add course
 
@@ -621,23 +420,13 @@ They must come from the database so an administrator can:
 
 - Change requirements
 
-
-
 ---
-
-
 
 8. SCHOOL OF ICT
 
-
-
 Recreate the existing ICT page.
 
-
-
 Include:
-
-
 
 - Computer Foundational Skills
 
@@ -651,15 +440,9 @@ Include:
 
 - Data Management & Analytics
 
-
-
 Include:
 
-
-
 Why Choose Profia ICT:
-
-
 
 - Job Placement
 
@@ -667,31 +450,17 @@ Why Choose Profia ICT:
 
 - Industry-Relevant Training
 
-
-
 Include FAQs and application CTAs.
-
-
 
 Again, all courses must be database-driven.
 
-
-
 ---
-
-
 
 9. SCHOOL OF HOSPITALITY
 
-
-
 Recreate the current Hospitality page.
 
-
-
 Courses include:
-
-
 
 - Food and Beverage Production
 
@@ -701,11 +470,7 @@ Courses include:
 
 - Baking and Pastry
 
-
-
 Include:
-
-
 
 - Hands-on Experience
 
@@ -721,27 +486,15 @@ Include:
 
 - Apply Now
 
-
-
 All content must be editable from admin.
-
-
 
 ---
 
-
-
 10. SCHOOL OF BEAUTY & COSMETOLOGY
-
-
 
 Recreate the current Cosmetology page.
 
-
-
 Courses include:
-
-
 
 - Beauty Therapy
 
@@ -753,11 +506,7 @@ Courses include:
 
 - Hot Stone Massage
 
-
-
 Include:
-
-
 
 - Job Placement
 
@@ -771,37 +520,21 @@ Include:
 
 - Apply Now
 
-
-
 Database driven.
-
-
 
 ---
 
-
-
 11. SCHOOL OF ENGINEERING
-
-
 
 Recreate the current Engineering page.
 
-
-
 Include:
-
-
 
 - Plumbing Program
 
 - Electrical Program
 
-
-
 Include:
-
-
 
 - Job Placement
 
@@ -817,27 +550,15 @@ Include:
 
 - Apply Now
 
-
-
 Database driven.
-
-
 
 ---
 
-
-
 12. ONLINE COURSES
-
-
 
 Recreate the existing Online Courses section.
 
-
-
 Include learning tracks for:
-
-
 
 - School of Business
 
@@ -849,35 +570,19 @@ Include learning tracks for:
 
 - School of Engineering
 
-
-
 Include course counts where available.
-
-
 
 However, do NOT hard-code statistics such as active students, success rates or number of courses if they are intended to change.
 
-
-
 Make them admin editable.
-
-
 
 ---
 
-
-
 13. PROFIA TECH HUB
-
-
 
 Recreate the current Tech Hub page.
 
-
-
 Include:
-
-
 
 - Artificial Intelligence
 
@@ -891,15 +596,9 @@ Include:
 
 - Video Annotation
 
-
-
 Include the existing gallery and partner section.
 
-
-
 The gallery should become database/storage driven so administrators can:
-
-
 
 - Upload images
 
@@ -911,27 +610,15 @@ The gallery should become database/storage driven so administrators can:
 
 - Publish/unpublish images
 
-
-
 ---
-
-
 
 14. ADMISSION SYSTEM
 
-
-
 This is one of the most important new features.
-
-
 
 Create a proper online application system.
 
-
-
 The existing admission page contains application fields such as:
-
-
 
 - Full Name
 
@@ -943,19 +630,11 @@ The existing admission page contains application fields such as:
 
 - Other Academic Qualification
 
-
-
 Expand this into a professional application form.
-
-
 
 Fields:
 
-
-
 Personal Information
-
-
 
 - First Name
 
@@ -981,11 +660,7 @@ Personal Information
 
 - Physical Address
 
-
-
 Academic Information
-
-
 
 - Highest Academic Qualification
 
@@ -1001,11 +676,7 @@ Academic Information
 
 - Preferred Intake
 
-
-
 Study modes:
-
-
 
 - Full Time
 
@@ -1013,11 +684,7 @@ Study modes:
 
 - Online
 
-
-
 Additional Information
-
-
 
 - Previous training
 
@@ -1027,15 +694,9 @@ Additional Information
 
 - How did you hear about Profia?
 
-
-
 Documents
 
-
-
 Allow applicants to upload relevant documents such as:
-
-
 
 - KCSE certificate/result slip
 
@@ -1045,23 +706,13 @@ Allow applicants to upload relevant documents such as:
 
 - Other supporting documents
 
-
-
 Use Supabase Storage.
-
-
 
 ---
 
-
-
 15. APPLICATION WORKFLOW
 
-
-
 When a student submits an application:
-
-
 
 1. Validate the application.
 
@@ -1077,11 +728,7 @@ When a student submits an application:
 
 7. Give the applicant a way to check application status.
 
-
-
 Application statuses:
-
-
 
 - Submitted
 
@@ -1097,51 +744,27 @@ Application statuses:
 
 - Enrolled
 
-
-
 Every status change should be logged.
-
-
 
 ---
 
-
-
 16. STUDENT PORTAL
-
-
 
 Create a genuine student portal.
 
-
-
 Students should be able to register/login securely.
-
-
 
 Use Supabase Authentication.
 
-
-
 Student portal URL:
-
-
 
 /student
 
-
-
 After login, show a student dashboard.
-
-
 
 Student Dashboard
 
-
-
 Show:
-
-
 
 - Student name
 
@@ -1159,27 +782,15 @@ Show:
 
 - Recent activity
 
-
-
 Student Profile
-
-
 
 Students can view/edit permitted profile information.
 
-
-
 Sensitive information should not be freely editable.
-
-
 
 My Course
 
-
-
 Display:
-
-
 
 - Program
 
@@ -1191,15 +802,9 @@ Display:
 
 - Academic progress
 
-
-
 Learning Materials
 
-
-
 Create a section for:
-
-
 
 - Notes
 
@@ -1211,19 +816,11 @@ Create a section for:
 
 - Course resources
 
-
-
 Administrators/tutors should be able to upload learning materials.
-
-
 
 Assignments
 
-
-
 Students should see:
-
-
 
 - Assignment title
 
@@ -1235,23 +832,13 @@ Students should see:
 
 - Submission status
 
-
-
 Allow file submission.
-
-
 
 Results
 
-
-
 Students should be able to view their academic results.
 
-
-
 Display:
-
-
 
 - Unit
 
@@ -1263,19 +850,11 @@ Display:
 
 - Academic year
 
-
-
 Only authorized staff can modify results.
-
-
 
 Fees
 
-
-
 Create a fees section showing:
-
-
 
 - Total fees
 
@@ -1287,23 +866,13 @@ Create a fees section showing:
 
 - Payment status
 
-
-
 Do NOT implement fake payments.
-
-
 
 Structure the system so a legitimate payment provider such as M-Pesa can be integrated later.
 
-
-
 Notifications
 
-
-
 Students can receive:
-
-
 
 - Admission messages
 
@@ -1315,41 +884,23 @@ Students can receive:
 
 - General school announcements
 
-
-
 ---
-
-
 
 17. STUDENT APPLICATION TRACKING
 
-
-
 Before becoming an enrolled student, an applicant should be able to check their application.
-
-
 
 Create:
 
-
-
 /application-status
 
-
-
 Allow them to enter:
-
-
 
 - Application number
 
 - Phone/email
 
-
-
 Show:
-
-
 
 - Application status
 
@@ -1361,71 +912,37 @@ Show:
 
 - Any message from admissions
 
-
-
 Do not expose private applicant information.
 
-
-
 ---
-
-
 
 18. ADMIN DASHBOARD
 
-
-
 Create a secure admin dashboard.
-
-
 
 URL:
 
-
-
 /admin
-
-
 
 Admin login must be protected using Supabase Authentication.
 
-
-
 Do NOT create a fake frontend-only admin login.
-
-
 
 Use real authentication and database authorization.
 
-
-
 ---
-
-
 
 19. ADMIN ROLES
 
-
-
 Create role-based access control.
-
-
 
 Roles:
 
-
-
 Super Admin
-
-
 
 Full access.
 
-
-
 Can:
-
-
 
 - Manage admins
 
@@ -1451,15 +968,9 @@ Can:
 
 - Manage settings
 
-
-
 Admissions Admin
 
-
-
 Can:
-
-
 
 - View applications
 
@@ -1473,19 +984,11 @@ Can:
 
 - View applicant documents
 
-
-
 Cannot manage system settings.
-
-
 
 Academic Admin
 
-
-
 Can:
-
-
 
 - Manage students
 
@@ -1499,15 +1002,9 @@ Can:
 
 - Publish results
 
-
-
 Content Admin
 
-
-
 Can:
-
-
 
 - Create blogs
 
@@ -1521,23 +1018,13 @@ Can:
 
 - Edit announcements
 
-
-
 Cannot access sensitive student information.
-
-
 
 ---
 
-
-
 20. ADMIN DASHBOARD OVERVIEW
 
-
-
 Dashboard should display cards such as:
-
-
 
 - Total Applications
 
@@ -1555,43 +1042,23 @@ Dashboard should display cards such as:
 
 - Published Blog Posts
 
-
-
 Include charts where useful.
-
-
 
 Example:
 
-
-
 Applications by month.
-
-
 
 Admissions by course.
 
-
-
 Students by school.
-
-
 
 ---
 
-
-
 21. APPLICATION MANAGEMENT
-
-
 
 Create a professional application management table.
 
-
-
 Columns:
-
-
 
 - Application Number
 
@@ -1613,11 +1080,7 @@ Columns:
 
 - Actions
 
-
-
 Actions:
-
-
 
 - View
 
@@ -1633,11 +1096,7 @@ Actions:
 
 - Download Documents
 
-
-
 Include:
-
-
 
 - Search
 
@@ -1647,23 +1106,13 @@ Include:
 
 - Pagination
 
-
-
 ---
-
-
 
 22. BLOG / NEWS MANAGEMENT
 
-
-
 The existing Articles page currently has no articles, so build a proper CMS instead of hard-coding blog posts.
 
-
-
 Admin should be able to:
-
-
 
 - Create article
 
@@ -1687,27 +1136,15 @@ Admin should be able to:
 
 - Add tags
 
-
-
 Public users see:
-
-
 
 /articles
 
-
-
 Individual article:
-
-
 
 /articles/[slug]
 
-
-
 SEO fields:
-
-
 
 - Meta title
 
@@ -1719,23 +1156,13 @@ SEO fields:
 
 - Social sharing image
 
-
-
 ---
-
-
 
 23. WEBSITE CONTENT MANAGEMENT
 
-
-
 The admin should be able to edit important website content without changing code.
 
-
-
 Create a CMS for:
-
-
 
 - Homepage hero
 
@@ -1761,23 +1188,13 @@ Create a CMS for:
 
 - Footer information
 
-
-
 ---
-
-
 
 24. MEDIA LIBRARY
 
-
-
 Create an admin media library.
 
-
-
 Administrators can:
-
-
 
 - Upload images
 
@@ -1791,11 +1208,7 @@ Administrators can:
 
 - Replace existing page images
 
-
-
 Organize media by:
-
-
 
 - Homepage
 
@@ -1817,31 +1230,17 @@ Organize media by:
 
 - Blog
 
-
-
 IMPORTANT:
-
-
 
 Existing Profia photographs should be preserved and used first.
 
-
-
 ---
-
-
 
 25. ANNOUNCEMENTS
 
-
-
 Create an announcement system.
 
-
-
 Admin can create:
-
-
 
 - General announcements
 
@@ -1853,11 +1252,7 @@ Admin can create:
 
 - Emergency announcements
 
-
-
 Announcements can be displayed on:
-
-
 
 - Homepage
 
@@ -1865,33 +1260,19 @@ Announcements can be displayed on:
 
 - Public announcement section
 
-
-
 ---
-
-
 
 26. CONTACT SYSTEM
 
-
-
 Recreate the existing Contact page.
-
-
 
 Current contact information includes:
 
-
-
 P.O Box 323-40300, Homa Bay
-
-
 
 Email:
 
 profiainstitute@gmail.com
-
-
 
 Phone:
 
@@ -1899,11 +1280,7 @@ Phone:
 
 0793977991
 
-
-
 Include:
-
-
 
 - Contact form
 
@@ -1915,27 +1292,15 @@ Include:
 
 - Location information
 
-
-
 Contact form submissions should be stored in the admin dashboard.
-
-
 
 ---
 
-
-
 27. DATABASE STRUCTURE
-
-
 
 Create a proper relational Supabase database.
 
-
-
 Suggested tables:
-
-
 
 profiles
 
@@ -1989,41 +1354,23 @@ site_settings
 
 audit_logs
 
-
-
 Use UUID primary keys.
 
-
-
 Add timestamps:
-
-
 
 created_at
 
 updated_at
 
-
-
 Use foreign keys correctly.
-
-
 
 ---
 
-
-
 28. SECURITY
-
-
 
 Security is extremely important.
 
-
-
 Implement:
-
-
 
 - Supabase Authentication
 
@@ -2049,11 +1396,7 @@ Implement:
 
 - Proper authorization checks
 
-
-
 A student must NEVER be able to access another student's:
-
-
 
 - Results
 
@@ -2065,23 +1408,13 @@ A student must NEVER be able to access another student's:
 
 - Personal information
 
-
-
 ---
-
-
 
 29. AUDIT LOG
 
-
-
 Create an audit log.
 
-
-
 Track important actions:
-
-
 
 - Admin login
 
@@ -2103,79 +1436,41 @@ Track important actions:
 
 - File uploads/deletions
 
-
-
 Show audit logs to Super Admin.
 
-
-
 ---
-
-
 
 30. EMAIL NOTIFICATIONS
 
-
-
 Prepare email notification infrastructure.
-
-
 
 Examples:
 
-
-
 When application is submitted:
-
-
 
 "Your Profia Institute application has been received."
 
-
-
 When application is accepted:
-
-
 
 "Congratulations. Your application has been accepted."
 
-
-
 When additional information is requested:
-
-
 
 "Additional information is required for your application."
 
-
-
 When admission is confirmed:
-
-
 
 "Your admission to Profia Institute has been confirmed."
 
-
-
 Keep email provider configuration in environment variables.
-
-
 
 ---
 
-
-
 31. SEO
-
-
 
 Implement proper SEO.
 
-
-
 Every major page should have:
-
-
 
 - Title
 
@@ -2187,11 +1482,7 @@ Every major page should have:
 
 - Proper heading hierarchy
 
-
-
 Use clean URLs:
-
-
 
 /about
 
@@ -2217,23 +1508,13 @@ Use clean URLs:
 
 /contact
 
-
-
 ---
-
-
 
 32. PERFORMANCE
 
-
-
 Optimize the website for mobile users and potentially slower Kenyan internet connections.
 
-
-
 Use:
-
-
 
 - Lazy loading
 
@@ -2249,83 +1530,43 @@ Use:
 
 - Error states
 
-
-
 Do not load huge images unnecessarily.
 
-
-
 ---
-
-
 
 33. WHATSAPP
 
-
-
 Keep WhatsApp as a prominent contact option.
-
-
 
 Create reusable WhatsApp CTA buttons.
 
-
-
 Use the existing Profia phone/contact information.
-
-
 
 Make the number configurable from the admin settings rather than hard-coded throughout the application.
 
-
-
 ---
-
-
 
 34. RESPONSIVE NAVIGATION
 
-
-
 Desktop:
-
-
 
 Professional horizontal navigation.
 
-
-
 Mobile:
-
-
 
 Hamburger menu.
 
-
-
 Ensure the Apply Now button remains highly visible.
-
-
 
 Student and Admin navigation should have separate mobile-friendly layouts.
 
-
-
 ---
-
-
 
 35. USER EXPERIENCE
 
-
-
 The website should feel like a real modern Kenyan college website, not a generic AI-generated template.
 
-
-
 Use:
-
-
 
 - Clear CTAs
 
@@ -2345,27 +1586,15 @@ Use:
 
 - Professional notifications
 
-
-
 Do not overuse animations.
-
-
 
 ---
 
-
-
 36. IMPORTANT CONTENT RULE
-
-
 
 Use the EXISTING PROFIA WEBSITE as the source of truth for current public information.
 
-
-
 Do not invent:
-
-
 
 - Courses
 
@@ -2385,43 +1614,23 @@ Do not invent:
 
 - Employment rates
 
-
-
 If information is missing, create an editable CMS field or leave the section ready for admin input.
-
-
 
 Do not fill missing information with Lorem Ipsum.
 
-
-
 Do not create fake testimonials.
-
-
 
 Do not create fake staff profiles.
 
-
-
 ---
-
-
 
 37. EXISTING INFORMATION TO PRESERVE
 
-
-
 The current website identifies Profia Institute as a TVET-accredited institution and gives its history beginning in October 2018.
-
-
 
 Preserve the existing institutional information and existing course structure.
 
-
-
 The website currently presents the following schools:
-
-
 
 Business
 
@@ -2433,31 +1642,17 @@ Beauty & Cosmetology
 
 Engineering
 
-
-
 The current site also promotes the Profia Tech Hub and online learning.
-
-
 
 Preserve these sections.
 
-
-
 ---
-
-
 
 38. ADMIN SETTINGS
 
-
-
 Create a Settings section.
 
-
-
 Allow Super Admin to edit:
-
-
 
 - Institution name
 
@@ -2483,23 +1678,13 @@ Allow Super Admin to edit:
 
 - SEO defaults
 
-
-
 ---
-
-
 
 39. INTAKE MANAGEMENT
 
-
-
 Create an intake management system.
 
-
-
 Admin can create:
-
-
 
 - January Intake
 
@@ -2508,8 +1693,6 @@ Admin can create:
 - September Intake
 
 - Other intakes
-
-
 
 ## Development
 
@@ -2971,6 +2154,18 @@ total). Successful replies are retained in the message thread. Both functions
 use the existing `RESEND_API_KEY` and `SCHOOL_EMAIL_FROM` secrets. Attachments
 are staged in a private bucket and removed after the send attempt. Keep provider
 and service-role credentials out of the browser and source control.
+
+### CAT marks and fee balance reminders
+
+Apply `drizzle/migrations/0060_admin_cat_marks_and_fee_reminders.sql` after
+migration 0059, then deploy
+`supabase/functions/send-fee-reminders`. The function uses the existing
+`RESEND_API_KEY` and `SCHOOL_EMAIL_FROM` secrets. CAT mark entry and correction
+are available under Admin → Assignments → CAT results. Fee reminder templates
+are saved from Admin → Fees; staff can add per-send information and send to
+individual students or up to 50 selected students. Reminders use the current
+balance and email address on each student record. No scheduled or automatic
+reminders are created.
 
 ### Profia-branded authentication emails
 
