@@ -344,6 +344,11 @@ export type Database = {
           },
         ];
       };
+      application_unit_selections: TableShape<
+        { application_id: string; created_at: string; unit_id: string },
+        { application_id: string; created_at?: string; unit_id: string },
+        { application_id?: string; created_at?: string; unit_id?: string }
+      >;
       article_categories: {
         Row: {
           created_at: string;
@@ -1894,6 +1899,29 @@ export type Database = {
           updated_at?: string;
         }
       >;
+      student_course_units: TableShape<
+        {
+          course_id: string;
+          level_id: string | null;
+          selected_at: string;
+          student_id: string;
+          unit_id: string;
+        },
+        {
+          course_id: string;
+          level_id?: string | null;
+          selected_at?: string;
+          student_id: string;
+          unit_id: string;
+        },
+        {
+          course_id?: string;
+          level_id?: string | null;
+          selected_at?: string;
+          student_id?: string;
+          unit_id?: string;
+        }
+      >;
       progression_followups: {
         Row: {
           attempts: number;
@@ -2610,6 +2638,18 @@ export type Database = {
         Args: { _assessment_id: string; _unit_id: string };
         Returns: undefined;
       };
+      save_cat_assessment_mark: {
+        Args: { _assessment_id: string; _score: number; _student_number: string };
+        Returns: undefined;
+      };
+      list_cat_mark_candidates: {
+        Args: { _assessment_id: string };
+        Returns: { student_name: string; student_number: string }[];
+      };
+      save_fee_balance_reminder_template: {
+        Args: { _template: Json };
+        Returns: undefined;
+      };
       admin_fee_account_summary: {
         Args: never;
         Returns: {
@@ -2693,6 +2733,22 @@ export type Database = {
           _student_id: string;
         };
         Returns: string;
+      };
+      admin_save_application_unit_selections: {
+        Args: { _application_id: string; _unit_ids: string[] };
+        Returns: undefined;
+      };
+      admin_save_student_course_unit_selections: {
+        Args: { _course_id: string; _student_id: string; _unit_ids: string[] };
+        Returns: undefined;
+      };
+      save_application_unit_selections: {
+        Args: { _application_id: string; _token: string; _unit_ids: string[] };
+        Returns: undefined;
+      };
+      save_my_course_unit_selections: {
+        Args: { _course_id: string; _unit_ids: string[] };
+        Returns: undefined;
       };
       record_faq_search: {
         Args: { _bucket: number; _faq_id: string };

@@ -25,6 +25,9 @@ import { FACILITY_LOCATION } from "@/lib/site";
 import { useScrollReveal } from "@/lib/motion";
 import { LogoTraceLoader } from "@/components/LogoTraceLoader";
 import { DownloadPrintAnimation } from "@/components/site/DownloadPrintAnimation";
+import { signOutWithAudit } from "@/lib/auth";
+import { clearSessionActivity, watchSessionInactivity } from "@/lib/session-security";
+import { toast } from "sonner";
 
 const structuredData = {
   "@context": "https://schema.org",
@@ -238,9 +241,36 @@ function RootComponent() {
     let heartbeat: ReturnType<typeof setInterval> | undefined;
     let mounted = true;
     let updatingPresence = false;
+    let inactivityCleanup: (() => void) | undefined;
+    let inactivityUserId: string | null = null;
     const stopPresence = () => {
       if (heartbeat !== undefined) clearInterval(heartbeat);
       heartbeat = undefined;
+    };
+    const syncSessionInactivity = (userId?: string) => {
+      if (userId === inactivityUserId) return;
+      inactivityCleanup?.();
+      inactivityCleanup = undefined;
+      if (inactivityUserId) clearSessionActivity(inactivityUserId);
+      inactivityUserId = userId ?? null;
+      if (!userId) return;
+      inactivityCleanup = watchSessionInactivity(userId, async () => {
+        stopPresence();
+        const result = await signOutWithAudit("local");
+        if (!result.signedOut) {
+          toast.error("Could not end the inactive session", {
+            description: result.error?.message,
+          });
+          return false;
+        }
+        toast.info("You were signed out after 5 minutes of inactivity.");
+        if (result.error) {
+          toast.error("The session ended, but sign-out activity could not be fully recorded.", {
+            description: result.error.message,
+          });
+        }
+        return true;
+      });
     };
     const updatePresence = async () => {
       if (updatingPresence) return;
@@ -261,6 +291,7 @@ function RootComponent() {
     };
 
     const { data } = supabase.auth.onAuthStateChange((event, session) => {
+      syncSessionInactivity(session?.user.id);
       if (event !== "SIGNED_IN" && event !== "SIGNED_OUT" && event !== "USER_UPDATED") return;
       if (event === "SIGNED_IN" || event === "SIGNED_OUT") queryClient.clear();
       router.invalidate();
@@ -288,7 +319,10 @@ function RootComponent() {
           console.error("Could not restore the session for online presence:", error);
           return;
         }
-        if (mounted && sessionData.session?.user) startPresence();
+        if (mounted && sessionData.session?.user) {
+          syncSessionInactivity(sessionData.session.user.id);
+          startPresence();
+        }
       },
       (error: unknown) => {
         console.error("Could not restore the session for online presence:", error);
@@ -298,6 +332,7 @@ function RootComponent() {
     return () => {
       mounted = false;
       stopPresence();
+      inactivityCleanup?.();
       data.subscription.unsubscribe();
     };
   }, [router, queryClient]);

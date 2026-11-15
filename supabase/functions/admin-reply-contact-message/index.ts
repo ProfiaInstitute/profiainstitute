@@ -8,6 +8,8 @@ const corsHeaders = {
 const maxAttachments = 10;
 const maxAttachmentBytes = 5 * 1024 * 1024;
 const maxTotalBytes = 15 * 1024 * 1024;
+const hasControlCharacters = (value: string) =>
+  /[\r\n]/.test(value) || value.includes(String.fromCharCode(0));
 
 type StagedAttachment = {
   filename: string;
@@ -66,7 +68,7 @@ Deno.serve(async (request: Request) => {
   if (typeof messageId !== "string" || !isUuid(messageId)) {
     return json({ error: "The selected contact message is invalid." }, 400);
   }
-  if (!subject || subject.length > 200 || /[\r\n\u0000]/.test(subject)) {
+  if (!subject || subject.length > 200 || hasControlCharacters(subject)) {
     return json({ error: "Enter an email subject of 1–200 characters without line breaks." }, 400);
   }
   if (!replyBody || replyBody.length > 10_000) {

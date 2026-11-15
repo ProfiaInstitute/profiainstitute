@@ -587,6 +587,164 @@ a[href] {
   }
 }
 
+@keyframes workspace-content-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.admin-workspace,
+.portal-workspace {
+  background-color: var(--color-muted);
+  background-image:
+    radial-gradient(
+      ellipse at 86% 0%,
+      color-mix(in oklab, var(--color-primary) 7%, transparent),
+      transparent 34rem
+    ),
+    linear-gradient(
+      180deg,
+      color-mix(in oklab, var(--color-background) 72%, var(--color-muted)),
+      var(--color-muted)
+    );
+}
+
+.admin-topbar,
+.portal-topbar {
+  box-shadow: 0 8px 26px -22px oklch(0.24 0.06 20 / 0.45);
+}
+
+.admin-topbar {
+  position: sticky;
+}
+
+.admin-topbar::after {
+  position: absolute;
+  right: 0;
+  bottom: -1px;
+  left: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--color-brand), var(--color-primary) 55%, transparent);
+  content: "";
+  pointer-events: none;
+}
+
+.admin-sidebar,
+.portal-sidebar {
+  border-color: color-mix(in oklab, var(--color-border) 78%, transparent);
+  background-color: color-mix(in oklab, var(--color-card) 94%, var(--color-cream));
+  scrollbar-width: thin;
+}
+
+.admin-account-card,
+.portal-identity-card {
+  background-image: linear-gradient(
+    145deg,
+    color-mix(in oklab, var(--color-cream) 88%, white),
+    color-mix(in oklab, var(--color-card) 92%, var(--color-cream))
+  );
+  box-shadow: 0 12px 30px -26px oklch(0.3 0.08 20 / 0.6);
+}
+
+.admin-nav-link,
+.portal-nav-link,
+.portal-mobile-link {
+  transition:
+    color 180ms ease,
+    background-color 180ms ease,
+    box-shadow 180ms ease,
+    transform 180ms ease;
+}
+
+.admin-nav-link:hover,
+.portal-nav-link:hover {
+  transform: translateX(2px);
+}
+
+.admin-nav-link.is-active,
+.portal-nav-link.is-active {
+  box-shadow:
+    inset 3px 0 0 var(--color-primary),
+    0 4px 12px -10px var(--color-brand);
+}
+
+.portal-mobile-nav {
+  box-shadow: 0 -12px 30px -24px oklch(0.24 0.06 20 / 0.55);
+}
+
+.portal-mobile-link.is-active {
+  background-color: color-mix(in oklab, var(--color-accent) 72%, transparent);
+}
+
+.admin-page-heading,
+.admin-workspace .dashboard-section-transition,
+.portal-content {
+  animation: workspace-content-enter 320ms cubic-bezier(0.2, 0.72, 0.2, 1) both;
+}
+
+.admin-workspace main .rounded-xl.border.bg-card,
+.portal-workspace main .rounded-xl.border.bg-card {
+  border-color: color-mix(in oklab, var(--color-border) 82%, white);
+  border-radius: 1rem;
+  box-shadow: 0 10px 28px -25px oklch(0.24 0.06 20 / 0.5);
+  transition:
+    border-color 180ms ease,
+    box-shadow 220ms ease,
+    transform 220ms ease;
+}
+
+.admin-workspace main .rounded-xl.border.bg-card:hover,
+.portal-workspace main .rounded-xl.border.bg-card:hover {
+  border-color: color-mix(in oklab, var(--color-primary) 24%, var(--color-border));
+  box-shadow: 0 16px 34px -28px oklch(0.24 0.06 20 / 0.6);
+}
+
+.admin-workspace input:not([type="checkbox"]):not([type="radio"]),
+.admin-workspace textarea,
+.admin-workspace select,
+.portal-workspace input:not([type="checkbox"]):not([type="radio"]),
+.portal-workspace textarea,
+.portal-workspace select {
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    background-color 160ms ease;
+}
+
+.admin-workspace input:focus-visible,
+.admin-workspace textarea:focus-visible,
+.admin-workspace select:focus-visible,
+.portal-workspace input:focus-visible,
+.portal-workspace textarea:focus-visible,
+.portal-workspace select:focus-visible {
+  border-color: color-mix(in oklab, var(--color-primary) 62%, var(--color-border));
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-primary) 15%, transparent);
+  outline: none;
+}
+
+@media (max-width: 1023px) {
+  .admin-sidebar {
+    box-shadow: 18px 0 48px -36px oklch(0.2 0.08 20 / 0.65);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .admin-page-heading,
+  .admin-workspace .dashboard-section-transition,
+  .portal-content {
+    animation: none;
+  }
+  .admin-nav-link:hover,
+  .portal-nav-link:hover {
+    transform: none;
+  }
+}
+
 /* Article rich text */
 .prose-profia p {
   margin: 0 0 1rem;

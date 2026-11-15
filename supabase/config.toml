@@ -1,5 +1,12 @@
 project_id = "mnufqsnsaiaiqzhvpinf"
 
+[auth]
+jwt_expiry = 3600
+
+[auth.sessions]
+timebox = "24h"
+inactivity_timeout = "5m"
+
 [functions.mpesa-c2b-validation]
 verify_jwt = false
 
@@ -28,6 +35,9 @@ verify_jwt = true
 verify_jwt = true
 
 [functions.admin-send-email]
+verify_jwt = true
+
+[functions.send-fee-reminders]
 verify_jwt = true
 
 [functions.admin-reply-contact-message]

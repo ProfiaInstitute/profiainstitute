@@ -100,6 +100,7 @@ export function OnlineApplication({
   });
   const [submitting, setSubmitting] = useState(false);
   const [applicationNumber, setApplicationNumber] = useState("");
+  const [selectedUnitIds, setSelectedUnitIds] = useState<string[]>([]);
   const [submittedApplication, setSubmittedApplication] = useState<SubmittedApplication | null>(
     null,
   );
@@ -134,12 +135,12 @@ export function OnlineApplication({
     queryFn: async () => {
       const { data, error } = await supabase
         .from("course_units")
-        .select("id,code,title,semester")
-        .eq("level_id", values.level_id)
+        .select("id,code,title,semester,level_id")
+        .eq("course_id", values.course_id)
         .order("sort_order")
         .order("title");
       if (error) throw error;
-      return data;
+      return data.filter((unit) => unit.level_id === null || unit.level_id === values.level_id);
     },
   });
   const [documentUploadError, setDocumentUploadError] = useState("");
@@ -207,8 +208,8 @@ export function OnlineApplication({
       heard_about: values.heard_about.trim() || null,
     };
     const { data, error } = await supabase.rpc("submit_application", { p: payload });
-    setSubmitting(false);
     if (error) {
+      setSubmitting(false);
       toast.error("Could not submit your application", { description: error.message });
       return;
     }
@@ -226,11 +227,25 @@ export function OnlineApplication({
         ? response["application_number"]
         : "";
     if (!number) {
+      setSubmitting(false);
       toast.error(
         "Your application was submitted, but we could not retrieve its reference number. Contact admissions for help.",
       );
       return;
     }
+    if (applicationId && uploadToken) {
+      const { error: unitsError } = await supabase.rpc("save_application_unit_selections", {
+        _application_id: applicationId,
+        _token: uploadToken,
+        _unit_ids: selectedUnitIds,
+      });
+      if (unitsError) {
+        toast.error("Application received, but unit choices could not be saved", {
+          description: unitsError.message,
+        });
+      }
+    }
+    setSubmitting(false);
     setApplicationNumber(number);
     if (applicationId && uploadToken) {
       const submitted = { id: applicationId, token: uploadToken, number };
@@ -468,7 +483,8 @@ export function OnlineApplication({
               required
               className={inputClass}
               value={values.course_id}
-              onChange={(e) =>
+              onChange={(e) => {
+                setSelectedUnitIds([]);
                 setValues({
                   ...values,
                   course_id: e.target.value,
@@ -478,8 +494,8 @@ export function OnlineApplication({
                     ?.available_online
                     ? { study_mode: "full_time" as const }
                     : {}),
-                })
-              }
+                });
+              }}
             >
               <option value="">Choose a course</option>
               {options.data?.courses.map((course) => (
@@ -509,7 +525,10 @@ export function OnlineApplication({
               className={inputClass}
               value={values.level_id}
               disabled={!values.course_id || levels.isLoading}
-              onChange={(e) => setValues({ ...values, level_id: e.target.value })}
+              onChange={(e) => {
+                setSelectedUnitIds([]);
+                setValues({ ...values, level_id: e.target.value });
+              }}
             >
               <option value="">{levels.isLoading ? "Loading levels…" : "Choose a level"}</option>
               {levels.data?.map((level) => (
@@ -567,17 +586,40 @@ export function OnlineApplication({
               Could not load units: {units.error.message}
             </p>
           ) : units.data?.length ? (
-            <ul className="mt-3 grid gap-2 sm:grid-cols-2">
-              {units.data.map((unit) => (
-                <li key={unit.id} className="rounded-lg bg-background px-3 py-2 text-sm">
-                  {unit.code && <span className="font-semibold">{unit.code} · </span>}
-                  {unit.title}
-                  {unit.semester && (
-                    <span className="block text-xs text-muted-foreground">{unit.semester}</span>
-                  )}
-                </li>
-              ))}
-            </ul>
+            <>
+              <p className="mt-3 text-sm text-muted-foreground">
+                Select the units you plan to take. You can update your choices later in the student
+                portal.
+              </p>
+              <ul className="mt-3 grid gap-2 sm:grid-cols-2">
+                {units.data.map((unit) => (
+                  <li key={unit.id}>
+                    <label className="flex h-full cursor-pointer gap-2 rounded-lg bg-background px-3 py-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={selectedUnitIds.includes(unit.id)}
+                        onChange={(event) =>
+                          setSelectedUnitIds((current) =>
+                            event.target.checked
+                              ? [...current, unit.id]
+                              : current.filter((id) => id !== unit.id),
+                          )
+                        }
+                      />
+                      <span>
+                        {unit.code && <span className="font-semibold">{unit.code} · </span>}
+                        {unit.title}
+                        {unit.semester && (
+                          <span className="block text-xs text-muted-foreground">
+                            {unit.semester}
+                          </span>
+                        )}
+                      </span>
+                    </label>
+                  </li>
+                ))}
+              </ul>
+            </>
           ) : (
             <p className="mt-3 text-sm text-muted-foreground">
               Unit details will be shared by the school.
