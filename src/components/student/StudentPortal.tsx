@@ -39,6 +39,7 @@ import { NotificationBell } from "@/components/site/NotificationBell";
 import { PasswordResetPage } from "@/components/auth/PasswordResetPage";
 import { FeeStructureActions } from "@/components/site/FeeStructureActions";
 import { SubmissionFileDownloads } from "@/components/academics/SubmissionFileDownloads";
+import { LearningMaterialViewer } from "@/components/learning/LearningMaterialViewer";
 import {
   Sheet,
   SheetContent,
@@ -734,7 +735,15 @@ function StudentWorkspace({
   const visibleLinks = links.filter(
     ({ id }) =>
       !onlineOnly ||
-      ["overview", "online", "fees", "progression", "feedback", "messages", "profile"].includes(id),
+      [
+        "overview",
+        "online",
+        "fees",
+        "progression",
+        "feedback",
+        "messages",
+        "profile",
+      ].includes(id),
   );
   const linkGroups: { title: string; ids: PortalSection[] }[] = [
     {
@@ -1601,23 +1610,13 @@ function LearningSection({
               {material.description && (
                 <p className="mt-2 text-sm text-muted-foreground">{material.description}</p>
               )}
-              {material.external_url && (
-                <a
-                  className="mt-3 inline-block text-sm font-medium text-primary hover:underline"
-                  href={material.external_url}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Open learning material ↗
-                </a>
-              )}
-              {material.file_path && (
-                <PrivateStorageMedia
-                  path={material.file_path}
-                  contentType={material.material_type}
-                  label="Open learning material"
-                />
-              )}
+              <LearningMaterialViewer
+                title={material.title}
+                materialType={material.material_type}
+                url={material.external_url}
+                filePath={material.file_path}
+                className="mt-3"
+              />
             </article>
           ))}
         </div>

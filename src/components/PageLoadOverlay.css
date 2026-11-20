@@ -1,0 +1,65 @@
+.page-load-overlay {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  pointer-events: none;
+  animation: page-load-splash-out 0.52s ease-out forwards;
+}
+
+.page-load-brand {
+  position: relative;
+}
+
+.page-load-logo {
+  width: min(216px, 52vw);
+  height: auto;
+  filter: drop-shadow(0 10px 24px oklch(0.27 0.1 20 / 0.14));
+  animation: page-load-logo-pop 0.42s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.page-load-badge {
+  position: absolute;
+  top: -0.5rem;
+  right: -0.75rem;
+  width: 2.75rem;
+  height: 2.75rem;
+  border: 2px solid white;
+  border-radius: 9999px;
+  background: white;
+  padding: 0.25rem;
+  box-shadow: 0 6px 20px oklch(0.27 0.1 20 / 0.2);
+}
+
+@keyframes page-load-logo-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.82);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes page-load-splash-out {
+  0%,
+  52% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-load-overlay {
+    animation: page-load-splash-out 0.52s steps(1, end) forwards;
+  }
+
+  .page-load-logo {
+    animation: none;
+  }
+}

@@ -2717,6 +2717,19 @@ export type Database = {
         Returns: Json;
       };
       list_cat_assessments: { Args: never; Returns: Json };
+      list_student_cat_results: {
+        Args: { _student_id: string };
+        Returns: {
+          attempt_id: string;
+          cat_name: string;
+          course_title: string;
+          level_name: string | null;
+          max_score: number;
+          score: number;
+          submitted_at: string;
+          unit_name: string;
+        }[];
+      };
       list_facilitator_cat_performance: { Args: { _unit_id: string }; Returns: Json };
       get_cat_answer_sheet_unit: { Args: { _assessment_id: string }; Returns: Json };
       list_my_cats: { Args: { _course_id?: string | null }; Returns: Json };

@@ -5,8 +5,8 @@ import { AcademicsPage } from "@/components/site/PublicPages";
 export const Route = createFileRoute("/academics")({
   head: () =>
     seo(
-      "Courses and Academic Programmes — Profia Institute",
-      "Explore academic programmes and professional courses at Profia Institute in Homa Bay, Kenya.",
+      "TVET & KASNEB Courses in Homa Bay | Profia Institute",
+      "Explore TVET and KASNEB courses at Profia Institute, an approved KASNEB examination centre in Homa Bay. Compare published programmes and application options.",
       "/academics",
     ),
   component: AcademicsPage,

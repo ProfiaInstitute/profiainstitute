@@ -5,9 +5,16 @@ import { SchoolPage } from "@/components/site/SchoolPage";
 export const Route = createFileRoute("/cosmetology")({
   head: () =>
     seo(
-      "Beauty and Cosmetology Courses — Profia Institute Homa Bay",
-      "Explore beauty and cosmetology training, admission information and courses at Profia Institute in Homa Bay, Kenya.",
+      "TVET Beauty & Cosmetology Courses in Homa Bay | Profia Institute",
+      "Explore beauty therapy, hairdressing and cosmetology training at Profia Institute in Homa Bay. View currently published courses and admissions information.",
       "/cosmetology",
     ),
-  component: () => <SchoolPage slug="cosmetology" whyTitle="Why Choose Profia Cosmetology?" />,
+  component: () => (
+    <SchoolPage
+      slug="cosmetology"
+      whyTitle="Why Choose Profia Cosmetology?"
+      fallbackTitle="TVET Beauty & Cosmetology Courses"
+      fallbackDescription="Explore beauty and cosmetology training at Profia Institute in Homa Bay. View current published programmes and admissions information."
+    />
+  ),
 });

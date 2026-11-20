@@ -47,27 +47,15 @@ export function AcademicsPage() {
   const schools = useSchools();
   const courses = useCourses();
   const activeIntake = useActiveIntake();
-  if (schools.isLoading || courses.isLoading)
-    return (
-      <main className="container-site py-16">
-        <CardGridSkeleton n={5} />
-      </main>
-    );
-  if (schools.error || courses.error)
-    return (
-      <main className="container-site py-16">
-        <ErrorNote />
-      </main>
-    );
   const courseCounts = new Map<string, number>();
   for (const course of courses.data ?? [])
     courseCounts.set(course.school_id, (courseCounts.get(course.school_id) ?? 0) + 1);
   return (
     <>
       <PageHero
-        title="Our Schools & Courses"
-        subtitle="Explore programmes offered by Profia Institute and find the right path for your career."
-        eyebrow="Academics"
+        title="TVET & KASNEB Courses in Homa Bay"
+        subtitle="Explore technical and vocational training and KASNEB programmes at Profia Institute, an approved KASNEB examination centre in Homa Bay. Browse published courses and contact admissions for details."
+        eyebrow="Academics · Homa Bay, Kenya"
       />
       <section className="container-site py-12">
         {activeIntake.data && (
@@ -82,7 +70,11 @@ export function AcademicsPage() {
           title="Schools of study"
           subtitle="Browse the schools and their currently published courses."
         />
-        {schools.data?.length ? (
+        {schools.isLoading ? (
+          <CardGridSkeleton n={5} />
+        ) : schools.error ? (
+          <ErrorNote />
+        ) : schools.data?.length ? (
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {schools.data.map((school) => (
               <article
@@ -139,7 +131,11 @@ export function AcademicsPage() {
             title="Our Courses"
             subtitle="See programme details and begin an application."
           />
-          {courses.data?.length ? (
+          {courses.isLoading ? (
+            <CardGridSkeleton n={5} />
+          ) : courses.error ? (
+            <ErrorNote />
+          ) : courses.data?.length ? (
             <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
               {courses.data.map((course) => (
                 <article key={course.id} className="rounded-xl border bg-card p-5 shadow-card">

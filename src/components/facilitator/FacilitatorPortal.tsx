@@ -14,7 +14,6 @@ import {
   MoreHorizontal,
   Plus,
   UserRound,
-  Video,
   type LucideIcon,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -36,6 +35,12 @@ import { signOutWithAudit, useRoles, useUser } from "@/lib/auth";
 import { submissionFilePaths } from "@/lib/assignments";
 import type { ImportedCatAnswer, ImportedCatQuestion } from "@/lib/cat-import-format";
 import { getDateTimeLocalMinimum } from "@/lib/cats";
+import {
+  clearSessionDraft,
+  createSessionDraftKey,
+  readSessionDraft,
+  writeSessionDraft,
+} from "@/lib/session-draft";
 import {
   contentKind,
   MAX_CONTENT_UPLOAD_SIZE,
@@ -78,7 +83,76 @@ type FacilitatorUnit = {
   course: { id: string; title: string };
 };
 
-const initialQuestion = () => ({
+type FacilitatorAssignmentDraft = {
+  title: string;
+  instructions: string;
+  dueDate: string;
+  levelIds: string[];
+};
+
+type FacilitatorCatDraft = {
+  title: string;
+  name: string;
+  instructions: string;
+  duration: string;
+  openImmediately: boolean;
+  opensAt: string;
+  closesAt: string;
+  levelIds: string[];
+  questions: FacilitatorCatQuestion[];
+};
+
+type FacilitatorCatQuestion = {
+  prompt: string;
+  option_a: string;
+  option_b: string;
+  option_c: string;
+  option_d: string;
+  correct_option: string;
+  points: number;
+};
+
+function isFacilitatorAssignmentDraft(value: unknown): value is FacilitatorAssignmentDraft {
+  if (!value || typeof value !== "object") return false;
+  const draft = value as Partial<FacilitatorAssignmentDraft>;
+  return (
+    typeof draft.title === "string" &&
+    typeof draft.instructions === "string" &&
+    typeof draft.dueDate === "string" &&
+    Array.isArray(draft.levelIds) &&
+    draft.levelIds.every((id) => typeof id === "string")
+  );
+}
+
+function isFacilitatorCatDraft(value: unknown): value is FacilitatorCatDraft {
+  if (!value || typeof value !== "object") return false;
+  const draft = value as Partial<FacilitatorCatDraft>;
+  return (
+    typeof draft.title === "string" &&
+    typeof draft.name === "string" &&
+    typeof draft.instructions === "string" &&
+    typeof draft.duration === "string" &&
+    typeof draft.openImmediately === "boolean" &&
+    typeof draft.opensAt === "string" &&
+    typeof draft.closesAt === "string" &&
+    Array.isArray(draft.levelIds) &&
+    draft.levelIds.every((id) => typeof id === "string") &&
+    Array.isArray(draft.questions) &&
+    draft.questions.every(
+      (question) =>
+        question &&
+        typeof question.prompt === "string" &&
+        typeof question.option_a === "string" &&
+        typeof question.option_b === "string" &&
+        typeof question.option_c === "string" &&
+        typeof question.option_d === "string" &&
+        typeof question.correct_option === "string" &&
+        typeof question.points === "number",
+    )
+  );
+}
+
+const initialQuestion = (): FacilitatorCatQuestion => ({
   prompt: "",
   option_a: "",
   option_b: "",
@@ -332,6 +406,8 @@ function FacilitatorWorkspace({ userId, email }: { userId: string; email: string
   });
   const activeUnit =
     unitsQuery.data?.find((unit) => unit.id === selectedId) ?? unitsQuery.data?.[0];
+  const activeUnitId = activeUnit?.unit_id;
+  const activeUnitLevelId = activeUnit?.unit.level_id;
   const studentsQuery = useQuery({
     queryKey: ["facilitator", "students", activeUnit?.unit_id],
     enabled: Boolean(activeUnit),
@@ -391,12 +467,15 @@ function FacilitatorWorkspace({ userId, email }: { userId: string; email: string
       return data;
     },
   });
-  const [assignmentDraft, setAssignmentDraft] = useState({
+  const [assignmentDraft, setAssignmentDraft] = useState<FacilitatorAssignmentDraft>({
     title: "",
     instructions: "",
     dueDate: "",
     levelIds: [] as string[],
   });
+  const [assignmentDraftUnitId, setAssignmentDraftUnitId] = useState("");
+  const [assignmentDraftRestored, setAssignmentDraftRestored] = useState(false);
+  const [assignmentDraftSaveFailed, setAssignmentDraftSaveFailed] = useState(false);
   const [materialDraft, setMaterialDraft] = useState({
     title: "",
     description: "",
@@ -421,19 +500,104 @@ function FacilitatorWorkspace({ userId, email }: { userId: string; email: string
     downloadFile: null as File | null,
   });
   const [questions, setQuestions] = useState([initialQuestion()]);
+  const [catDraftUnitId, setCatDraftUnitId] = useState("");
+  const [catDraftRestored, setCatDraftRestored] = useState(false);
+  const [catDraftSaveFailed, setCatDraftSaveFailed] = useState(false);
   const [busy, setBusy] = useState(false);
   const catDownloadInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    setAssignmentDraft((draft) => ({
-      ...draft,
-      levelIds: activeUnit?.unit.level_id ? [activeUnit.unit.level_id] : [],
-    }));
-    setCatDraft((draft) => ({
-      ...draft,
-      levelIds: activeUnit?.unit.level_id ? [activeUnit.unit.level_id] : [],
-    }));
-  }, [activeUnit?.unit_id, activeUnit?.unit.level_id]);
+    if (!activeUnitId) return;
+    const assignmentKey = createSessionDraftKey(userId, "facilitator-assignment", activeUnitId);
+    const catKey = createSessionDraftKey(userId, "facilitator-cat", activeUnitId);
+    const restoredAssignment = readSessionDraft(assignmentKey, isFacilitatorAssignmentDraft);
+    const restoredCat = readSessionDraft(catKey, isFacilitatorCatDraft);
+    const defaultLevelIds = activeUnitLevelId ? [activeUnitLevelId] : [];
+    setAssignmentDraft(
+      restoredAssignment ?? { title: "", instructions: "", dueDate: "", levelIds: defaultLevelIds },
+    );
+    setAssignmentDraftRestored(Boolean(restoredAssignment));
+    setAssignmentDraftSaveFailed(false);
+    setAssignmentDraftUnitId(activeUnitId);
+    setCatDraft({
+      title: restoredCat?.title ?? "",
+      name: restoredCat?.name ?? "",
+      instructions: restoredCat?.instructions ?? "",
+      duration: restoredCat?.duration ?? "30",
+      openImmediately: restoredCat?.openImmediately ?? true,
+      opensAt: restoredCat?.opensAt ?? "",
+      closesAt: restoredCat?.closesAt ?? "",
+      levelIds: restoredCat?.levelIds ?? defaultLevelIds,
+      downloadFile: null,
+    });
+    setQuestions(restoredCat?.questions ?? [initialQuestion()]);
+    setCatDraftRestored(Boolean(restoredCat));
+    setCatDraftSaveFailed(false);
+    setCatDraftUnitId(activeUnitId);
+  }, [activeUnitId, activeUnitLevelId, userId]);
+
+  useEffect(() => {
+    if (!activeUnitId || assignmentDraftUnitId !== activeUnitId) return;
+    const defaultLevelIds = activeUnitLevelId ? [activeUnitLevelId] : [];
+    const hasDraftContent = Boolean(
+      assignmentDraft.title.trim() ||
+      assignmentDraft.instructions.trim() ||
+      assignmentDraft.dueDate ||
+      assignmentDraft.levelIds.join(",") !== defaultLevelIds.join(","),
+    );
+    const key = createSessionDraftKey(userId, "facilitator-assignment", activeUnitId);
+    if (!hasDraftContent) {
+      clearSessionDraft(key);
+      setAssignmentDraftSaveFailed(false);
+      return;
+    }
+    setAssignmentDraftSaveFailed(!writeSessionDraft(key, assignmentDraft));
+  }, [activeUnitId, activeUnitLevelId, assignmentDraftUnitId, assignmentDraft, userId]);
+
+  useEffect(() => {
+    if (!activeUnitId || catDraftUnitId !== activeUnitId) return;
+    const defaultLevelIds = activeUnitLevelId ? [activeUnitLevelId] : [];
+    const hasDraftContent =
+      Boolean(
+        catDraft.title.trim() ||
+        catDraft.name.trim() ||
+        catDraft.instructions.trim() ||
+        catDraft.duration !== "30" ||
+        !catDraft.openImmediately ||
+        catDraft.opensAt ||
+        catDraft.closesAt ||
+        catDraft.levelIds.join(",") !== defaultLevelIds.join(","),
+      ) ||
+      questions.some(
+        (question) =>
+          question.prompt ||
+          question.option_a ||
+          question.option_b ||
+          question.option_c ||
+          question.option_d ||
+          question.correct_option !== "A" ||
+          question.points !== 1,
+      );
+    const key = createSessionDraftKey(userId, "facilitator-cat", activeUnitId);
+    if (!hasDraftContent) {
+      clearSessionDraft(key);
+      setCatDraftSaveFailed(false);
+      return;
+    }
+    setCatDraftSaveFailed(
+      !writeSessionDraft(key, {
+        title: catDraft.title,
+        name: catDraft.name,
+        instructions: catDraft.instructions,
+        duration: catDraft.duration,
+        openImmediately: catDraft.openImmediately,
+        opensAt: catDraft.opensAt,
+        closesAt: catDraft.closesAt,
+        levelIds: catDraft.levelIds,
+        questions,
+      }),
+    );
+  }, [activeUnitId, activeUnitLevelId, catDraftUnitId, catDraft, questions, userId]);
 
   async function createAssignment(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -459,6 +623,8 @@ function FacilitatorWorkspace({ userId, email }: { userId: string; email: string
       return;
     }
     toast.success("Assignment published to the class");
+    clearSessionDraft(createSessionDraftKey(userId, "facilitator-assignment", activeUnit.unit_id));
+    setAssignmentDraftRestored(false);
     setAssignmentDraft({
       title: "",
       instructions: "",
@@ -658,6 +824,8 @@ function FacilitatorWorkspace({ userId, email }: { userId: string; email: string
       return;
     }
     toast.success("CAT published for the assigned unit");
+    clearSessionDraft(createSessionDraftKey(userId, "facilitator-cat", activeUnit.unit_id));
+    setCatDraftRestored(false);
     setCatDraft({
       title: "",
       name: "",
@@ -778,9 +946,7 @@ function FacilitatorWorkspace({ userId, email }: { userId: string; email: string
   const mobileNavigationItems = [
     "dashboard",
     "facilitator-students",
-    "facilitator-assignments",
     "facilitator-inbox",
-    "facilitator-materials",
   ]
     .map((id) => navigationItems.find((item) => item.id === id))
     .filter((item): item is (typeof navigationItems)[number] => Boolean(item))
@@ -1103,6 +1269,17 @@ function FacilitatorWorkspace({ userId, email }: { userId: string; email: string
                   <summary className="cursor-pointer text-sm font-semibold text-brand">
                     Assignment details
                   </summary>
+                  {assignmentDraftRestored && (
+                    <p role="status" className="mt-3 text-sm text-muted-foreground">
+                      Your assignment draft was restored from this browser tab.
+                    </p>
+                  )}
+                  {assignmentDraftSaveFailed && (
+                    <p role="alert" className="mt-3 text-sm text-destructive">
+                      This browser could not save your assignment draft. Keep this page open until
+                      you publish it.
+                    </p>
+                  )}
                   <form
                     className="mt-4 grid gap-4 sm:grid-cols-2"
                     onSubmit={(event) => void createAssignment(event)}
@@ -1216,6 +1393,21 @@ function FacilitatorWorkspace({ userId, email }: { userId: string; email: string
                     Create and schedule timed assessments for {activeUnit.unit.title}.
                   </p>
                 </div>
+                {catDraftRestored && (
+                  <p
+                    role="status"
+                    className="rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground"
+                  >
+                    Your CAT draft was restored from this browser tab. Please reselect any file
+                    attachment.
+                  </p>
+                )}
+                {catDraftSaveFailed && (
+                  <p role="alert" className="text-sm text-destructive">
+                    This browser could not save your CAT draft. Keep this page open until you
+                    publish it.
+                  </p>
+                )}
                 <details className="rounded-lg border bg-muted/20 p-4">
                   <summary className="cursor-pointer text-sm font-semibold text-brand">
                     Create a CAT · {questions.length} question{questions.length === 1 ? "" : "s"}
@@ -1282,8 +1474,8 @@ function FacilitatorWorkspace({ userId, email }: { userId: string; email: string
                           }
                         />
                         <span className="text-xs text-muted-foreground">
-                          Maximum file size: 50 MB. The timed online CAT remains available
-                          separately.
+                          Maximum file size: 50 MB. Attachments must be reselected after leaving or
+                          reloading this page. The timed online CAT remains available separately.
                         </span>
                       </label>
                     </details>
