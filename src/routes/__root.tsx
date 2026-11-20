@@ -28,6 +28,7 @@ import { DownloadPrintAnimation } from "@/components/site/DownloadPrintAnimation
 import { signOutWithAudit } from "@/lib/auth";
 import { clearSessionActivity, watchSessionInactivity } from "@/lib/session-security";
 import { toast } from "sonner";
+import { StaffMfaGate } from "@/components/auth/StaffMfaGate";
 
 const structuredData = {
   "@context": "https://schema.org",
@@ -268,7 +269,7 @@ function RootComponent() {
           });
           return false;
         }
-        toast.info("You were signed out after 5 minutes of inactivity.");
+        toast.info("You were signed out after 60 days of inactivity.");
         if (result.error) {
           toast.error("The session ended, but sign-out activity could not be fully recorded.", {
             description: result.error.message,
@@ -353,7 +354,9 @@ function RootComponent() {
             key={pathname}
             className={isApp ? undefined : "page-transition"}
           >
-            <Outlet />
+            <StaffMfaGate>
+              <Outlet />
+            </StaffMfaGate>
           </div>
         </main>
         {!isApp && <SiteFooter />}

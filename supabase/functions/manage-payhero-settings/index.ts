@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { checkStaffMfa } from "../_shared/staff-mfa.ts";
 import { loadPayHeroCredentials } from "../_shared/payhero.ts";
 
 const corsHeaders = {
@@ -26,6 +27,8 @@ Deno.serve(async (request: Request) => {
   const { data: authData, error: authError } = await supabase.auth.getUser(accessToken);
   if (authError || !authData.user)
     return json({ error: "Your admin session is invalid or expired." }, 401);
+  const mfaCheck = await checkStaffMfa(supabase, authData.user.id, accessToken);
+  if (!mfaCheck.allowed) return json({ error: mfaCheck.error }, mfaCheck.status);
 
   const { data: callerRole, error: roleError } = await supabase
     .from("user_roles")

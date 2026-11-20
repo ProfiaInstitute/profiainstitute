@@ -1607,6 +1607,105 @@ export type Database = {
           },
         ];
       };
+      live_class_attendance: {
+        Row: {
+          first_joined_at: string;
+          join_count: number;
+          last_left_at: string | null;
+          participant_role: string;
+          session_id: string;
+          user_id: string;
+        };
+        Insert: {
+          first_joined_at?: string;
+          join_count?: number;
+          last_left_at?: string | null;
+          participant_role: string;
+          session_id: string;
+          user_id: string;
+        };
+        Update: {
+          first_joined_at?: string;
+          join_count?: number;
+          last_left_at?: string | null;
+          participant_role?: string;
+          session_id?: string;
+          user_id?: string;
+        };
+        Relationships: [];
+      };
+      live_class_members: {
+        Row: {
+          assigned_by: string;
+          created_at: string;
+          session_id: string;
+          student_id: string;
+        };
+        Insert: {
+          assigned_by?: string;
+          created_at?: string;
+          session_id: string;
+          student_id: string;
+        };
+        Update: {
+          assigned_by?: string;
+          created_at?: string;
+          session_id?: string;
+          student_id?: string;
+        };
+        Relationships: [];
+      };
+      live_class_sessions: {
+        Row: {
+          created_at: string;
+          created_by: string;
+          description: string | null;
+          duration_minutes: number;
+          ended_at: string | null;
+          facilitator_id: string;
+          id: string;
+          room_name: string;
+          scheduled_at: string;
+          started_at: string | null;
+          status: string;
+          title: string;
+          unit_id: string;
+          updated_at: string;
+        };
+        Insert: {
+          created_at?: string;
+          created_by?: string;
+          description?: string | null;
+          duration_minutes?: number;
+          ended_at?: string | null;
+          facilitator_id: string;
+          id?: string;
+          room_name?: string;
+          scheduled_at: string;
+          started_at?: string | null;
+          status?: string;
+          title: string;
+          unit_id: string;
+          updated_at?: string;
+        };
+        Update: {
+          created_at?: string;
+          created_by?: string;
+          description?: string | null;
+          duration_minutes?: number;
+          ended_at?: string | null;
+          facilitator_id?: string;
+          id?: string;
+          room_name?: string;
+          scheduled_at?: string;
+          started_at?: string | null;
+          status?: string;
+          title?: string;
+          unit_id?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       online_course_enrollments: {
         Row: {
           certificate_fee: number;
@@ -2584,6 +2683,22 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
+      can_join_live_class: {
+        Args: { _session_id: string };
+        Returns: boolean;
+      };
+      can_manage_live_class: {
+        Args: { _session_id: string };
+        Returns: boolean;
+      };
+      record_live_class_join: {
+        Args: { _participant_role: string; _session_id: string; _user_id: string };
+        Returns: undefined;
+      };
+      record_live_class_leave: {
+        Args: { _session_id: string; _user_id: string };
+        Returns: undefined;
+      };
       claim_regulatory_deadline_reminders: {
         Args: { _channels?: string[] | null; _limit?: number };
         Returns: Database["public"]["Tables"]["regulatory_deadline_reminders"]["Row"][];

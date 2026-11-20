@@ -1,11 +1,11 @@
 project_id = "mnufqsnsaiaiqzhvpinf"
 
 [auth]
-jwt_expiry = 3600
+jwt_expiry = 300
 
 [auth.sessions]
-timebox = "24h"
-inactivity_timeout = "5m"
+timebox = "1440h"
+inactivity_timeout = "1440h"
 
 [functions.mpesa-c2b-validation]
 verify_jwt = false
@@ -54,6 +54,15 @@ verify_jwt = true
 
 [functions.manage-system-users]
 verify_jwt = true
+
+[functions.livekit-token]
+verify_jwt = true
+
+[functions.manage-live-class]
+verify_jwt = true
+
+[functions.livekit-webhook]
+verify_jwt = false
 
 [functions.send-application-notifications]
 verify_jwt = false

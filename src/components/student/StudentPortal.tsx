@@ -14,6 +14,7 @@ import {
   GraduationCap,
   LogOut,
   Mail,
+  Video,
   Printer,
   RefreshCw,
   UserRound,
@@ -40,6 +41,7 @@ import { PasswordResetPage } from "@/components/auth/PasswordResetPage";
 import { FeeStructureActions } from "@/components/site/FeeStructureActions";
 import { SubmissionFileDownloads } from "@/components/academics/SubmissionFileDownloads";
 import { LearningMaterialViewer } from "@/components/learning/LearningMaterialViewer";
+import { LiveClassesPanel } from "@/components/learning/LiveClassesPanel";
 import {
   Sheet,
   SheetContent,
@@ -58,6 +60,7 @@ import {
 type PortalSection =
   | "overview"
   | "online"
+  | "elearning"
   | "learning"
   | "assignments"
   | "cats"
@@ -708,6 +711,7 @@ function StudentWorkspace({
   const pageTitle: Record<PortalSection, string> = {
     overview: "My dashboard",
     online: "My online courses",
+    elearning: "E-learning",
     learning: "Learning materials",
     assignments: "Assignments",
     cats: "CATs",
@@ -721,6 +725,7 @@ function StudentWorkspace({
   const links: { id: PortalSection; title: string; icon: typeof BookOpen }[] = [
     { id: "overview", title: "Overview", icon: GraduationCap },
     { id: "online", title: "My online courses", icon: BookOpen },
+    { id: "elearning", title: "E-learning", icon: Video },
     { id: "learning", title: "Learning materials", icon: BookOpen },
     { id: "assignments", title: "Assignments", icon: ClipboardList },
     { id: "cats", title: "CATs", icon: ClipboardCheck },
@@ -738,6 +743,7 @@ function StudentWorkspace({
       [
         "overview",
         "online",
+        "elearning",
         "fees",
         "progression",
         "feedback",
@@ -751,6 +757,7 @@ function StudentWorkspace({
       ids: [
         "overview",
         "online",
+        "elearning",
         "learning",
         "assignments",
         "cats",
@@ -966,6 +973,7 @@ function StudentWorkspace({
                 />
               ))}
             {section === "online" && <OnlineCoursesSection student={student} />}
+            {section === "elearning" && <LiveClassesPanel />}
             {section === "learning" && (
               <LearningSection
                 courseId={activeCourse?.course_id ?? null}
