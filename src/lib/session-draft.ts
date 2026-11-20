@@ -8,8 +8,9 @@ export function readSessionDraft<T>(
   key: string,
   isValid: (value: unknown) => value is T,
 ): T | null {
+  if (typeof window === "undefined") return null;
   try {
-    const stored = sessionStorage.getItem(key);
+    const stored = localStorage.getItem(key) ?? sessionStorage.getItem(key);
     if (!stored) return null;
     const parsed: unknown = JSON.parse(stored);
     return isValid(parsed) ? parsed : null;
@@ -20,8 +21,9 @@ export function readSessionDraft<T>(
 }
 
 export function writeSessionDraft(key: string, value: unknown) {
+  if (typeof window === "undefined") return false;
   try {
-    sessionStorage.setItem(key, JSON.stringify(value));
+    localStorage.setItem(key, JSON.stringify(value));
     return true;
   } catch (error) {
     console.error("Could not save the form draft in this browser session.", error);
@@ -30,7 +32,9 @@ export function writeSessionDraft(key: string, value: unknown) {
 }
 
 export function clearSessionDraft(key: string) {
+  if (typeof window === "undefined") return;
   try {
+    localStorage.removeItem(key);
     sessionStorage.removeItem(key);
   } catch (error) {
     console.error("Could not clear the saved form draft.", error);

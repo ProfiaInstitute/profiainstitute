@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { unzipSync } from "fflate";
 import {
   calculateAnswerSheetMetrics,
+  generateAnswerKeySheetBlob,
   generateMarkedAnswerSheetBlob,
   generateMarkedAnswerSheetsBlob,
   parseAnswerSheetUnit,
@@ -163,6 +164,58 @@ describe("CAT answer-sheet generation", () => {
           ?.getAttributeNS(wordNamespace, "val"),
       ).toBe("FF0000");
       expect(correctedOption?.getElementsByTagNameNS(wordNamespace, "i")).toHaveLength(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("uses the answer-sheet template for a clean answer key without marking symbols", async () => {
+    const template = readFileSync(resolve(process.cwd(), "public/templates/ANSWER SHEET.docx"));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(template)));
+
+    try {
+      const blob = await generateAnswerKeySheetBlob({
+        courseName: "Accounting",
+        unitName: "Financial Accounting",
+        unitCode: "ACC101",
+        examName: "CAT 1",
+        questions: [{ correctOption: "B" }, { correctOption: "D" }],
+      });
+      const outputBytes = await new Promise<ArrayBuffer>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          if (reader.result instanceof ArrayBuffer) resolve(reader.result);
+          else reject(new Error("Could not read the generated DOCX blob."));
+        };
+        reader.onerror = () => reject(reader.error);
+        reader.readAsArrayBuffer(blob);
+      });
+      const files = unzipSync(new Uint8Array(outputBytes));
+      const documentXml = files["word/document.xml"];
+      if (!documentXml) throw new Error("Generated DOCX is missing word/document.xml.");
+      const parsed = new DOMParser().parseFromString(
+        new TextDecoder().decode(documentXml),
+        "application/xml",
+      );
+      const text = (parsed.documentElement.textContent ?? "").replace(/\s+/g, " ");
+
+      expect(parsed.getElementsByTagName("parsererror")).toHaveLength(0);
+      expect(
+        parsed.getElementsByTagNameNS(
+          "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+          "tbl",
+        ),
+      ).toHaveLength(1);
+      expect(text).toContain("COURSE NAME Accounting");
+      expect(text).toContain("UNIT NAME Financial Accounting UNIT CODE ACC101");
+      expect(text).toContain("EXAM CAT 1 STUDENT NAME");
+      expect(text).toContain("STUDENT KASNEB NUMBER");
+      expect(text).toContain("1 B");
+      expect(text).toContain("2 D");
+      expect(text).not.toContain("✓");
+      expect(text).not.toContain("✗");
+      expect(text).not.toContain("Correct:");
+      expect(text).not.toContain("marks");
     } finally {
       vi.unstubAllGlobals();
     }

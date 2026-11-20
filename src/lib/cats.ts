@@ -27,6 +27,9 @@ export type StudentCatQuestion = {
   options: { key: CatOptionKey; text: string }[];
   points: number;
   selectedOption: CatOptionKey | null;
+  sharedGroup: string | null;
+  sharedPrompt: string | null;
+  groupPosition: number | null;
 };
 
 export type StudentCatAttempt = {
@@ -49,6 +52,9 @@ export type AdminCatQuestion = {
   options: Record<CatOptionKey, string>;
   correctOption: CatOptionKey;
   points: number;
+  sharedGroup: string | null;
+  sharedPrompt: string | null;
+  groupPosition: number | null;
 };
 
 export type AdminCatAttempt = {
@@ -289,6 +295,9 @@ export function parseStudentCatAttempt(value: Json | null): StudentCatAttempt {
       prompt: stringValue(question["prompt"], "question"),
       options,
       points: numberValue(question["points"], "question mark"),
+      sharedGroup: nullableString(question["shared_group"]),
+      sharedPrompt: nullableString(question["shared_prompt"]),
+      groupPosition: nullableNumber(question["group_position"]),
       selectedOption:
         question["selected_option"] === null || question["selected_option"] === undefined
           ? null
@@ -327,6 +336,9 @@ export function parseAdminCats(value: Json | null): AdminCat[] {
         },
         correctOption: optionValue(question["correct_option"]),
         points: numberValue(question["points"], "question mark"),
+        sharedGroup: nullableString(question["shared_group"]),
+        sharedPrompt: nullableString(question["shared_prompt"]),
+        groupPosition: nullableNumber(question["group_position"]),
       };
     });
     const attempts = arrayValue(cat["attempts"]).map((attemptEntry) => {

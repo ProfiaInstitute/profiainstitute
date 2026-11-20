@@ -1851,6 +1851,13 @@ levels. Individual recipients are checked against active course and level
 enrolments; only selected students can see or start the CAT in the portal. Apply
 `drizzle/migrations/0058_fix_targeted_cat_assessment_id_ambiguity.sql` after it
 to fix the ambiguous `assessment_id` reference when publishing a CAT.
+Apply `drizzle/migrations/0065_cat_question_groups_and_attempt_order.sql` after
+migrations `0063` and `0064` to enable shared case/passage groups and per-attempt
+question ordering. Students see one question at a time; each answer is saved before
+they can continue. Shared question groups stay together in their configured step
+order, with group blocks and standalone questions randomized per attempt. Generated
+CAT papers include the shared case text. Marking-scheme downloads use the official
+answer-sheet layout and show only each question's correct answer.
 
 ### Holiday program applications
 
@@ -2066,8 +2073,10 @@ administrators and facilitators assigned to those students, and requires the
 short-lived application upload token for supporting-document uploads. It also
 limits notification writes to trusted database-side workflows and adds indexes
 for notification and inbox fetches. The frontend keeps React Query results in
-memory for reuse, clears its cache when accounts sign in or out, and does not
-persist private portal data to local or session storage.
+memory for reuse and clears its cache when accounts sign in or out. CAT and
+assignment authoring drafts are a deliberate exception: they are saved in this
+browser's local storage under account- and unit-scoped keys and cleared after
+successful publication. Uploaded files must be reselected.
 
 ### Student progression email follow-ups
 

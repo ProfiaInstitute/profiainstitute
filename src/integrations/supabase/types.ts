@@ -2749,6 +2749,24 @@ export type Database = {
         };
         Returns: string;
       };
+      create_targeted_cat_assessment_with_groups: {
+        Args: {
+          _closes_at: string;
+          _course_id: string;
+          _download_file_name: string | null;
+          _download_file_path: string | null;
+          _duration_minutes: number;
+          _instructions: string | null;
+          _level_ids: string[];
+          _name: string;
+          _opens_at: string | null;
+          _questions: Json;
+          _student_ids: string[];
+          _title: string;
+          _unit_id: string;
+        };
+        Returns: string;
+      };
       set_cat_assessment_unit: {
         Args: { _assessment_id: string; _unit_id: string };
         Returns: undefined;
@@ -2810,6 +2828,22 @@ export type Database = {
         };
         Returns: string;
       };
+      create_facilitator_cat_with_groups: {
+        Args: {
+          _closes_at: string;
+          _download_file_name: string | null;
+          _download_file_path: string | null;
+          _duration_minutes: number;
+          _instructions: string | null;
+          _level_ids: string[];
+          _name: string;
+          _opens_at: string | null;
+          _questions: Json;
+          _title: string;
+          _unit_id: string;
+        };
+        Returns: string;
+      };
       facilitator_unit_permission: {
         Args: { _permission?: string | null; _unit_id: string; _user_id: string };
         Returns: boolean;
@@ -2832,6 +2866,7 @@ export type Database = {
         Returns: Json;
       };
       list_cat_assessments: { Args: never; Returns: Json };
+      list_cat_assessments_with_groups: { Args: never; Returns: Json };
       list_student_cat_results: {
         Args: { _student_id: string };
         Returns: {
@@ -2847,6 +2882,7 @@ export type Database = {
       };
       list_facilitator_cat_performance: { Args: { _unit_id: string }; Returns: Json };
       get_cat_answer_sheet_unit: { Args: { _assessment_id: string }; Returns: Json };
+      start_cat_attempt_with_order: { Args: { _assessment_id: string }; Returns: Json };
       list_my_cats: { Args: { _course_id?: string | null }; Returns: Json };
       my_course_ids: { Args: never; Returns: string[] };
       student_has_course_level: {
@@ -3026,6 +3062,21 @@ export type Database = {
         Returns: undefined;
       };
       update_cat_assessment: {
+        Args: {
+          _assessment_id: string;
+          _closes_at: string;
+          _download_file_name: string | null;
+          _download_file_path: string | null;
+          _duration_minutes: number;
+          _instructions: string | null;
+          _name: string;
+          _opens_at: string;
+          _questions?: Json | null;
+          _title: string;
+        };
+        Returns: undefined;
+      };
+      update_cat_assessment_with_groups: {
         Args: {
           _assessment_id: string;
           _closes_at: string;

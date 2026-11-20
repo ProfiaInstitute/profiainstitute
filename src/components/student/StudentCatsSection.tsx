@@ -31,6 +31,7 @@ export function StudentCatsSection({
 }) {
   const queryClient = useQueryClient();
   const [activeAttempt, setActiveAttempt] = useState<StudentCatAttempt | null>(null);
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [now, setNow] = useState(() => Date.now());
   const [kasnebDraft, setKasnebDraft] = useState(kasnebNumber ?? "");
   const [savedKasnebNumber, setSavedKasnebNumber] = useState(kasnebNumber);
@@ -211,12 +212,13 @@ export function StudentCatsSection({
     }
     setStartingId(cat.id);
     try {
-      const { data, error } = await supabase.rpc("start_cat_attempt", {
+      const { data, error } = await supabase.rpc("start_cat_attempt_with_order", {
         _assessment_id: cat.id,
       });
       if (error) throw error;
       const attempt = parseStudentCatAttempt(data);
       setActiveAttempt(attempt);
+      setCurrentQuestionIndex(0);
       setSubmitError("");
       submittingAttemptId.current = attempt.submittedAt ? attempt.id : null;
     } catch (error) {
@@ -400,36 +402,56 @@ export function StudentCatsSection({
           Your answers are saved as you choose them. You can submit only once; leaving this page
           does not stop the timer.
         </p>
-        {activeAttempt.questions.map((question, index) => (
-          <fieldset key={question.id} className="space-y-3 rounded-lg border p-4">
-            <legend className="px-1 text-sm font-semibold">
-              {index + 1}. {question.prompt}{" "}
-              <span className="text-muted-foreground">({question.points} marks)</span>
-            </legend>
-            {question.options.map((option) => (
-              <label
-                key={option.key}
-                className="flex cursor-pointer items-start gap-3 rounded-md border p-3 text-sm hover:bg-muted/40"
-              >
-                <input
-                  type="radio"
-                  name={`question-${question.id}`}
-                  value={option.key}
-                  checked={question.selectedOption === option.key}
-                  disabled={submitting || secondsRemaining <= 0 || Boolean(savingQuestionId)}
-                  onChange={() => void saveAnswer(question.id, option.key)}
-                  className="mt-0.5 accent-primary"
-                />
-                <span>
-                  <strong>{option.key}.</strong> {option.text}
-                </span>
-              </label>
-            ))}
-            {savingQuestionId === question.id && (
-              <p className="text-xs text-muted-foreground">Saving answer…</p>
-            )}
-          </fieldset>
-        ))}
+        {(() => {
+          const question = activeAttempt.questions[currentQuestionIndex];
+          if (!question) return null;
+          return (
+            <div className="space-y-4 rounded-lg border p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="text-sm font-semibold">
+                  Question {currentQuestionIndex + 1} of {activeAttempt.questions.length}
+                </h3>
+                <span className="text-sm text-muted-foreground">{question.points} marks</span>
+              </div>
+              {question.sharedPrompt && (
+                <aside className="space-y-2 rounded-md bg-muted/50 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-brand">
+                    {question.sharedGroup}
+                    {question.groupPosition ? ` · Step ${question.groupPosition}` : ""}
+                  </p>
+                  <p className="whitespace-pre-wrap text-sm">{question.sharedPrompt}</p>
+                </aside>
+              )}
+              <p className="whitespace-pre-wrap font-medium">{question.prompt}</p>
+              <div className="space-y-2">
+                {question.options.map((option) => (
+                  <label
+                    key={option.key}
+                    className="flex cursor-pointer items-start gap-3 rounded-md border p-3 text-sm hover:bg-muted/40"
+                  >
+                    <input
+                      type="radio"
+                      name={`question-${question.id}`}
+                      value={option.key}
+                      checked={question.selectedOption === option.key}
+                      disabled={submitting || secondsRemaining <= 0 || Boolean(savingQuestionId)}
+                      onChange={() => void saveAnswer(question.id, option.key)}
+                      className="mt-0.5 accent-primary"
+                    />
+                    <span>
+                      <strong>{option.key}.</strong> {option.text}
+                    </span>
+                  </label>
+                ))}
+              </div>
+              {savingQuestionId === question.id && (
+                <p role="status" className="text-xs text-muted-foreground">
+                  Saving answer…
+                </p>
+              )}
+            </div>
+          );
+        })()}
         {submitError && (
           <div
             role="alert"
@@ -440,11 +462,42 @@ export function StudentCatsSection({
         )}
         <div className="flex flex-wrap items-center gap-3 border-t pt-4">
           <Button
-            disabled={submitting || Boolean(savingQuestionId)}
-            onClick={() => void submitAttempt(activeAttempt.id)}
+            type="button"
+            variant="outline"
+            disabled={currentQuestionIndex === 0 || submitting || Boolean(savingQuestionId)}
+            onClick={() => setCurrentQuestionIndex((index) => Math.max(0, index - 1))}
           >
-            {submitting ? "Submitting…" : "Submit CAT"}
+            Previous question
           </Button>
+          {currentQuestionIndex < activeAttempt.questions.length - 1 ? (
+            <Button
+              type="button"
+              disabled={
+                submitting ||
+                Boolean(savingQuestionId) ||
+                !activeAttempt.questions[currentQuestionIndex]?.selectedOption
+              }
+              onClick={() =>
+                setCurrentQuestionIndex((index) =>
+                  Math.min(activeAttempt.questions.length - 1, index + 1),
+                )
+              }
+            >
+              Next question
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              disabled={
+                submitting ||
+                Boolean(savingQuestionId) ||
+                !activeAttempt.questions[currentQuestionIndex]?.selectedOption
+              }
+              onClick={() => void submitAttempt(activeAttempt.id)}
+            >
+              {submitting ? "Submitting…" : "Submit CAT"}
+            </Button>
+          )}
           {submitError && (
             <Button
               variant="outline"

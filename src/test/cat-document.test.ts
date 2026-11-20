@@ -20,6 +20,9 @@ const sampleCat = {
       },
       correctOption: "B",
       points: 2,
+      sharedGroup: null,
+      sharedPrompt: null,
+      groupPosition: null,
     },
   ],
 } satisfies Pick<
@@ -27,8 +30,8 @@ const sampleCat = {
   "title" | "name" | "courseTitle" | "durationMinutes" | "instructions" | "questions"
 >;
 
-function documentXml(kind: "paper" | "marking-scheme") {
-  const files = unzipSync(createCatDocument(sampleCat, kind));
+function documentXml() {
+  const files = unzipSync(createCatDocument(sampleCat));
   const document = files["word/document.xml"];
   if (!document) throw new Error("Generated Word document has no main document part.");
   return new TextDecoder().decode(document);
@@ -36,7 +39,7 @@ function documentXml(kind: "paper" | "marking-scheme") {
 
 describe("CAT Word document generation", () => {
   it("creates a valid paper document without exposing the answer key", () => {
-    const xml = documentXml("paper");
+    const xml = documentXml();
     const parsed = new DOMParser().parseFromString(xml, "application/xml");
 
     expect(parsed.getElementsByTagName("parsererror")).toHaveLength(0);
@@ -47,10 +50,37 @@ describe("CAT Word document generation", () => {
     expect(xml).not.toContain("Correct answer:");
   });
 
-  it("creates a marking scheme document with correct answers and marks", () => {
-    const xml = documentXml("marking-scheme");
+  it("includes the shared case once before its grouped questions", () => {
+    const groupedCat = {
+      ...sampleCat,
+      questions: [
+        {
+          ...sampleCat.questions[0]!,
+          id: "question-2",
+          prompt: "Calculate the total.",
+          sharedGroup: "Case 16-17",
+          sharedPrompt: "Use the following figures.",
+          groupPosition: 2,
+        },
+        {
+          ...sampleCat.questions[0]!,
+          id: "question-3",
+          prompt: "Identify the relevant account.",
+          sharedGroup: "Case 16-17",
+          sharedPrompt: "Use the following figures.",
+          groupPosition: 1,
+        },
+      ],
+    };
+    const files = unzipSync(createCatDocument(groupedCat));
+    const document = new TextDecoder().decode(files["word/document.xml"]);
 
-    expect(xml).toContain("CAT MARKING SCHEME");
-    expect(xml).toContain("Correct answer: B. Yes &amp; correct (2 marks)");
+    expect(document.indexOf("Use the following figures.")).toBeLessThan(
+      document.indexOf("Identify the relevant account."),
+    );
+    expect(document.indexOf("Identify the relevant account.")).toBeLessThan(
+      document.indexOf("Calculate the total."),
+    );
+    expect(document.match(/Use the following figures\./g)).toHaveLength(1);
   });
 });
