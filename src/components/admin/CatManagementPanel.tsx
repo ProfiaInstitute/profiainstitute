@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { LevelTargetPicker } from "@/components/academics/LevelTargetPicker";
+import { CatQuestionGroupFields } from "@/components/academics/CatQuestionGroupFields";
 import { CatDownloadButton } from "@/components/academics/CatDownloadButton";
 import { CatQuestionImporter } from "@/components/academics/CatQuestionImporter";
 import { CatQuestionPreview } from "@/components/academics/CatQuestionPreview";
@@ -15,6 +16,7 @@ import {
   buildAnswerSheetQuestionList,
   downloadMarkedAnswerSheet,
   fetchAnswerSheetUnit,
+  generateAnswerKeySheetBlob,
 } from "@/lib/answer-sheet";
 import { createCatDocument } from "@/lib/cat-document";
 import { createExcelWorkbook } from "@/lib/excel-export";
@@ -33,6 +35,7 @@ import {
   type CatOptionKey,
 } from "@/lib/cats";
 import type { ImportedCatAnswer, ImportedCatQuestion } from "@/lib/cat-import-format";
+import { orderCatPaperQuestions, validateSharedQuestionGroups } from "@/lib/cat-question-groups";
 
 type QuestionDraft = {
   id: string;
@@ -43,6 +46,9 @@ type QuestionDraft = {
   optionD: string;
   correctOption: CatOptionKey | "";
   points: string;
+  sharedGroup: string;
+  sharedPrompt: string;
+  groupPosition: string;
 };
 
 type EditableCatQuestion = Omit<QuestionDraft, "id"> & { id: string };
@@ -108,7 +114,10 @@ function isCatCreationDraft(value: unknown): value is CatCreationDraft {
         typeof question.optionC === "string" &&
         typeof question.optionD === "string" &&
         typeof question.correctOption === "string" &&
-        typeof question.points === "string",
+        typeof question.points === "string" &&
+        (question.sharedGroup === undefined || typeof question.sharedGroup === "string") &&
+        (question.sharedPrompt === undefined || typeof question.sharedPrompt === "string") &&
+        (question.groupPosition === undefined || typeof question.groupPosition === "string"),
     )
   );
 }
@@ -123,6 +132,9 @@ function newQuestion(): QuestionDraft {
     optionD: "",
     correctOption: "A",
     points: "1",
+    sharedGroup: "",
+    sharedPrompt: "",
+    groupPosition: "1",
   };
 }
 
@@ -155,14 +167,19 @@ export function CatManagementPanel({ userId }: { userId: string }) {
   const [opensAt, setOpensAt] = useState(restoredDraft?.opensAt ?? "");
   const [closesAt, setClosesAt] = useState(restoredDraft?.closesAt ?? "");
   const [questions, setQuestions] = useState<QuestionDraft[]>(
-    restoredDraft?.questions ?? [newQuestion()],
+    restoredDraft?.questions.map((question) => ({
+      ...question,
+      sharedGroup: question.sharedGroup ?? "",
+      sharedPrompt: question.sharedPrompt ?? "",
+      groupPosition: question.groupPosition ?? "1",
+    })) ?? [newQuestion()],
   );
   const [draftSaveFailed, setDraftSaveFailed] = useState(false);
   const query = useQuery({
     queryKey: ["admin", "cat-assessments"],
     queryFn: async () => {
       const [catsResult, coursesResult] = await Promise.all([
-        supabase.rpc("list_cat_assessments"),
+        supabase.rpc("list_cat_assessments_with_groups"),
         supabase.from("courses").select("id,title").order("title"),
       ]);
       if (catsResult.error) throw catsResult.error;
@@ -271,7 +288,9 @@ export function CatManagementPanel({ userId }: { userId: string }) {
           question.optionC ||
           question.optionD ||
           question.correctOption !== "A" ||
-          question.points !== "1",
+          question.points !== "1" ||
+          question.sharedGroup ||
+          question.sharedPrompt,
       );
     if (!hasDraftContent) {
       clearSessionDraft(draftKey);
@@ -375,7 +394,7 @@ export function CatManagementPanel({ userId }: { userId: string }) {
       : (values.downloadFile?.name ?? cat.downloadFileName);
 
     try {
-      const { error } = await supabase.rpc("update_cat_assessment", {
+      const { error } = await supabase.rpc("update_cat_assessment_with_groups", {
         _assessment_id: cat.id,
         _title: values.title.trim(),
         _name: values.name.trim(),
@@ -396,6 +415,9 @@ export function CatManagementPanel({ userId }: { userId: string }) {
                 option_d: question.optionD.trim(),
                 correct_option: question.correctOption,
                 points: Number(question.points),
+                shared_group: question.sharedGroup,
+                shared_prompt: question.sharedPrompt,
+                group_position: question.groupPosition,
               })),
       });
       if (error) throw error;
@@ -449,6 +471,8 @@ export function CatManagementPanel({ userId }: { userId: string }) {
       if (!name.trim() || !levelIds.length) {
         throw new Error("Enter a CAT download name and select at least one course level.");
       }
+      const groupError = validateSharedQuestionGroups(questions);
+      if (groupError) throw new Error(groupError);
       if (catAudience === "individual_students" && !selectedStudentIds.length) {
         throw new Error("Select at least one student for this CAT.");
       }
@@ -474,7 +498,7 @@ export function CatManagementPanel({ userId }: { userId: string }) {
       }
 
       try {
-        const { error } = await supabase.rpc("create_targeted_cat_assessment", {
+        const { error } = await supabase.rpc("create_targeted_cat_assessment_with_groups", {
           _course_id: courseId,
           _title: title.trim(),
           _name: name.trim(),
@@ -491,6 +515,9 @@ export function CatManagementPanel({ userId }: { userId: string }) {
             option_d: question.optionD.trim(),
             correct_option: question.correctOption,
             points: Number(question.points),
+            shared_group: question.sharedGroup,
+            shared_prompt: question.sharedPrompt,
+            group_position: question.groupPosition,
           })),
           _download_file_path: downloadFilePath,
           _download_file_name: downloadFile?.name ?? null,
@@ -568,6 +595,9 @@ export function CatManagementPanel({ userId }: { userId: string }) {
       optionD: question.options.D,
       correctOption: question.correctOption ?? "",
       points: "1",
+      sharedGroup: "",
+      sharedPrompt: "",
+      groupPosition: "1",
     }));
     const questionOffset = starterIsBlank ? 0 : questions.length;
     setQuestions((current) => (starterIsBlank ? importedDrafts : [...current, ...importedDrafts]));
@@ -602,7 +632,7 @@ export function CatManagementPanel({ userId }: { userId: string }) {
       </div>
       {hasRestoredDraft && (
         <p role="status" className="rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">
-          Your CAT draft was restored from this browser tab. Please reselect any file attachment.
+          Your CAT draft was restored from this browser. Please reselect any file attachment.
         </p>
       )}
       {draftSaveFailed && (
@@ -913,6 +943,12 @@ export function CatManagementPanel({ userId }: { userId: string }) {
                   value={question.prompt}
                   onChange={(event) => updateQuestion(question.id, "prompt", event.target.value)}
                 />
+                <CatQuestionGroupFields
+                  group={question.sharedGroup}
+                  prompt={question.sharedPrompt}
+                  position={question.groupPosition}
+                  onChange={(field, value) => updateQuestion(question.id, field, value)}
+                />
                 <div className="grid gap-2 sm:grid-cols-2">
                   {(["A", "B", "C", "D"] as const).map((key) => {
                     const field: Record<CatOptionKey, keyof QuestionDraft> = {
@@ -1116,6 +1152,9 @@ function CatEditForm({
       optionD: question.options.D,
       correctOption: question.correctOption,
       points: String(question.points),
+      sharedGroup: question.sharedGroup ?? "",
+      sharedPrompt: question.sharedPrompt ?? "",
+      groupPosition: String(question.groupPosition ?? 1),
     })),
   );
   const [saving, setSaving] = useState(false);
@@ -1132,6 +1171,13 @@ function CatEditForm({
     if (questions.length < 1 || questions.length > 100) {
       setError("A CAT must contain between 1 and 100 questions.");
       return;
+    }
+    if (!hasAttempts) {
+      const groupError = validateSharedQuestionGroups(questions);
+      if (groupError) {
+        setError(groupError);
+        return;
+      }
     }
     if (
       !hasAttempts &&
@@ -1276,6 +1322,9 @@ function CatEditForm({
                         optionD: "",
                         correctOption: "",
                         points: "1",
+                        sharedGroup: "",
+                        sharedPrompt: "",
+                        groupPosition: "1",
                       },
                     ])
                   }
@@ -1313,6 +1362,18 @@ function CatEditForm({
                       setQuestions((current) =>
                         current.map((item) =>
                           item.id === question.id ? { ...item, prompt: event.target.value } : item,
+                        ),
+                      )
+                    }
+                  />
+                  <CatQuestionGroupFields
+                    group={question.sharedGroup}
+                    prompt={question.sharedPrompt}
+                    position={question.groupPosition}
+                    onChange={(field, value) =>
+                      setQuestions((current) =>
+                        current.map((item) =>
+                          item.id === question.id ? { ...item, [field]: value } : item,
                         ),
                       )
                     }
@@ -1524,7 +1585,7 @@ function CatResultCard({
             size="sm"
             variant="outline"
             disabled={!cat.questions.length}
-            onClick={() => downloadCatDocument(cat, "paper")}
+            onClick={() => void downloadCatDocument(cat, "paper")}
           >
             <ArrowDownToLine className="h-4 w-4" />
             Download CAT paper
@@ -1534,7 +1595,13 @@ function CatResultCard({
             size="sm"
             variant="outline"
             disabled={!cat.questions.length}
-            onClick={() => downloadCatDocument(cat, "marking-scheme")}
+            onClick={() =>
+              void downloadCatDocument(
+                cat,
+                "marking-scheme",
+                units.find((unit) => unit.id === cat.unitId),
+              )
+            }
           >
             <ArrowDownToLine className="h-4 w-4" />
             Download marking scheme
@@ -1759,7 +1826,7 @@ function ReuseCatAssignment({
           "Choose a future opening time and a closing time later than the opening time.",
         );
       }
-      const { error } = await supabase.rpc("create_targeted_cat_assessment", {
+      const { error } = await supabase.rpc("create_targeted_cat_assessment_with_groups", {
         _course_id: cat.courseId,
         _title: cat.title,
         _name: cat.name,
@@ -1776,6 +1843,9 @@ function ReuseCatAssignment({
           option_d: question.options.D,
           correct_option: question.correctOption,
           points: question.points,
+          shared_group: question.sharedGroup,
+          shared_prompt: question.sharedPrompt,
+          group_position: question.groupPosition,
         })),
         _download_file_path: cat.downloadFilePath,
         _download_file_name: cat.downloadFileName,
@@ -1975,16 +2045,30 @@ function exportCatResults(cat: AdminCat) {
   }
 }
 
-function downloadCatDocument(cat: AdminCat, kind: "paper" | "marking-scheme") {
+async function downloadCatDocument(
+  cat: AdminCat,
+  kind: "paper" | "marking-scheme",
+  unit?: { title: string; code: string | null },
+) {
   if (!cat.questions.length) {
     toast.error("There are no CAT questions to export.");
     return;
   }
   try {
-    const bytes = createCatDocument(cat, kind);
-    const blob = new Blob([new Uint8Array(bytes)], {
-      type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    });
+    const blob =
+      kind === "marking-scheme"
+        ? await generateAnswerKeySheetBlob({
+            courseName: cat.courseTitle,
+            unitName: unit?.title ?? "",
+            unitCode: unit?.code ?? "",
+            examName: cat.title,
+            questions: orderCatPaperQuestions(cat.questions).map((question) => ({
+              correctOption: question.correctOption,
+            })),
+          })
+        : new Blob([new Uint8Array(createCatDocument(cat))], {
+            type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     const filename = cat.name.replace(/[^a-z0-9-]+/gi, "-").replace(/^-|-$/g, "");

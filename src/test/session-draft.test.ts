@@ -16,6 +16,7 @@ function isTestDraft(value: unknown): value is TestDraft {
 describe("session form drafts", () => {
   beforeEach(() => {
     sessionStorage.clear();
+    localStorage.clear();
   });
 
   it("saves and restores a draft scoped to a user and form", () => {
@@ -27,6 +28,7 @@ describe("session form drafts", () => {
     expect(readSessionDraft(createSessionDraftKey("staff-2", "cat", "unit-1"), isTestDraft)).toBe(
       null,
     );
+    expect(localStorage.getItem(key)).toBe(JSON.stringify(draft));
   });
 
   it("ignores malformed drafts and removes drafts after successful publishing", () => {
@@ -37,5 +39,6 @@ describe("session form drafts", () => {
     writeSessionDraft(key, { title: "Assignment" });
     clearSessionDraft(key);
     expect(sessionStorage.getItem(key)).toBeNull();
+    expect(localStorage.getItem(key)).toBeNull();
   });
 });

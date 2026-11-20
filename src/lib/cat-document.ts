@@ -1,7 +1,7 @@
 import { zipSync } from "fflate";
+import { orderCatPaperQuestions } from "@/lib/cat-question-groups";
 import type { AdminCat, CatOptionKey } from "@/lib/cats";
 
-type CatDocumentKind = "paper" | "marking-scheme";
 type CatDocumentData = Pick<
   AdminCat,
   "title" | "name" | "courseTitle" | "durationMinutes" | "instructions" | "questions"
@@ -63,11 +63,11 @@ function paragraph(
   return `<w:p><w:pPr>${paragraphProperties}</w:pPr><w:r><w:rPr>${runProperties}</w:rPr>${textRuns(value)}</w:r></w:p>`;
 }
 
-function catDocumentBody(cat: CatDocumentData, kind: CatDocumentKind) {
+function catDocumentBody(cat: CatDocumentData) {
   const totalMarks = cat.questions.reduce((total, question) => total + question.points, 0);
-  const heading = kind === "paper" ? "CAT PAPER" : "CAT MARKING SCHEME";
+  const questions = orderCatPaperQuestions(cat.questions);
   const body = [
-    paragraph(heading, { bold: true, size: 32, centered: true, after: 100 }),
+    paragraph("CAT PAPER", { bold: true, size: 32, centered: true, after: 100 }),
     paragraph(cat.title, { bold: true, size: 28, centered: true, after: 220 }),
     paragraph(`Course: ${cat.courseTitle}`),
     paragraph(`CAT: ${cat.name}`),
@@ -75,45 +75,37 @@ function catDocumentBody(cat: CatDocumentData, kind: CatDocumentKind) {
     paragraph(`Total marks: ${totalMarks}`, { after: 220 }),
   ];
 
-  if (kind === "paper") {
-    if (cat.instructions?.trim()) {
-      body.push(paragraph("Instructions", { bold: true, after: 60 }));
-      body.push(paragraph(cat.instructions, { after: 220 }));
-    }
-    cat.questions.forEach((question, index) => {
-      body.push(
-        paragraph(`${index + 1}. ${question.prompt} (${question.points} marks)`, {
-          bold: true,
-          after: 60,
-        }),
-      );
-      optionKeys.forEach((key) => {
-        body.push(paragraph(`${key}. ${question.options[key]}`, { indent: 360, after: 40 }));
-      });
-      body.push(paragraph("", { after: 100 }));
-    });
-  } else {
-    cat.questions.forEach((question, index) => {
-      const key = optionKeys.includes(question.correctOption) ? question.correctOption : null;
-      const answer = key ? question.options[key] : "Not set";
-      body.push(paragraph(`${index + 1}. ${question.prompt}`, { bold: true, after: 60 }));
-      body.push(
-        paragraph(`Correct answer: ${key ? `${key}. ` : ""}${answer} (${question.points} marks)`, {
-          indent: 360,
-          after: 180,
-        }),
-      );
-    });
+  if (cat.instructions?.trim()) {
+    body.push(paragraph("Instructions", { bold: true, after: 60 }));
+    body.push(paragraph(cat.instructions, { after: 220 }));
   }
+  let activeGroup: string | null = null;
+  questions.forEach((question, index) => {
+    if (question.sharedGroup && question.sharedGroup !== activeGroup) {
+      activeGroup = question.sharedGroup;
+      body.push(paragraph(question.sharedGroup, { bold: true, size: 24, after: 60 }));
+      if (question.sharedPrompt) body.push(paragraph(question.sharedPrompt, { after: 160 }));
+    }
+    body.push(
+      paragraph(`${index + 1}. ${question.prompt} (${question.points} marks)`, {
+        bold: true,
+        after: 60,
+      }),
+    );
+    optionKeys.forEach((key) => {
+      body.push(paragraph(`${key}. ${question.options[key]}`, { indent: 360, after: 40 }));
+    });
+    body.push(paragraph("", { after: 100 }));
+  });
 
   return body.join("");
 }
 
-export function createCatDocument(cat: CatDocumentData, kind: CatDocumentKind) {
+export function createCatDocument(cat: CatDocumentData) {
   const documentXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
   <w:body>
-    ${catDocumentBody(cat, kind)}
+    ${catDocumentBody(cat)}
     <w:sectPr>
       <w:pgSz w:w="12240" w:h="15840"/>
       <w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/>

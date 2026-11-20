@@ -21,6 +21,7 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { PasswordResetPage } from "@/components/auth/PasswordResetPage";
 import { LevelTargetPicker } from "@/components/academics/LevelTargetPicker";
+import { CatQuestionGroupFields } from "@/components/academics/CatQuestionGroupFields";
 import { CatQuestionImporter } from "@/components/academics/CatQuestionImporter";
 import { CatQuestionPreview } from "@/components/academics/CatQuestionPreview";
 import { FacilitatorCatPerformance } from "@/components/facilitator/FacilitatorCatPerformance";
@@ -37,6 +38,7 @@ import { signOutWithAudit, useRoles, useUser } from "@/lib/auth";
 import { submissionFilePaths } from "@/lib/assignments";
 import type { ImportedCatAnswer, ImportedCatQuestion } from "@/lib/cat-import-format";
 import { getDateTimeLocalMinimum } from "@/lib/cats";
+import { validateSharedQuestionGroups } from "@/lib/cat-question-groups";
 import {
   clearSessionDraft,
   createSessionDraftKey,
@@ -112,6 +114,9 @@ type FacilitatorCatQuestion = {
   option_d: string;
   correct_option: string;
   points: number;
+  sharedGroup: string;
+  sharedPrompt: string;
+  groupPosition: string;
 };
 
 function isFacilitatorAssignmentDraft(value: unknown): value is FacilitatorAssignmentDraft {
@@ -149,7 +154,10 @@ function isFacilitatorCatDraft(value: unknown): value is FacilitatorCatDraft {
         typeof question.option_c === "string" &&
         typeof question.option_d === "string" &&
         typeof question.correct_option === "string" &&
-        typeof question.points === "number",
+        typeof question.points === "number" &&
+        (question.sharedGroup === undefined || typeof question.sharedGroup === "string") &&
+        (question.sharedPrompt === undefined || typeof question.sharedPrompt === "string") &&
+        (question.groupPosition === undefined || typeof question.groupPosition === "string"),
     )
   );
 }
@@ -162,6 +170,9 @@ const initialQuestion = (): FacilitatorCatQuestion => ({
   option_d: "",
   correct_option: "A",
   points: 1,
+  sharedGroup: "",
+  sharedPrompt: "",
+  groupPosition: "1",
 });
 
 export function FacilitatorPortal() {
@@ -532,7 +543,14 @@ function FacilitatorWorkspace({ userId, email }: { userId: string; email: string
       levelIds: restoredCat?.levelIds ?? defaultLevelIds,
       downloadFile: null,
     });
-    setQuestions(restoredCat?.questions ?? [initialQuestion()]);
+    setQuestions(
+      restoredCat?.questions.map((question) => ({
+        ...question,
+        sharedGroup: question.sharedGroup ?? "",
+        sharedPrompt: question.sharedPrompt ?? "",
+        groupPosition: question.groupPosition ?? "1",
+      })) ?? [initialQuestion()],
+    );
     setCatDraftRestored(Boolean(restoredCat));
     setCatDraftSaveFailed(false);
     setCatDraftUnitId(activeUnitId);
@@ -578,7 +596,9 @@ function FacilitatorWorkspace({ userId, email }: { userId: string; email: string
           question.option_c ||
           question.option_d ||
           question.correct_option !== "A" ||
-          question.points !== 1,
+          question.points !== 1 ||
+          question.sharedGroup ||
+          question.sharedPrompt,
       );
     const key = createSessionDraftKey(userId, "facilitator-cat", activeUnitId);
     if (!hasDraftContent) {
@@ -772,6 +792,11 @@ function FacilitatorWorkspace({ userId, email }: { userId: string; email: string
       toast.error("Complete each question and all four answer options.");
       return;
     }
+    const groupError = validateSharedQuestionGroups(questions);
+    if (groupError) {
+      toast.error("Check the shared CAT questions", { description: groupError });
+      return;
+    }
     setBusy(true);
     let downloadPath: string | null = null;
     if (catDraft.downloadFile) {
@@ -794,7 +819,7 @@ function FacilitatorWorkspace({ userId, email }: { userId: string; email: string
     }
     let createError: Error | null = null;
     try {
-      const { error } = await supabase.rpc("create_facilitator_cat", {
+      const { error } = await supabase.rpc("create_facilitator_cat_with_groups", {
         _unit_id: activeUnit.unit_id,
         _title: catDraft.title.trim(),
         _name: catDraft.name.trim(),
@@ -803,7 +828,12 @@ function FacilitatorWorkspace({ userId, email }: { userId: string; email: string
         _duration_minutes: Number(catDraft.duration),
         _opens_at: catDraft.openImmediately ? null : opensAt.toISOString(),
         _closes_at: closesAt.toISOString(),
-        _questions: questions,
+        _questions: questions.map((question) => ({
+          ...question,
+          shared_group: question.sharedGroup,
+          shared_prompt: question.sharedPrompt,
+          group_position: question.groupPosition,
+        })),
         _download_file_path: downloadPath,
         _download_file_name: catDraft.downloadFile?.name ?? null,
       });
@@ -862,6 +892,9 @@ function FacilitatorWorkspace({ userId, email }: { userId: string; email: string
       option_d: question.options.D,
       correct_option: question.correctOption ?? "",
       points: 1,
+      sharedGroup: "",
+      sharedPrompt: "",
+      groupPosition: "1",
     }));
     const questionOffset = starterIsBlank ? 0 : questions.length;
     setQuestions((current) =>
@@ -1282,7 +1315,7 @@ function FacilitatorWorkspace({ userId, email }: { userId: string; email: string
                   </summary>
                   {assignmentDraftRestored && (
                     <p role="status" className="mt-3 text-sm text-muted-foreground">
-                      Your assignment draft was restored from this browser tab.
+                      Your assignment draft was restored from this browser.
                     </p>
                   )}
                   {assignmentDraftSaveFailed && (
@@ -1409,7 +1442,7 @@ function FacilitatorWorkspace({ userId, email }: { userId: string; email: string
                     role="status"
                     className="rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground"
                   >
-                    Your CAT draft was restored from this browser tab. Please reselect any file
+                    Your CAT draft was restored from this browser. Please reselect any file
                     attachment.
                   </p>
                 )}
@@ -1594,6 +1627,18 @@ function FacilitatorWorkspace({ userId, email }: { userId: string; email: string
                                   setQuestions(
                                     questions.map((item, i) =>
                                       i === index ? { ...item, prompt: event.target.value } : item,
+                                    ),
+                                  )
+                                }
+                              />
+                              <CatQuestionGroupFields
+                                group={question.sharedGroup}
+                                prompt={question.sharedPrompt}
+                                position={question.groupPosition}
+                                onChange={(field, value) =>
+                                  setQuestions((current) =>
+                                    current.map((item, i) =>
+                                      i === index ? { ...item, [field]: value } : item,
                                     ),
                                   )
                                 }

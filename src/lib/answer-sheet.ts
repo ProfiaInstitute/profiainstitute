@@ -20,6 +20,13 @@ export type AnswerSheetPayload = {
   questions: AnswerSheetQuestion[];
 };
 
+export type AnswerKeySheetPayload = Pick<
+  AnswerSheetPayload,
+  "courseName" | "unitName" | "unitCode" | "examName"
+> & {
+  questions: { correctOption: CatOptionKey }[];
+};
+
 export type AnswerSheetUnit = {
   name: string;
   code: string;
@@ -139,9 +146,17 @@ function buildTextRun(text: string, color?: "000000" | "FF0000", italic = false,
     </w:r>`;
 }
 
-function buildQuestionParagraph(slotNumber: number, question: AnswerSheetQuestion | undefined) {
+function buildQuestionParagraph(
+  slotNumber: number,
+  question: AnswerSheetQuestion | undefined,
+  includeMarking: boolean,
+) {
   const runs: string[] = [buildTextRun(`${slotNumber}`, "000000")];
   if (question) {
+    if (!includeMarking && question.correctOption) {
+      runs.push(buildTextRun(` ${question.correctOption}`, "000000"));
+      return runs.join("");
+    }
     if (question.selectedOption) {
       runs.push(buildTextRun(` ${question.selectedOption}`, "000000"));
       if (question.correctOption && question.selectedOption === question.correctOption) {
@@ -185,7 +200,11 @@ function paragraphText(paragraph: string) {
     .replace(/&amp;/g, "&");
 }
 
-function replaceQuestionSlots(xml: string, questions: AnswerSheetQuestion[]) {
+function replaceQuestionSlots(
+  xml: string,
+  questions: AnswerSheetQuestion[],
+  includeMarking = true,
+) {
   if (questions.length > 50) {
     throw new Error("The official answer sheet supports a maximum of 50 CAT questions.");
   }
@@ -200,7 +219,7 @@ function replaceQuestionSlots(xml: string, questions: AnswerSheetQuestion[]) {
     const question = questions[number - 1];
     const openingTag = paragraph.match(/^<w:p\b[^>]*>/)?.[0] ?? "<w:p>";
     const paragraphProperties = paragraph.match(/<w:pPr\b[^>]*>[\s\S]*?<\/w:pPr>/)?.[0] ?? "";
-    return `${openingTag}${paragraphProperties}${buildQuestionParagraph(number, question)}</w:p>`;
+    return `${openingTag}${paragraphProperties}${buildQuestionParagraph(number, question, includeMarking)}</w:p>`;
   });
 
   if (questionSlots.size !== 50) {
@@ -211,7 +230,11 @@ function replaceQuestionSlots(xml: string, questions: AnswerSheetQuestion[]) {
   return result;
 }
 
-function fillAnswerSheetXml(documentXml: string, payload: AnswerSheetPayload) {
+function fillAnswerSheetXml(
+  documentXml: string,
+  payload: AnswerSheetPayload,
+  includeMarking = true,
+) {
   if (payload.questions.length > 50) {
     throw new Error("The official answer sheet supports a maximum of 50 CAT questions.");
   }
@@ -236,7 +259,7 @@ function fillAnswerSheetXml(documentXml: string, payload: AnswerSheetPayload) {
     "STUDENT KASNEB NUMBER",
     `STUDENT KASNEB NUMBER ${payload.kasnebNumber}`,
   );
-  return replaceQuestionSlots(updatedXml, payload.questions);
+  return replaceQuestionSlots(updatedXml, payload.questions, includeMarking);
 }
 
 async function loadAnswerSheetTemplate() {
@@ -303,6 +326,27 @@ function mergeAnswerSheetDocuments(documents: string[]) {
 export async function generateMarkedAnswerSheetBlob(payload: AnswerSheetPayload): Promise<Blob> {
   const { zipped, documentXml } = await loadAnswerSheetTemplate();
   return answerSheetBlob(zipped, fillAnswerSheetXml(documentXml, payload));
+}
+
+export async function generateAnswerKeySheetBlob(payload: AnswerKeySheetPayload): Promise<Blob> {
+  const { zipped, documentXml } = await loadAnswerSheetTemplate();
+  return answerSheetBlob(
+    zipped,
+    fillAnswerSheetXml(
+      documentXml,
+      {
+        ...payload,
+        studentName: "",
+        kasnebNumber: "",
+        questions: payload.questions.map((question, index) => ({
+          id: `answer-${index + 1}`,
+          selectedOption: null,
+          correctOption: question.correctOption,
+        })),
+      },
+      false,
+    ),
+  );
 }
 
 export async function generateMarkedAnswerSheetsBlob(
