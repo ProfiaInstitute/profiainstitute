@@ -14,6 +14,7 @@ import { Analytics } from "@vercel/analytics/react";
 import { SpeedInsights } from "@vercel/speed-insights/react";
 
 import appCss from "../styles.css?url";
+import "@/components/PageLoadOverlay.css";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { SiteHeader } from "@/components/site/SiteHeader";
 import { SiteFooter } from "@/components/site/SiteFooter";
@@ -23,7 +24,6 @@ import { Toaster } from "@/components/ui/sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { FACILITY_LOCATION } from "@/lib/site";
 import { useScrollReveal } from "@/lib/motion";
-import { LogoTraceLoader } from "@/components/LogoTraceLoader";
 import { DownloadPrintAnimation } from "@/components/site/DownloadPrintAnimation";
 import { signOutWithAudit } from "@/lib/auth";
 import { clearSessionActivity, watchSessionInactivity } from "@/lib/session-security";
@@ -37,10 +37,21 @@ const structuredData = {
       "@id": "https://www.profiainstitute.com/#organization",
       name: "Profia Institute",
       alternateName: "Profia Institute of Professionals",
+      description:
+        "TVET college and approved KASNEB examination centre and tuition provider in Homa Bay, Kenya.",
       url: "https://www.profiainstitute.com/",
       logo: "https://www.profiainstitute.com/images/logo.png",
       email: "profiainstitute@gmail.com",
       telephone: ["+254710221122", "+254793977991"],
+      contactPoint: [
+        {
+          "@type": "ContactPoint",
+          contactType: "admissions",
+          telephone: "+254710221122",
+          email: "profiainstitute@gmail.com",
+          areaServed: "KE",
+        },
+      ],
       sameAs: ["https://www.facebook.com/profiainstitute/"],
       address: {
         "@type": "PostalAddress",
@@ -137,27 +148,21 @@ function ErrorComponent({ error, reset }: ErrorComponentProps) {
 }
 
 function PageLoadOverlay() {
-  const [isComplete, setIsComplete] = useState(false);
   const [visible, setVisible] = useState(true);
 
   useEffect(() => {
-    const timeout = window.setTimeout(() => setIsComplete(true), 500);
+    const timeout = window.setTimeout(() => setVisible(false), 520);
     return () => window.clearTimeout(timeout);
   }, []);
 
   if (!visible) return null;
 
   return (
-    <div className="page-load-overlay">
-      <LogoTraceLoader
-        loading={!isComplete}
-        isComplete={isComplete}
-        size={216}
-        strokeWidth={3}
-        className="text-brand"
-        ariaLabel="Loading page"
-        onDone={() => setVisible(false)}
-      />
+    <div className="page-load-overlay" role="status" aria-label="Loading Profia Institute">
+      <div className="page-load-brand">
+        <img className="page-load-logo" src="/images/logo.png" alt="" />
+        <img className="page-load-badge" src="/favicon.png" alt="" />
+      </div>
     </div>
   );
 }
@@ -340,7 +345,7 @@ function RootComponent() {
   return (
     <QueryClientProvider client={queryClient}>
       <PwaInstallProvider manifestHref={manifestHref}>
-        <PageLoadOverlay key={pathname} />
+        <PageLoadOverlay />
         {!isApp && <SiteHeader />}
         <main>
           <div
@@ -353,7 +358,7 @@ function RootComponent() {
         </main>
         {!isApp && <SiteFooter />}
         {!isApp && <WhatsAppFloat />}
-        <Toaster richColors position="top-center" />
+        <Toaster position="bottom-right" />
         <DownloadPrintAnimation />
         <Analytics route={route} path={pathname} />
         <SpeedInsights />

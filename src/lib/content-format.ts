@@ -89,8 +89,53 @@ export function getYouTubeEmbedUrl(value: string) {
     }
 
     if (!videoId || !/^[\w-]{11}$/.test(videoId)) return null;
-    return `https://www.youtube-nocookie.com/embed/${videoId}?controls=1&playsinline=1`;
+    return `https://www.youtube.com/embed/${videoId}?controls=1&playsinline=1&vq=medium`;
   } catch {
     return null;
   }
+}
+
+export function getGoogleBooksEmbedUrl(value: string) {
+  try {
+    const url = new URL(value);
+    if (url.hostname.toLowerCase() !== "books.google.com") return null;
+    const id = url.searchParams.get("id");
+    if (!id || !/^[\w-]+$/.test(id)) return null;
+    return `https://books.google.com/books?id=${encodeURIComponent(id)}&printsec=frontcover&output=embed`;
+  } catch {
+    return null;
+  }
+}
+
+export function getGoogleBooksThumbnailUrl(value: string) {
+  try {
+    const url = new URL(value);
+    if (url.hostname.toLowerCase() !== "books.google.com") return null;
+    const id = url.searchParams.get("id");
+    if (!id || !/^[\w-]+$/.test(id)) return null;
+    return `https://books.google.com/books/content?id=${encodeURIComponent(id)}&printsec=frontcover&img=1&zoom=1&source=gbs_api`;
+  } catch {
+    return null;
+  }
+}
+
+function getGoogleDriveFileId(value: string) {
+  try {
+    const url = new URL(value);
+    if (url.hostname.toLowerCase() !== "drive.google.com") return null;
+    const id = url.pathname.match(/\/file\/d\/([\w-]+)/)?.[1] ?? url.searchParams.get("id");
+    return id && /^[\w-]+$/.test(id) ? id : null;
+  } catch {
+    return null;
+  }
+}
+
+export function getGoogleDriveEmbedUrl(value: string) {
+  const id = getGoogleDriveFileId(value);
+  return id ? `https://drive.google.com/file/d/${encodeURIComponent(id)}/preview` : null;
+}
+
+export function getGoogleDriveThumbnailUrl(value: string) {
+  const id = getGoogleDriveFileId(value);
+  return id ? `https://drive.google.com/thumbnail?id=${encodeURIComponent(id)}` : null;
 }

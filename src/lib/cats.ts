@@ -100,6 +100,23 @@ export type CatUnitReportRow = {
   combined_percentage: number | null;
 };
 
+export type CatUnitReportExportRow = Pick<
+  CatUnitReportRow,
+  "unit" | "student" | "kasneb_number" | "cat_1_score" | "cat_2_score"
+>;
+
+export function buildCatUnitReportExportRows(
+  rows: readonly CatUnitReportRow[],
+): CatUnitReportExportRow[] {
+  return rows.map(({ unit, student, kasneb_number, cat_1_score, cat_2_score }) => ({
+    unit,
+    student,
+    kasneb_number,
+    cat_1_score,
+    cat_2_score,
+  }));
+}
+
 export function buildCatUnitReportRows(
   units: { id: string; title: string; code: string | null }[],
   cats: AdminCat[],

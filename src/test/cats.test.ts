@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Json } from "@/integrations/supabase/types";
 import {
+  buildCatUnitReportExportRows,
   buildCatUnitReportRows,
   getDateTimeLocalMinimum,
   parseAdminCats,
@@ -259,6 +260,29 @@ describe("CAT unit reports", () => {
         cat_2_score: "8/10",
         combined_score: "8/10",
         combined_percentage: 80,
+      },
+    ]);
+
+    expect(
+      buildCatUnitReportExportRows([
+        {
+          unit: "FIN1 · Finance",
+          student: "Ada Student",
+          student_number: "S001",
+          kasneb_number: "KASNEB-001",
+          cat_1_score: "6/10",
+          cat_2_score: "10/20",
+          combined_score: "16/30",
+          combined_percentage: 53.3,
+        },
+      ]),
+    ).toEqual([
+      {
+        unit: "FIN1 · Finance",
+        student: "Ada Student",
+        kasneb_number: "KASNEB-001",
+        cat_1_score: "6/10",
+        cat_2_score: "10/20",
       },
     ]);
   });

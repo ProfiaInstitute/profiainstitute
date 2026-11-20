@@ -1,4 +1,4 @@
-import { useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowDownToLine, Plus, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -16,8 +16,15 @@ import {
   downloadMarkedAnswerSheet,
   fetchAnswerSheetUnit,
 } from "@/lib/answer-sheet";
+import { createCatDocument } from "@/lib/cat-document";
 import { createExcelWorkbook } from "@/lib/excel-export";
 import { safeUploadFileName } from "@/lib/file-uploads";
+import {
+  clearSessionDraft,
+  createSessionDraftKey,
+  readSessionDraft,
+  writeSessionDraft,
+} from "@/lib/session-draft";
 import {
   catDateTimeLabel,
   getDateTimeLocalMinimum,
@@ -54,7 +61,57 @@ type CatEditValues = {
 
 type CatAudience = "course_level" | "individual_students";
 
+type CatCreationDraft = {
+  title: string;
+  name: string;
+  courseId: string;
+  unitId: string;
+  levelIds: string[];
+  catAudience: CatAudience;
+  selectedStudentIds: string[];
+  instructions: string;
+  durationMinutes: string;
+  openImmediately: boolean;
+  opensAt: string;
+  closesAt: string;
+  questions: QuestionDraft[];
+};
+
 const selectClass = "h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm";
+
+function isCatCreationDraft(value: unknown): value is CatCreationDraft {
+  if (!value || typeof value !== "object") return false;
+  const draft = value as Partial<CatCreationDraft>;
+  return (
+    typeof draft.title === "string" &&
+    typeof draft.name === "string" &&
+    typeof draft.courseId === "string" &&
+    typeof draft.unitId === "string" &&
+    Array.isArray(draft.levelIds) &&
+    draft.levelIds.every((id) => typeof id === "string") &&
+    (draft.catAudience === "course_level" || draft.catAudience === "individual_students") &&
+    Array.isArray(draft.selectedStudentIds) &&
+    draft.selectedStudentIds.every((id) => typeof id === "string") &&
+    typeof draft.instructions === "string" &&
+    typeof draft.durationMinutes === "string" &&
+    typeof draft.openImmediately === "boolean" &&
+    typeof draft.opensAt === "string" &&
+    typeof draft.closesAt === "string" &&
+    Array.isArray(draft.questions) &&
+    draft.questions.every(
+      (question) =>
+        question &&
+        typeof question.id === "string" &&
+        typeof question.prompt === "string" &&
+        typeof question.optionA === "string" &&
+        typeof question.optionB === "string" &&
+        typeof question.optionC === "string" &&
+        typeof question.optionD === "string" &&
+        typeof question.correctOption === "string" &&
+        typeof question.points === "string",
+    )
+  );
+}
 
 function newQuestion(): QuestionDraft {
   return {
@@ -69,28 +126,38 @@ function newQuestion(): QuestionDraft {
   };
 }
 
-export function CatManagementPanel() {
+export function CatManagementPanel({ userId }: { userId: string }) {
   const queryClient = useQueryClient();
+  const draftKey = createSessionDraftKey(userId, "admin-cat-creation");
+  const [restoredDraft] = useState(() => readSessionDraft(draftKey, isCatCreationDraft));
+  const [hasRestoredDraft, setHasRestoredDraft] = useState(Boolean(restoredDraft));
   const [catSearch, setCatSearch] = useState("");
   const [catStatusFilter, setCatStatusFilter] = useState<"all" | "scheduled" | "open" | "closed">(
     "all",
   );
-  const [title, setTitle] = useState("");
-  const [name, setName] = useState("");
-  const [courseId, setCourseId] = useState("");
-  const [unitId, setUnitId] = useState("");
-  const [levelIds, setLevelIds] = useState<string[]>([]);
-  const [catAudience, setCatAudience] = useState<CatAudience>("course_level");
-  const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
+  const [title, setTitle] = useState(restoredDraft?.title ?? "");
+  const [name, setName] = useState(restoredDraft?.name ?? "");
+  const [courseId, setCourseId] = useState(restoredDraft?.courseId ?? "");
+  const [unitId, setUnitId] = useState(restoredDraft?.unitId ?? "");
+  const [levelIds, setLevelIds] = useState<string[]>(restoredDraft?.levelIds ?? []);
+  const [catAudience, setCatAudience] = useState<CatAudience>(
+    restoredDraft?.catAudience ?? "course_level",
+  );
+  const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>(
+    restoredDraft?.selectedStudentIds ?? [],
+  );
   const [studentSearch, setStudentSearch] = useState("");
   const [downloadFile, setDownloadFile] = useState<File | null>(null);
   const downloadFileInputRef = useRef<HTMLInputElement>(null);
-  const [instructions, setInstructions] = useState("");
-  const [durationMinutes, setDurationMinutes] = useState("30");
-  const [openImmediately, setOpenImmediately] = useState(true);
-  const [opensAt, setOpensAt] = useState("");
-  const [closesAt, setClosesAt] = useState("");
-  const [questions, setQuestions] = useState<QuestionDraft[]>([newQuestion()]);
+  const [instructions, setInstructions] = useState(restoredDraft?.instructions ?? "");
+  const [durationMinutes, setDurationMinutes] = useState(restoredDraft?.durationMinutes ?? "30");
+  const [openImmediately, setOpenImmediately] = useState(restoredDraft?.openImmediately ?? true);
+  const [opensAt, setOpensAt] = useState(restoredDraft?.opensAt ?? "");
+  const [closesAt, setClosesAt] = useState(restoredDraft?.closesAt ?? "");
+  const [questions, setQuestions] = useState<QuestionDraft[]>(
+    restoredDraft?.questions ?? [newQuestion()],
+  );
+  const [draftSaveFailed, setDraftSaveFailed] = useState(false);
   const query = useQuery({
     queryKey: ["admin", "cat-assessments"],
     queryFn: async () => {
@@ -181,6 +248,69 @@ export function CatManagementPanel() {
     },
   });
   const targetStudents = targetStudentsQuery.data ?? [];
+  useEffect(() => {
+    const hasDraftContent =
+      Boolean(
+        title.trim() ||
+        name.trim() ||
+        courseId ||
+        unitId ||
+        levelIds.length ||
+        selectedStudentIds.length ||
+        instructions.trim() ||
+        opensAt ||
+        closesAt ||
+        !openImmediately ||
+        durationMinutes !== "30",
+      ) ||
+      questions.some(
+        (question) =>
+          question.prompt ||
+          question.optionA ||
+          question.optionB ||
+          question.optionC ||
+          question.optionD ||
+          question.correctOption !== "A" ||
+          question.points !== "1",
+      );
+    if (!hasDraftContent) {
+      clearSessionDraft(draftKey);
+      setDraftSaveFailed(false);
+      return;
+    }
+    setDraftSaveFailed(
+      !writeSessionDraft(draftKey, {
+        title,
+        name,
+        courseId,
+        unitId,
+        levelIds,
+        catAudience,
+        selectedStudentIds,
+        instructions,
+        durationMinutes,
+        openImmediately,
+        opensAt,
+        closesAt,
+        questions,
+      }),
+    );
+  }, [
+    draftKey,
+    title,
+    name,
+    courseId,
+    unitId,
+    levelIds,
+    catAudience,
+    selectedStudentIds,
+    instructions,
+    durationMinutes,
+    openImmediately,
+    opensAt,
+    closesAt,
+    questions,
+  ]);
   const linkedUnitsQuery = useQuery({
     queryKey: ["admin", "cat-linked-unit-options", query.data?.cats.map((cat) => cat.courseId)],
     enabled: Boolean(query.data?.cats.length),
@@ -385,6 +515,8 @@ export function CatManagementPanel() {
     },
     onSuccess: async () => {
       toast.success("CAT created and published");
+      clearSessionDraft(draftKey);
+      setHasRestoredDraft(false);
       setTitle("");
       setName("");
       setCourseId("");
@@ -468,6 +600,16 @@ export function CatManagementPanel() {
           least one minute after now or the scheduled opening.
         </p>
       </div>
+      {hasRestoredDraft && (
+        <p role="status" className="rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">
+          Your CAT draft was restored from this browser tab. Please reselect any file attachment.
+        </p>
+      )}
+      {draftSaveFailed && (
+        <p role="alert" className="text-sm text-destructive">
+          This browser could not save your CAT draft. Keep this page open until you publish it.
+        </p>
+      )}
       <details className="rounded-lg border bg-muted/30 p-4">
         <summary className="cursor-pointer text-sm font-semibold text-brand">Create a CAT</summary>
         <form className="mt-4 space-y-5" onSubmit={submit}>
@@ -662,7 +804,8 @@ export function CatManagementPanel() {
                 onChange={(event) => setDownloadFile(event.target.files?.[0] ?? null)}
               />
               <span className="text-xs text-muted-foreground">
-                Maximum file size: 50 MB. The timed online CAT remains available separately.
+                Maximum file size: 50 MB. Attachments must be reselected after leaving or reloading
+                this page. The timed online CAT remains available separately.
               </span>
             </label>
             <Input
@@ -1380,6 +1523,26 @@ function CatResultCard({
             type="button"
             size="sm"
             variant="outline"
+            disabled={!cat.questions.length}
+            onClick={() => downloadCatDocument(cat, "paper")}
+          >
+            <ArrowDownToLine className="h-4 w-4" />
+            Download CAT paper
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={!cat.questions.length}
+            onClick={() => downloadCatDocument(cat, "marking-scheme")}
+          >
+            <ArrowDownToLine className="h-4 w-4" />
+            Download marking scheme
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
             disabled={!submittedAttempts.length}
             onClick={() => exportCatResults(cat)}
           >
@@ -1808,6 +1971,31 @@ function exportCatResults(cat: AdminCat) {
   } catch (error) {
     toast.error("Could not export CAT results", {
       description: error instanceof Error ? error.message : "The workbook could not be created.",
+    });
+  }
+}
+
+function downloadCatDocument(cat: AdminCat, kind: "paper" | "marking-scheme") {
+  if (!cat.questions.length) {
+    toast.error("There are no CAT questions to export.");
+    return;
+  }
+  try {
+    const bytes = createCatDocument(cat, kind);
+    const blob = new Blob([new Uint8Array(bytes)], {
+      type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    const filename = cat.name.replace(/[^a-z0-9-]+/gi, "-").replace(/^-|-$/g, "");
+    anchor.href = url;
+    anchor.download = `${filename}-${kind}.docx`;
+    anchor.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } catch (error) {
+    toast.error(`Could not export the CAT ${kind}`, {
+      description:
+        error instanceof Error ? error.message : "The Word document could not be created.",
     });
   }
 }

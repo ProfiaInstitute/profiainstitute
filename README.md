@@ -2,6 +2,10 @@
 
 PROFIA INSTITUTE — COMPLETE WEBSITE REBUILD + STUDENT PORTAL + ADMIN SYSTEM
 
+## CAT results and grading
+
+Apply `drizzle/migrations/0062_student_cat_result_records.sql` to show submitted CAT marks in staff student records. **Admin > Results > CAT results & grading** opens the CAT course, level, unit, and assessment grading workflow.
+
 ## Course billing and PayHero fee payments
 
 Course charges are snapshotted to student fee statements at enrollment. From
@@ -1468,8 +1472,6 @@ Keep email provider configuration in environment variables.
 
 31. SEO
 
-Implement proper SEO.
-
 Every major page should have:
 
 - Title
@@ -1499,6 +1501,22 @@ Use clean URLs:
 /engineering
 
 /online-courses
+
+Public routes define server-rendered titles, descriptions, canonicals, and social
+metadata through `seo()` in `src/lib/site.ts`. Private admin, student, facilitator,
+and application-status routes are marked `noindex,nofollow`. Keep `public/robots.txt`
+and `public/sitemap.xml` aligned with public routes; do not add portal URLs or
+query-string variants to the sitemap. The business page includes links to KASNEB's
+official qualification pages and notes that intakes and eligibility must be
+confirmed with admissions.
+
+After deploying SEO changes, verify the production URLs and sitemap, add the
+canonical site property to Google Search Console, submit
+`https://www.profiainstitute.com/sitemap.xml`, and monitor indexing and search
+queries over time. Maintain the institute's Google Business Profile, accurate
+campus contact details, and genuine student/course information. Search position
+depends on relevance, competition, authority, and location; no code change can
+guarantee a #1 ranking.
 
 /tech-hub
 

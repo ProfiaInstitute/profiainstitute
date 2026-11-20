@@ -124,7 +124,7 @@ export function useCourses(schoolId?: string) {
 export function useActiveIntake() {
   return useQuery({
     queryKey: ["active-intake"],
-    staleTime: 30_000,
+    staleTime: 60_000,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("intakes")
@@ -145,7 +145,7 @@ export function useActiveIntake() {
 export function useMedia(category: string) {
   return useQuery({
     queryKey: ["media", category],
-    staleTime: 30_000,
+    staleTime: 5 * 60_000,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("media")
@@ -192,6 +192,7 @@ export function seo(title: string, description: string, path: string, image?: st
   const isPrivateRoute =
     normalizedPath === "/admin" ||
     normalizedPath.startsWith("/student") ||
+    normalizedPath.startsWith("/facilitator") ||
     normalizedPath === "/application-status";
   const metaDescription =
     description.length > 160 ? `${description.slice(0, 157).trimEnd()}...` : description;

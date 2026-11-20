@@ -15,6 +15,7 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { createExcelWorkbook } from "@/lib/excel-export";
 import {
+  buildCatUnitReportExportRows,
   buildCatUnitReportRows,
   parseAdminCats,
   type AdminCat,
@@ -235,7 +236,7 @@ export function CatResultsPanel() {
   function downloadCatReport() {
     if (!reportRows.length || !selectedCourse || !selectedLevel) return;
     try {
-      const workbook = createExcelWorkbook(reportRows);
+      const workbook = createExcelWorkbook(buildCatUnitReportExportRows(reportRows));
       const url = URL.createObjectURL(
         new Blob([new Uint8Array(workbook)], {
           type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -446,101 +447,104 @@ export function CatResultsPanel() {
           </div>
 
           {courseId && levelId && !unitsQuery.isLoading && (
-            <section className="space-y-4 rounded-lg border p-4">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <h3 className="font-semibold">CAT unit report</h3>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    Select units to include submitted CAT 1 and CAT 2 results for each student.
-                    Combined marks and percentage use the total available marks.
+            <>
+              <section className="space-y-4 rounded-lg border p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h3 className="font-semibold">CAT unit report</h3>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Select units to include submitted CAT 1 and CAT 2 results for each student.
+                      Combined marks and percentage use the total available marks.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={!reportRows.length}
+                      onClick={downloadCatReport}
+                    >
+                      <FileSpreadsheet />
+                      Download Excel
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={!reportRows.length}
+                      onClick={printCatReport}
+                    >
+                      <Printer />
+                      Print / Save PDF
+                    </Button>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-x-5 gap-y-2">
+                  {(unitsQuery.data ?? []).map((unit) => (
+                    <label key={unit.id} className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        className="size-4 accent-primary"
+                        checked={reportUnitIds.includes(unit.id)}
+                        onChange={(event) =>
+                          setReportUnitIds((current) =>
+                            event.target.checked
+                              ? [...current, unit.id]
+                              : current.filter((id) => id !== unit.id),
+                          )
+                        }
+                      />
+                      {unit.code ? `${unit.code} · ` : ""}
+                      {unit.title}
+                    </label>
+                  ))}
+                </div>
+                {reportUnitIds.length > 0 && !reportRows.length && (
+                  <p className="text-sm text-muted-foreground">
+                    No submitted CAT 1 or CAT 2 results were found for the selected units.
                   </p>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    disabled={!reportRows.length}
-                    onClick={downloadCatReport}
-                  >
-                    <FileSpreadsheet />
-                    Download Excel
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    disabled={!reportRows.length}
-                    onClick={printCatReport}
-                  >
-                    <Printer />
-                    Print / Save PDF
-                  </Button>
-                </div>
-              </div>
-              <div className="flex flex-wrap gap-x-5 gap-y-2">
-                {(unitsQuery.data ?? []).map((unit) => (
-                  <label key={unit.id} className="flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      className="size-4 accent-primary"
-                      checked={reportUnitIds.includes(unit.id)}
-                      onChange={(event) =>
-                        setReportUnitIds((current) =>
-                          event.target.checked
-                            ? [...current, unit.id]
-                            : current.filter((id) => id !== unit.id),
-                        )
-                      }
-                    />
-                    {unit.code ? `${unit.code} · ` : ""}
-                    {unit.title}
-                  </label>
-                ))}
-              </div>
-              {reportUnitIds.length > 0 && !reportRows.length && (
-                <p className="text-sm text-muted-foreground">
-                  No submitted CAT 1 or CAT 2 results were found for the selected units.
-                </p>
-              )}
-              {reportRows.length > 0 && (
-                <div className="overflow-x-auto rounded-md border">
-                  <table className="w-full min-w-[840px] border-collapse text-left text-sm">
-                    <thead>
-                      <tr className="bg-muted/40">
-                        <th className="border-b px-3 py-2">Unit</th>
-                        <th className="border-b px-3 py-2">Student</th>
-                        <th className="border-b px-3 py-2">Student number</th>
-                        <th className="border-b px-3 py-2">KASNEB number</th>
-                        <th className="border-b px-3 py-2">CAT 1</th>
-                        <th className="border-b px-3 py-2">CAT 2</th>
-                        <th className="border-b px-3 py-2">Combined marks</th>
-                        <th className="border-b px-3 py-2">Percentage</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {reportRows.map((row) => (
-                        <tr
-                          key={`${row.unit}-${row.student_number}`}
-                          className="border-b last:border-0"
-                        >
-                          <td className="px-3 py-2">{row.unit}</td>
-                          <td className="px-3 py-2 font-medium">{row.student}</td>
-                          <td className="px-3 py-2">{row.student_number}</td>
-                          <td className="px-3 py-2">{row.kasneb_number || "—"}</td>
-                          <td className="px-3 py-2">{row.cat_1_score || "—"}</td>
-                          <td className="px-3 py-2">{row.cat_2_score || "—"}</td>
-                          <td className="px-3 py-2">{row.combined_score}</td>
-                          <td className="px-3 py-2">
-                            {row.combined_percentage === null ? "—" : `${row.combined_percentage}%`}
-                          </td>
+                )}
+                {reportRows.length > 0 && (
+                  <div className="overflow-x-auto rounded-md border">
+                    <table className="w-full min-w-[840px] border-collapse text-left text-sm">
+                      <thead>
+                        <tr className="bg-muted/40">
+                          <th className="border-b px-3 py-2">Unit</th>
+                          <th className="border-b px-3 py-2">Student</th>
+                          <th className="border-b px-3 py-2">Student number</th>
+                          <th className="border-b px-3 py-2">KASNEB number</th>
+                          <th className="border-b px-3 py-2">CAT 1</th>
+                          <th className="border-b px-3 py-2">CAT 2</th>
+                          <th className="border-b px-3 py-2">Combined marks</th>
+                          <th className="border-b px-3 py-2">Percentage</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </section>
+                      </thead>
+                      <tbody>
+                        {reportRows.map((row) => (
+                          <tr
+                            key={`${row.unit}-${row.student_number}`}
+                            className="border-b last:border-0"
+                          >
+                            <td className="px-3 py-2">{row.unit}</td>
+                            <td className="px-3 py-2 font-medium">{row.student}</td>
+                            <td className="px-3 py-2">{row.student_number}</td>
+                            <td className="px-3 py-2">{row.kasneb_number || "—"}</td>
+                            <td className="px-3 py-2">{row.cat_1_score || "—"}</td>
+                            <td className="px-3 py-2">{row.cat_2_score || "—"}</td>
+                            <td className="px-3 py-2">{row.combined_score}</td>
+                            <td className="px-3 py-2">
+                              {row.combined_percentage === null
+                                ? "—"
+                                : `${row.combined_percentage}%`}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </section>
           )}
 
           {unitId && !unitsQuery.isLoading && !unitCats.length && (

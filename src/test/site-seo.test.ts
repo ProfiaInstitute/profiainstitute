@@ -30,7 +30,7 @@ describe("site SEO metadata", () => {
     );
   });
 
-  it.each(["/admin", "/student", "/student?course=ict", "/application-status"])(
+  it.each(["/admin", "/student", "/student?course=ict", "/facilitator", "/application-status"])(
     "keeps private pages out of search results (%s)",
     (path) => {
       const metadata = seo("Private page", "Private page description.", path);

@@ -27,12 +27,20 @@ import {
 } from "@/components/site/common";
 
 export const Route = createFileRoute("/")({
-  head: () =>
-    seo(
-      "Profia Institute — TVET Accredited College in Homa Bay",
-      "Apply to Profia Institute in Homa Bay for CPA, ICT, hospitality, cosmetology and engineering courses.",
+  head: () => {
+    const pageHead = seo(
+      "Profia Institute | TVET College & KASNEB Centre, Homa Bay",
+      "Profia Institute is a TVET college and approved KASNEB exam centre in Homa Bay, offering professional, business, ICT, hospitality, engineering and cosmetology training.",
       "/",
-    ),
+    );
+    return {
+      ...pageHead,
+      links: [
+        ...pageHead.links,
+        { rel: "preload", as: "image", href: "/images/profia_school.webp", fetchPriority: "high" },
+      ],
+    };
+  },
   component: Home,
 });
 
@@ -58,18 +66,18 @@ function Home() {
   const about = useSetting<{ intro?: string }>("content.about", {});
   const web = useSetting<WebSettings>("content.webdev", { enabled: true });
   const stats = useSetting<{ items: { value: string; label: string }[] }>("stats", { items: [] });
-  const slides = heroMedia.data?.length
-    ? heroMedia.data
-    : [
-        {
-          id: "default-hero",
-          url: hero.image,
-          caption: null,
-          alt: null,
-          slot: null,
-          sort_order: 0,
-        },
-      ];
+  const defaultHeroSlide = {
+    id: "default-hero",
+    url: hero.image,
+    caption: null,
+    alt: "Profia Institute campus",
+    slot: null,
+    sort_order: 0,
+  };
+  const slides = [
+    defaultHeroSlide,
+    ...(heroMedia.data ?? []).filter((slide) => slide.url !== defaultHeroSlide.url),
+  ];
   const currentSlide = slides[slideIndex % slides.length] ?? slides[0]!;
 
   useEffect(() => {
@@ -104,13 +112,20 @@ function Home() {
         aria-label="Featured stories"
         aria-roledescription={slides.length > 1 ? "carousel" : undefined}
       >
-        <img
-          key={currentSlide.id}
-          src={currentSlide.url}
-          alt={currentSlide.alt || "Profia Institute students and community"}
-          className="absolute inset-0 -z-20 h-full w-full object-cover object-center"
-          fetchPriority="high"
-        />
+        {slides.map((slide, index) => (
+          <img
+            key={slide.id}
+            src={slide.url}
+            alt={index === slideIndex ? slide.alt || "Profia Institute students and community" : ""}
+            aria-hidden={index !== slideIndex}
+            className={`absolute inset-0 -z-20 h-full w-full object-cover object-center transition-opacity duration-700 ${
+              index === slideIndex ? "opacity-100" : "opacity-0"
+            }`}
+            loading="eager"
+            fetchPriority={index === slideIndex ? "high" : "low"}
+            decoding="async"
+          />
+        ))}
         <div className="absolute inset-0 -z-10 bg-[linear-gradient(90deg,rgba(24,7,10,0.8)_0%,rgba(39,9,14,0.68)_42%,rgba(39,9,14,0.3)_100%)]" />
         <div className="absolute inset-0 -z-10 bg-[linear-gradient(0deg,rgba(24,7,10,0.28)_0%,transparent_38%)]" />
         <div className="container-site grid min-h-[44rem] items-center gap-10 py-12 sm:min-h-[40rem] sm:py-14 lg:min-h-[38rem] lg:grid-cols-[minmax(0,1.15fr)_minmax(19rem,0.7fr)] lg:gap-16 lg:py-16">
@@ -323,7 +338,7 @@ function Home() {
         <div className="rounded-2xl border bg-muted/30 p-6 sm:p-8">
           <p className="text-base leading-7 text-muted-foreground">
             {about.intro ||
-              "Profia Institute is a TVET college in Homa Bay. Explore our schools and programmes, or contact the Institute for current admissions information."}
+              "Profia Institute is a TVET college and approved KASNEB examination centre in Homa Bay. Explore professional, business and technical courses, including current KASNEB programmes, and contact admissions for details."}
           </p>
           <div className="mt-5 flex flex-wrap gap-3">
             <Button asChild variant="outline">

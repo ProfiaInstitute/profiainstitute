@@ -59,6 +59,7 @@ import { SiteMediaManager } from "@/components/admin/SiteMediaManager";
 import { SiteCopyManager } from "@/components/admin/SiteCopyManager";
 import { PasswordResetPage } from "@/components/auth/PasswordResetPage";
 import { PortalInboxPanel } from "@/components/admin/PortalInboxPanel";
+import { LearningMaterialViewer } from "@/components/learning/LearningMaterialViewer";
 import { CourseFeedbackPanel } from "@/components/admin/CourseFeedbackPanel";
 import { FacilitatorManager } from "@/components/admin/FacilitatorManager";
 import { SystemUsersPanel } from "@/components/admin/SystemUsersPanel";
@@ -76,6 +77,7 @@ import {
   supportedContentType,
 } from "@/lib/file-uploads";
 import { downloadContentAttachment } from "@/lib/content-download";
+import { getYouTubeEmbedUrl } from "@/lib/content-format";
 import { formatKES } from "@/lib/site";
 import { useScrollReveal } from "@/lib/motion";
 import { fetchProfilePhotos } from "@/lib/profile-photos";
@@ -461,12 +463,12 @@ export function StaffDashboard() {
       <>
         <FeeManagementPanel />
         <FeeStatementTemplatePanel />
-        <DataDirectory section={section} />
+        <DataDirectory section={section} userId={user.id} />
       </>
     ) : section === "payhero" ? (
       <PayHeroSettingsPanel />
     ) : (
-      <DataDirectory section={section} />
+      <DataDirectory section={section} userId={user.id} />
     );
 
   return (
@@ -1275,10 +1277,11 @@ function ApplicationsPanel() {
   }));
 
   if (appsQuery.isLoading || applicationUnitsQuery.isLoading) return <LoadingState />;
-  if (appsQuery.error || applicationUnitsQuery.error)
+  const applicationQueryError = appsQuery.error ?? applicationUnitsQuery.error;
+  if (applicationQueryError)
     return (
       <ErrorPanel
-        error={appsQuery.error ?? applicationUnitsQuery.error}
+        error={applicationQueryError}
         retry={() => {
           void appsQuery.refetch();
           void applicationUnitsQuery.refetch();
@@ -2258,6 +2261,17 @@ function StudentRecordDetails({
       return data;
     },
   });
+  const catResultsQuery = useQuery({
+    queryKey: ["admin", "student-record-cat-results", student.id],
+    enabled: canViewAcademicRecords,
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc("list_student_cat_results", {
+        _student_id: student.id,
+      });
+      if (error) throw error;
+      return data;
+    },
+  });
   const feesQuery = useQuery({
     queryKey: ["admin", "student-record-fees", student.id],
     enabled: canViewFinancialRecords,
@@ -2341,7 +2355,7 @@ function StudentRecordDetails({
       </div>
 
       {canViewAcademicRecords && (
-        <div className="border-t pt-3">
+        <div className="space-y-4 border-t pt-3">
           <h4 className="text-sm font-semibold text-brand">Academic results</h4>
           {resultsQuery.isLoading ? (
             <p className="mt-2 text-sm text-muted-foreground">Loading academic results…</p>
@@ -2379,6 +2393,55 @@ function StudentRecordDetails({
           ) : (
             <p className="mt-2 text-sm text-muted-foreground">No academic results recorded.</p>
           )}
+          <div className="border-t pt-3">
+            <h5 className="text-sm font-semibold text-brand">CAT results</h5>
+            {catResultsQuery.isLoading ? (
+              <p className="mt-2 text-sm text-muted-foreground">Loading CAT results…</p>
+            ) : catResultsQuery.error ? (
+              <p role="alert" className="mt-2 text-sm text-destructive">
+                Could not load CAT results: {catResultsQuery.error.message}
+              </p>
+            ) : catResultsQuery.data?.length ? (
+              <div className="mt-2 overflow-x-auto">
+                <table className="w-full min-w-[38rem] text-left text-sm">
+                  <thead>
+                    <tr className="border-b text-xs text-muted-foreground">
+                      <th className="py-2 pr-3">Course / level</th>
+                      <th className="py-2 pr-3">Unit</th>
+                      <th className="py-2 pr-3">CAT</th>
+                      <th className="py-2 pr-3">Mark</th>
+                      <th className="py-2 pr-3">Percentage</th>
+                      <th className="py-2">Submitted</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {catResultsQuery.data.map((result) => (
+                      <tr key={result.attempt_id} className="border-b last:border-0">
+                        <td className="py-2 pr-3">
+                          {result.course_title} · {result.level_name || "Level not recorded"}
+                        </td>
+                        <td className="py-2 pr-3">{result.unit_name}</td>
+                        <td className="py-2 pr-3">{result.cat_name}</td>
+                        <td className="py-2 pr-3">
+                          {result.score}/{result.max_score}
+                        </td>
+                        <td className="py-2 pr-3">
+                          {result.max_score > 0
+                            ? `${((result.score / result.max_score) * 100).toFixed(1)}%`
+                            : "—"}
+                        </td>
+                        <td className="py-2">
+                          {new Date(result.submitted_at).toLocaleDateString()}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="mt-2 text-sm text-muted-foreground">No CAT results recorded.</p>
+            )}
+          </div>
         </div>
       )}
 
@@ -3731,8 +3794,9 @@ function AuditLogPanel() {
   );
 }
 
-function DataDirectory({ section }: { section: DashboardSection }) {
+function DataDirectory({ section, userId }: { section: DashboardSection; userId: string }) {
   const queryClient = useQueryClient();
+  const [resultsView, setResultsView] = useState<"academic" | "cats">("academic");
   const [assignmentView, setAssignmentView] = useState<
     "cats" | "cat-results" | "submissions" | "assignments"
   >("cats");
@@ -3784,7 +3848,8 @@ function DataDirectory({ section }: { section: DashboardSection }) {
   const config = configuration[section];
   const query = useQuery({
     queryKey: ["admin", "directory", section],
-    enabled: !!config && section !== "messages",
+    enabled:
+      !!config && section !== "messages" && (section !== "results" || resultsView === "academic"),
     queryFn: async () => {
       let data: unknown[] | null = null;
       let error: { message: string } | null = null;
@@ -3909,8 +3974,10 @@ function DataDirectory({ section }: { section: DashboardSection }) {
       />
     );
   if (section === "messages") return <ContactMessagesPanel />;
-  if (query.isLoading) return <LoadingState />;
-  if (query.error) return <ErrorPanel error={query.error} retry={() => query.refetch()} />;
+  if (query.isLoading && !(section === "results" && resultsView === "cats"))
+    return <LoadingState />;
+  if (query.error && !(section === "results" && resultsView === "cats"))
+    return <ErrorPanel error={query.error} retry={() => query.refetch()} />;
   async function invalidatePublicContent() {
     if (section === "announcements" || section === "memos") {
       await Promise.all([
@@ -4066,7 +4133,8 @@ function DataDirectory({ section }: { section: DashboardSection }) {
               : `Latest ${Math.min(query.data?.length ?? 0, 200)} records`}
           </p>
         </div>
-        {section !== "assignments" || assignmentView === "assignments" ? (
+        {(section !== "assignments" || assignmentView === "assignments") &&
+        (section !== "results" || resultsView === "academic") ? (
           <div className="flex gap-2">
             <Button
               variant="outline"
@@ -4113,8 +4181,33 @@ function DataDirectory({ section }: { section: DashboardSection }) {
           ))}
         </div>
       )}
+      {section === "results" && (
+        <div className="grid gap-2 rounded-lg bg-muted/40 p-1 sm:grid-cols-2">
+          {(
+            [
+              ["academic", "Academic results"],
+              ["cats", "CAT results & grading"],
+            ] as const
+          ).map(([view, label]) => (
+            <button
+              key={view}
+              type="button"
+              aria-pressed={resultsView === view}
+              className={`min-h-10 rounded-md px-3 py-2 text-sm font-medium transition ${
+                resultsView === view
+                  ? "bg-background text-brand shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+              onClick={() => setResultsView(view)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
       {["schools", "academics", "results", "fees", "materials", "assignments"].includes(section) &&
-        (section !== "assignments" || assignmentView === "assignments") && (
+        (section !== "assignments" || assignmentView === "assignments") &&
+        (section !== "results" || resultsView === "academic") && (
           <DirectoryCreateForm
             section={section}
             onSaved={() => {
@@ -4143,13 +4236,15 @@ function DataDirectory({ section }: { section: DashboardSection }) {
       )}
       {section === "assignments" &&
         (assignmentView === "cats" ? (
-          <CatManagementPanel />
+          <CatManagementPanel userId={userId} />
         ) : assignmentView === "cat-results" ? (
           <CatResultsPanel />
         ) : assignmentView === "submissions" ? (
           <AssignmentSubmissionsPanel />
         ) : null)}
+      {section === "results" && resultsView === "cats" && <CatResultsPanel />}
       {(section !== "assignments" || assignmentView === "assignments") &&
+        (section !== "results" || resultsView === "academic") &&
         (query.data?.length ? (
           <div className="mt-4 overflow-x-auto">
             <table className="w-full min-w-[640px] border-collapse text-left text-sm">
@@ -4231,10 +4326,27 @@ function DataDirectory({ section }: { section: DashboardSection }) {
                       ].includes(section) && (
                         <td className="px-3 py-2.5">
                           <div className="flex flex-wrap items-center gap-2">
-                            {(section === "materials" || section === "assignments") &&
-                              typeof row["file_path"] === "string" && (
-                                <AdminCourseFile path={row["file_path"]} />
-                              )}
+                            {section === "materials" && (
+                              <LearningMaterialViewer
+                                title={String(row["title"] ?? "Learning material")}
+                                materialType={
+                                  typeof row["material_type"] === "string"
+                                    ? row["material_type"]
+                                    : null
+                                }
+                                url={
+                                  typeof row["external_url"] === "string"
+                                    ? row["external_url"]
+                                    : null
+                                }
+                                filePath={
+                                  typeof row["file_path"] === "string" ? row["file_path"] : null
+                                }
+                              />
+                            )}
+                            {section === "assignments" && typeof row["file_path"] === "string" && (
+                              <AdminCourseFile path={row["file_path"]} />
+                            )}
                             {(section === "articles" ||
                               section === "announcements" ||
                               section === "memos") &&
@@ -4612,7 +4724,12 @@ function DirectoryCreateForm({
           description: values.description.trim() || null,
           external_url: values.url.trim() || null,
           file_path: uploadedPath,
-          material_type: values.file && fileType ? contentKind(fileType) : "link",
+          material_type:
+            values.file && fileType
+              ? contentKind(fileType)
+              : getYouTubeEmbedUrl(values.url.trim())
+                ? "video"
+                : "link",
           uploaded_by: user?.id ?? null,
           published: true,
         });
