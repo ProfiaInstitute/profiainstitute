@@ -1,9 +1,10 @@
-export const SESSION_IDLE_TIMEOUT_MS = 5 * 60_000;
+export const SESSION_IDLE_TIMEOUT_MS = 60 * 24 * 60 * 60_000;
 
 const STORAGE_KEY_PREFIX = "profia:last-activity:v1:";
 const STORAGE_SYNC_INTERVAL_MS = 5_000;
 const ACTIVITY_EVENT_THROTTLE_MS = 1_000;
 const SIGN_OUT_RETRY_INTERVAL_MS = 15_000;
+const MAX_TIMEOUT_DELAY_MS = 2_147_000_000;
 
 function activityStorageKey(userId: string) {
   return `${STORAGE_KEY_PREFIX}${userId}`;
@@ -53,7 +54,7 @@ export function watchSessionInactivity(
 
   const schedule = (delay: number) => {
     if (timer !== undefined) clearTimeout(timer);
-    timer = setTimeout(() => void checkIdle(), delay);
+    timer = setTimeout(() => void checkIdle(), Math.min(Math.max(0, delay), MAX_TIMEOUT_DELAY_MS));
   };
 
   const checkIdle = async () => {

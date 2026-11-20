@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { checkStaffMfa } from "../_shared/staff-mfa.ts";
 import { createFeeReceipt } from "../_shared/fee-documents.ts";
 
 const corsHeaders = {
@@ -39,6 +40,8 @@ Deno.serve(async (request: Request) => {
   const { data: authData, error: authError } = await supabase.auth.getUser(token);
   if (authError || !authData.user)
     return json({ error: "Your session is invalid or expired." }, 401);
+  const mfaCheck = await checkStaffMfa(supabase, authData.user.id, token);
+  if (!mfaCheck.allowed) return json({ error: mfaCheck.error }, mfaCheck.status);
 
   const { data: student, error: studentError } = await supabase
     .from("students")

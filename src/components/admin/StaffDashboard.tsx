@@ -30,6 +30,7 @@ import {
   UserPlus,
   Users,
   UsersRound,
+  Video,
   Wallet,
   X,
   type LucideIcon,
@@ -52,6 +53,7 @@ import { ContactMessagesPanel } from "@/components/admin/ContactMessagesPanel";
 import { CatManagementPanel } from "@/components/admin/CatManagementPanel";
 import { CatResultsPanel } from "@/components/admin/CatResultsPanel";
 import { OnlineCourseLmsPanel } from "@/components/admin/OnlineCourseLmsPanel";
+import { LiveClassAdminPanel } from "@/components/admin/LiveClassAdminPanel";
 import { PayHeroSettingsPanel } from "@/components/admin/PayHeroSettingsPanel";
 import { FeeStatementTemplatePanel } from "@/components/admin/FeeStatementTemplatePanel";
 import { FeeBalanceReminderPanel } from "@/components/admin/FeeBalanceReminderPanel";
@@ -98,6 +100,7 @@ type DashboardSection =
   | "payhero"
   | "materials"
   | "lms"
+  | "live-classes"
   | "assignments"
   | "progression"
   | "regulatory"
@@ -189,6 +192,12 @@ const navItems: { id: DashboardSection; title: string; icon: LucideIcon; roles: 
     id: "lms",
     title: "Online Course LMS",
     icon: MonitorPlay,
+    roles: ["super_admin", "academic_admin"],
+  },
+  {
+    id: "live-classes",
+    title: "Live classes",
+    icon: Video,
     roles: ["super_admin", "academic_admin"],
   },
   {
@@ -292,6 +301,7 @@ const navGroups: { title: string; ids: DashboardSection[] }[] = [
       "payhero",
       "materials",
       "lms",
+      "live-classes",
       "assignments",
       "progression",
       "regulatory",
@@ -459,6 +469,8 @@ export function StaffDashboard() {
       <HolidayProgramAdminPanel />
     ) : section === "lms" ? (
       <OnlineCourseLmsPanel />
+    ) : section === "live-classes" ? (
+      <LiveClassAdminPanel />
     ) : section === "fees" ? (
       <>
         <FeeManagementPanel />

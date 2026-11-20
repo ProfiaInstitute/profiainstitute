@@ -2,9 +2,83 @@
 
 PROFIA INSTITUTE — COMPLETE WEBSITE REBUILD + STUDENT PORTAL + ADMIN SYSTEM
 
-## CAT results and grading
+## CAT results and performance insights
 
-Apply `drizzle/migrations/0062_student_cat_result_records.sql` to show submitted CAT marks in staff student records. **Admin > Results > CAT results & grading** opens the CAT course, level, unit, and assessment grading workflow.
+Apply `drizzle/migrations/0062_student_cat_result_records.sql` to show submitted
+CAT marks in staff student records. **Admin → Results → CAT results & grading**
+opens the CAT course, level, unit, and assessment grading workflow.
+
+The CAT results view also shows course-unit averages and submitted CAT trends.
+Academic staff can request advisory study suggestions from a self-hosted Ollama
+model. Install Ollama on the model host and pull `qwen2.5:3b`. For local
+development, put these settings in the untracked `.env.local` file:
+
+```text
+OLLAMA_BASE_URL=http://127.0.0.1:11434
+OLLAMA_MODEL=qwen2.5:3b
+```
+
+For a Cloudflare-hosted application using Ollama on an institute PC, create a
+Cloudflare Tunnel from a public AI hostname to `http://127.0.0.1:11434` on that
+PC, then protect the hostname with a Cloudflare Access service-auth policy.
+Keep Ollama bound to localhost; do not open port 11434 on the router or expose
+the Ollama API directly. The PC must stay powered on, connected to the internet,
+and running Ollama and `cloudflared`.
+
+Configure these values in the production Worker environment:
+
+```text
+OLLAMA_BASE_URL=https://ai.example.com
+OLLAMA_MODEL=qwen2.5:3b
+```
+
+Save the Cloudflare Access service token client ID and secret as server-side
+secrets named `OLLAMA_ACCESS_CLIENT_ID` and `OLLAMA_ACCESS_CLIENT_SECRET`. The
+server sends those headers only to an HTTPS Ollama endpoint; never put the
+service token in client-side `VITE_*` variables or commit it. The hostname in
+`OLLAMA_BASE_URL` must be the Access-protected Tunnel hostname.
+
+The example URL works only when the application server and Ollama share a host
+or private network. For a Cloudflare-hosted application, `127.0.0.1` refers to
+the Cloudflare runtime, not an administrator's computer. The app sends
+aggregated course/unit scores only; student names, numbers, and individual marks
+remain in the application and are used locally to identify each learner's
+lowest-scoring unit. AI suggestions are advisory and do not assign grades or
+determine pass/fail.
+
+## Live e-learning classrooms
+
+Live classes use LiveKit Cloud for real-time video, audio, and facilitator screen
+sharing. Apply `drizzle/migrations/0064_live_class_sessions.sql` and deploy the
+`livekit-token`, `manage-live-class`, and `livekit-webhook` Supabase Edge
+Functions before enabling the feature. In Supabase Edge Function secrets,
+configure `LIVEKIT_URL`, `LIVEKIT_API_KEY`, and `LIVEKIT_API_SECRET` from the
+LiveKit Cloud project.
+These are server-only secrets; do not use `VITE_*` variables or commit them.
+
+Configure a LiveKit webhook to
+`https://<project-ref>.supabase.co/functions/v1/livekit-webhook` for
+`participant_joined` and `participant_left` events. The endpoint does not use a
+Supabase user JWT, but it verifies each webhook signature with the LiveKit API
+credentials before recording attendance. The student portal lists eligible
+sessions, facilitators schedule and start sessions for their assigned units,
+and academic administrators can schedule sessions and add active students to a
+specific class. A direct class-roster assignment grants access to that class
+even when the student's study mode differs; it bypasses the normal course
+enrollment and online-payment gate for that session only, but does not change
+the student's study mode, enrollment, or fee records.
+LiveKit join tokens expire after 15 minutes. Ending a class changes its state
+server-side before closing the LiveKit room. If LiveKit cannot close the room,
+the session remains closed to new tokens and administrators can retry.
+
+LiveKit Cloud processes participant display names and live audio, video, and
+screen-share media. The application does not enable recording. Review LiveKit's
+[current pricing](https://livekit.com/pricing), plan quotas, media bandwidth and
+recording charges before production use; the headline plan price is not a
+workload-specific cost estimate. For budgeting, estimate concurrent
+participant-minutes and outgoing media data for the expected class sizes.
+Update the student privacy notice and obtain appropriate participant consent
+before live classes are used.
 
 ## Course billing and PayHero fee payments
 

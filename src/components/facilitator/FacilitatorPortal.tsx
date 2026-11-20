@@ -14,6 +14,7 @@ import {
   MoreHorizontal,
   Plus,
   UserRound,
+  Video,
   type LucideIcon,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -23,6 +24,7 @@ import { LevelTargetPicker } from "@/components/academics/LevelTargetPicker";
 import { CatQuestionImporter } from "@/components/academics/CatQuestionImporter";
 import { CatQuestionPreview } from "@/components/academics/CatQuestionPreview";
 import { FacilitatorCatPerformance } from "@/components/facilitator/FacilitatorCatPerformance";
+import { FacilitatorLiveClasses } from "@/components/facilitator/FacilitatorLiveClasses";
 import { SubmissionFileDownloads } from "@/components/academics/SubmissionFileDownloads";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -924,6 +926,7 @@ function FacilitatorWorkspace({ userId, email }: { userId: string; email: string
   const navigationItems = [
     { id: "dashboard", title: "Dashboard", icon: BookOpen },
     { id: "facilitator-students", title: "Students", icon: GraduationCap },
+    { id: "facilitator-live-classes", title: "Live classes", icon: Video },
     ...(permissions.can_manage_assignments
       ? [{ id: "facilitator-assignments", title: "Assignments", icon: ClipboardList }]
       : []),
@@ -945,6 +948,7 @@ function FacilitatorWorkspace({ userId, email }: { userId: string; email: string
   ];
   const mobileNavigationItems = [
     "dashboard",
+    "facilitator-live-classes",
     "facilitator-students",
     "facilitator-inbox",
   ]
@@ -1236,6 +1240,13 @@ function FacilitatorWorkspace({ userId, email }: { userId: string; email: string
                   />
                 )}
               </>
+            )}
+            {activeSection === "facilitator-live-classes" && (
+              <FacilitatorLiveClasses
+                facilitatorId={userId}
+                unitId={activeUnit.unit_id}
+                unitTitle={`${activeUnit.course.title} · ${activeUnit.unit.title}`}
+              />
             )}
             {permissions.can_manage_assignments && activeSection === "facilitator-assignments" && (
               <section

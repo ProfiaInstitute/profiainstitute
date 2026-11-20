@@ -20,6 +20,10 @@ export const ROLE_LABELS: Record<AppRole, string> = {
   facilitator: "Facilitator",
 };
 
+export function requiresStaffMfa(roles: AppRole[] | undefined) {
+  return roles?.some((role) => role !== "student") ?? false;
+}
+
 export function useUser() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);

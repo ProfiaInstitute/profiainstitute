@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowDownToLine, FileSpreadsheet, Printer, RefreshCw } from "lucide-react";
+import { ArrowDownToLine, FileSpreadsheet, Printer, RefreshCw, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
+import { analyzeCatPerformance } from "@/lib/performance-insights.functions";
+import {
+  buildCatPerformanceSnapshot,
+  createCatPerformanceAnalysisInput,
+} from "@/lib/performance-insights";
 import { createExcelWorkbook } from "@/lib/excel-export";
 import {
   buildCatUnitReportExportRows,
@@ -448,6 +453,18 @@ export function CatResultsPanel() {
 
           {courseId && levelId && !unitsQuery.isLoading && (
             <>
+              <CatPerformanceInsights
+                key={`${courseId}-${levelId}`}
+                courseName={selectedCourse?.title ?? ""}
+                levelName={selectedLevel?.name ?? ""}
+                units={unitsQuery.data ?? []}
+                cats={cats.filter(
+                  (cat) =>
+                    cat.courseId === courseId &&
+                    cat.unitId !== null &&
+                    (unitsQuery.data ?? []).some((unit) => unit.id === cat.unitId),
+                )}
+              />
               <section className="space-y-4 rounded-lg border p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
@@ -545,6 +562,7 @@ export function CatResultsPanel() {
                   </div>
                 )}
               </section>
+            </>
           )}
 
           {unitId && !unitsQuery.isLoading && !unitCats.length && (
@@ -767,6 +785,198 @@ export function CatResultsPanel() {
             </div>
           )}
         </>
+      )}
+    </section>
+  );
+}
+
+function CatPerformanceInsights({
+  courseName,
+  levelName,
+  units,
+  cats,
+}: {
+  courseName: string;
+  levelName: string;
+  units: { id: string; title: string; code: string | null }[];
+  cats: AdminCat[];
+}) {
+  const snapshot = buildCatPerformanceSnapshot(cats, units);
+  const displayUnitByPrivateId = new Map(snapshot.units.map((unit) => [unit.id, unit]));
+  const analysisInput = createCatPerformanceAnalysisInput(courseName, levelName, snapshot.units);
+  const [selectedLearnerId, setSelectedLearnerId] = useState("");
+  const analysisMutation = useMutation({
+    mutationFn: (data: typeof analysisInput) => analyzeCatPerformance({ data }),
+  });
+  const hasResults = JSON.stringify(analysisMutation.variables) === JSON.stringify(analysisInput);
+  const analysis = hasResults ? analysisMutation.data : undefined;
+  const analysisError = hasResults ? analysisMutation.error : null;
+  const safeUnitIds = new Map(snapshot.units.map((unit, index) => [`unit-${index + 1}`, unit.id]));
+  const analysisByUnit = new Map(
+    (analysis?.unitInsights ?? []).flatMap((insight) => {
+      const localUnitId = safeUnitIds.get(insight.unitId);
+      return localUnitId ? [[localUnitId, insight] as const] : [];
+    }),
+  );
+  const selectedLearner =
+    snapshot.learners.find((learner) => learner.id === selectedLearnerId) ?? snapshot.learners[0];
+  const learnerFocus = selectedLearner
+    ? [...selectedLearner.performance].sort(
+        (left, right) => left.averagePercent - right.averagePercent,
+      )[0]
+    : undefined;
+  const focusUnit = learnerFocus ? displayUnitByPrivateId.get(learnerFocus.unitId) : undefined;
+  const focusRecommendation = learnerFocus ? analysisByUnit.get(learnerFocus.unitId) : undefined;
+
+  return (
+    <section className="space-y-4 rounded-lg border p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="font-semibold">CAT performance trends & AI suggestions</h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Compare submitted marks across units and CATs for this course level. Suggestions are
+            advisory; they do not assign grades or determine pass/fail.
+          </p>
+        </div>
+        <Button
+          type="button"
+          size="sm"
+          disabled={!snapshot.learners.length || analysisMutation.isPending}
+          loading={analysisMutation.isPending}
+          onClick={() => analysisMutation.mutate(analysisInput)}
+        >
+          <Sparkles />
+          {analysisMutation.isPending ? "Analyzing…" : "Generate AI suggestions"}
+        </Button>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Only course-unit labels and aggregated course-level CAT scores are sent to your self-hosted
+        Ollama server. Student names, numbers, and individual marks stay in this app; individual
+        focus areas are matched locally to each learner’s lowest-scoring unit.
+      </p>
+      {!snapshot.learners.length ? (
+        <p className="rounded-md bg-muted/40 p-3 text-sm text-muted-foreground">
+          Submitted CAT marks are needed before performance trends can be shown.
+        </p>
+      ) : (
+        <div className="overflow-x-auto rounded-md border">
+          <table className="w-full min-w-[620px] border-collapse text-left text-sm">
+            <thead>
+              <tr className="bg-muted/40">
+                <th className="border-b px-3 py-2">Course unit</th>
+                <th className="border-b px-3 py-2">Students</th>
+                <th className="border-b px-3 py-2">CAT attempts</th>
+                <th className="border-b px-3 py-2">Overall average</th>
+                <th className="border-b px-3 py-2">Latest CAT trend</th>
+              </tr>
+            </thead>
+            <tbody>
+              {snapshot.units.map((unit) => {
+                const change =
+                  unit.latestAveragePercent !== null && unit.previousAveragePercent !== null
+                    ? unit.latestAveragePercent - unit.previousAveragePercent
+                    : null;
+                return (
+                  <tr key={unit.id} className="border-b last:border-0">
+                    <td className="px-3 py-2 font-medium">{unit.name}</td>
+                    <td className="px-3 py-2">
+                      {
+                        snapshot.learners.filter((learner) =>
+                          learner.performance.some((entry) => entry.unitId === unit.id),
+                        ).length
+                      }
+                    </td>
+                    <td className="px-3 py-2">{unit.attemptCount}</td>
+                    <td className="px-3 py-2">{unit.averagePercent.toFixed(1)}%</td>
+                    <td className="px-3 py-2">
+                      {change === null
+                        ? "Need another CAT"
+                        : `${change > 0 ? "+" : ""}${change.toFixed(1)} percentage points`}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {analysisMutation.isPending && (
+        <p role="status" className="text-sm text-muted-foreground">
+          The local model is reviewing aggregated course-level trends…
+        </p>
+      )}
+      {analysisError && (
+        <p
+          role="alert"
+          className="rounded-md border border-destructive/40 p-3 text-sm text-destructive"
+        >
+          Could not generate AI suggestions: {analysisError.message}
+        </p>
+      )}
+      {analysis && (
+        <div className="space-y-4 rounded-md bg-muted/30 p-4">
+          <div>
+            <h4 className="text-sm font-semibold">Overall analysis</h4>
+            <p className="mt-1 text-sm">{analysis.summary}</p>
+          </div>
+          {analysis.unitInsights.length > 0 && (
+            <div className="space-y-2">
+              <h4 className="text-sm font-semibold">Course-unit focus</h4>
+              {analysis.unitInsights.map((insight) => {
+                const unitId = safeUnitIds.get(insight.unitId);
+                const unit = unitId ? displayUnitByPrivateId.get(unitId) : undefined;
+                return (
+                  <article key={insight.unitId} className="rounded-md border bg-background p-3">
+                    <p className="font-medium">{unit?.name ?? "Course unit"}</p>
+                    <p className="mt-1 text-sm text-muted-foreground">{insight.concern}</p>
+                    <p className="mt-1 text-sm">{insight.recommendation}</p>
+                  </article>
+                );
+              })}
+            </div>
+          )}
+          {selectedLearner && learnerFocus && (
+            <div className="space-y-2 border-t pt-3">
+              <h4 className="text-sm font-semibold">Individual study focus</h4>
+              <label className="grid max-w-xl gap-1 text-sm font-medium">
+                Student
+                <select
+                  className={selectClass}
+                  value={selectedLearner.id}
+                  onChange={(event) => setSelectedLearnerId(event.target.value)}
+                >
+                  {snapshot.learners.map((learner) => (
+                    <option key={learner.id} value={learner.id}>
+                      {learner.name} · {learner.studentNumber}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <p className="text-sm">
+                <span className="font-medium">{selectedLearner.name}</span>
+                {" — "}
+                next focus: <span className="font-medium">{focusUnit?.name ?? "Unit"}</span>
+                {" · "}
+                average {learnerFocus.averagePercent.toFixed(1)}% across {learnerFocus.attemptCount}{" "}
+                submitted CAT
+                {learnerFocus.attemptCount === 1 ? "" : "s"}
+              </p>
+              {focusRecommendation ? (
+                <p className="rounded-md border bg-background p-3 text-sm">
+                  {focusRecommendation.recommendation}
+                </p>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  Generate AI suggestions to get a study action for this unit.
+                </p>
+              )}
+              <p className="text-xs text-muted-foreground">
+                This focus is calculated locally from the selected student’s lowest unit average;
+                the study action is based on aggregated course-level analysis.
+              </p>
+            </div>
+          )}
+        </div>
       )}
     </section>
   );
