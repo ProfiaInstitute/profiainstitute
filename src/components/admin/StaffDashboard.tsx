@@ -7,6 +7,7 @@ import {
   BookOpen,
   CalendarDays,
   ChartNoAxesCombined,
+  ChevronDown,
   ClipboardList,
   ClipboardCheck,
   CreditCard,
@@ -42,6 +43,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { LevelTargetPicker } from "@/components/academics/LevelTargetPicker";
+import {
+  LearningMaterialTargetFields,
+  type LearningMaterialTarget,
+} from "@/components/academics/LearningMaterialTargetFields";
 import { AdmissionLetterDownload } from "@/components/academics/AdmissionLetterDownload";
 import { EmailFileShareDialog } from "@/components/admin/EmailFileShareDialog";
 import { ProfilePhotoAvatar } from "@/components/profile/ProfilePhotoAvatar";
@@ -320,10 +325,29 @@ const navGroups: { title: string; ids: DashboardSection[] }[] = [
 
 export function StaffDashboard() {
   const { user, loading, error: sessionError } = useUser();
+  const signedInUserId = user?.id;
+  const staffProfileQuery = useQuery({
+    queryKey: ["admin", "signed-in-profile", signedInUserId],
+    enabled: Boolean(signedInUserId),
+    queryFn: async () => {
+      if (!signedInUserId) throw new Error("A signed-in staff account is required.");
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("full_name")
+        .eq("id", signedInUserId)
+        .maybeSingle();
+      if (error) throw error;
+      return data?.full_name?.trim() || null;
+    },
+  });
   const rolesQuery = useRoles(user?.id);
   const roles = rolesQuery.data ?? [];
   const visibleNav = navItems.filter((item) => item.roles.some((role) => can(roles, [role])));
   const [section, setSection] = useState<DashboardSection>("dashboard");
+  const [expandedNavGroups, setExpandedNavGroups] = useState<Record<string, boolean>>({
+    Overview: true,
+    "Students & admissions": true,
+  });
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
   useScrollReveal(contentRef, `${section}:${roles.join(",")}`, true);
@@ -418,6 +442,13 @@ export function StaffDashboard() {
   }
   if (visibleNav.length === 0) return <InitialAdminSetup userId={user.id} email={user.email} />;
 
+  const metadataName = user.user_metadata["full_name"];
+  const signedInName =
+    staffProfileQuery.data ||
+    (typeof metadataName === "string" ? metadataName : null) ||
+    user.email?.split("@")[0] ||
+    "Staff member";
+  const staffRoleLabel = roles.map((role) => role.replaceAll("_", " ")).join(", ");
   const sectionTitle = navItems.find((item) => item.id === section)?.title ?? "Dashboard";
   const content =
     section === "dashboard" ? (
@@ -520,8 +551,11 @@ export function StaffDashboard() {
               )
             }
           />
-          <span className="hidden max-w-48 truncate text-sm text-muted-foreground sm:block">
-            {user.email}
+          <span className="hidden max-w-56 text-right sm:block">
+            <span className="block truncate text-sm font-semibold text-brand">{signedInName}</span>
+            <span className="block truncate text-xs capitalize text-muted-foreground">
+              {staffRoleLabel}
+            </span>
           </span>
           <Button
             variant="outline"
@@ -562,28 +596,44 @@ export function StaffDashboard() {
             {navGroups.map((group) => {
               const items = visibleNav.filter((item) => group.ids.includes(item.id));
               if (!items.length) return null;
+              const expanded = expandedNavGroups[group.title] ?? false;
               return (
                 <div key={group.title}>
-                  <p className="mb-1 px-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/80">
+                  <button
+                    type="button"
+                    className="mb-1 flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/80 transition hover:bg-muted hover:text-foreground"
+                    aria-expanded={expanded}
+                    onClick={() =>
+                      setExpandedNavGroups((current) => ({
+                        ...current,
+                        [group.title]: !expanded,
+                      }))
+                    }
+                  >
                     {group.title}
-                  </p>
-                  <div className="space-y-0.5">
-                    {items.map(({ id, title, icon: Icon }) => (
-                      <button
-                        key={id}
-                        type="button"
-                        aria-current={section === id ? "page" : undefined}
-                        onClick={() => {
-                          setSection(id);
-                          setMobileNavOpen(false);
-                        }}
-                        className={`admin-nav-link flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium transition ${section === id ? "is-active bg-accent text-brand shadow-sm ring-1 ring-primary/15" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
-                      >
-                        <Icon className="h-4 w-4 shrink-0" />
-                        {title}
-                      </button>
-                    ))}
-                  </div>
+                    <ChevronDown
+                      className={`h-3.5 w-3.5 transition-transform ${expanded ? "" : "-rotate-90"}`}
+                    />
+                  </button>
+                  {expanded && (
+                    <div className="space-y-0.5">
+                      {items.map(({ id, title, icon: Icon }) => (
+                        <button
+                          key={id}
+                          type="button"
+                          aria-current={section === id ? "page" : undefined}
+                          onClick={() => {
+                            setSection(id);
+                            setMobileNavOpen(false);
+                          }}
+                          className={`admin-nav-link flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium transition ${section === id ? "is-active bg-accent text-brand shadow-sm ring-1 ring-primary/15" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
+                        >
+                          <Icon className="h-4 w-4 shrink-0" />
+                          {title}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -592,9 +642,13 @@ export function StaffDashboard() {
             <p className="text-xs font-semibold uppercase tracking-wide text-primary">
               Signed in as
             </p>
-            <p className="mt-1 truncate text-sm font-semibold text-brand">
-              {roles.map((role) => role.replaceAll("_", " ")).join(", ")}
-            </p>
+            <p className="mt-1 truncate text-sm font-semibold text-brand">{signedInName}</p>
+            <p className="mt-1 text-xs capitalize text-muted-foreground">{staffRoleLabel}</p>
+            {staffProfileQuery.error && (
+              <p role="alert" className="mt-2 text-xs text-destructive">
+                Could not load your profile name: {staffProfileQuery.error.message}
+              </p>
+            )}
           </div>
         </aside>
         <main className="admin-main min-w-0 flex-1 p-4 sm:p-6 lg:p-8">
@@ -4538,6 +4592,7 @@ function DirectoryCreateForm({
     slug: "",
     description: "",
     course_id: "",
+    level_id: "",
     student_id: "",
     unit_id: "",
     code: "",
@@ -4550,6 +4605,10 @@ function DirectoryCreateForm({
     url: "",
     file: null as File | null,
   });
+  const [useAdditionalMaterialTargets, setUseAdditionalMaterialTargets] = useState(false);
+  const [additionalMaterialTargets, setAdditionalMaterialTargets] = useState<
+    (LearningMaterialTarget & { id: string })[]
+  >([]);
   const assignmentUnitsQuery = useQuery({
     queryKey: ["admin", "assignment-unit-options", values.course_id],
     enabled: section === "assignments" && Boolean(values.course_id),
@@ -4618,6 +4677,31 @@ function DirectoryCreateForm({
     if ((section === "materials" || section === "assignments") && !values.course_id) {
       toast.error("Select a course before uploading course materials.");
       return;
+    }
+    if (section === "materials") {
+      const targets: LearningMaterialTarget[] = [
+        {
+          courseId: values.course_id,
+          levelId: values.level_id,
+          unitId: values.unit_id,
+        },
+        ...additionalMaterialTargets,
+      ];
+      if (targets.some((target) => !target.courseId || !target.levelId || !target.unitId)) {
+        toast.error("Select a course, level, and unit for every material target.");
+        return;
+      }
+      const uniqueTargets = new Set(
+        targets.map((target) => `${target.courseId}:${target.levelId}:${target.unitId}`),
+      );
+      if (uniqueTargets.size !== targets.length) {
+        toast.error("Remove duplicate course, level, and unit targets.");
+        return;
+      }
+      if (!values.file && !values.url.trim()) {
+        toast.error("Choose a learning file or enter an external resource URL.");
+        return;
+      }
     }
     if (section === "assignments") {
       const deadline = new Date(values.due_date);
@@ -4730,21 +4814,34 @@ function DirectoryCreateForm({
         break;
       }
       case "materials": {
-        const result = await supabase.from("learning_materials").insert({
-          course_id: values.course_id,
-          title: values.title.trim(),
-          description: values.description.trim() || null,
-          external_url: values.url.trim() || null,
-          file_path: uploadedPath,
-          material_type:
-            values.file && fileType
-              ? contentKind(fileType)
-              : getYouTubeEmbedUrl(values.url.trim())
-                ? "video"
-                : "link",
-          uploaded_by: user?.id ?? null,
-          published: true,
-        });
+        const targets = [
+          {
+            courseId: values.course_id,
+            levelId: values.level_id,
+            unitId: values.unit_id,
+          },
+          ...additionalMaterialTargets,
+        ];
+        const materialType =
+          values.file && fileType
+            ? contentKind(fileType)
+            : getYouTubeEmbedUrl(values.url.trim())
+              ? "video"
+              : "link";
+        const result = await supabase.from("learning_materials").insert(
+          targets.map((target) => ({
+            course_id: target.courseId,
+            unit_id: target.unitId,
+            level_ids: [target.levelId],
+            title: values.title.trim(),
+            description: values.description.trim() || null,
+            external_url: values.url.trim() || null,
+            file_path: uploadedPath,
+            material_type: materialType,
+            uploaded_by: user?.id ?? null,
+            published: true,
+          })),
+        );
         error = result.error;
         break;
       }
@@ -4783,6 +4880,7 @@ function DirectoryCreateForm({
         slug: "",
         description: "",
         course_id: "",
+        level_id: "",
         student_id: "",
         unit_id: "",
         code: "",
@@ -4796,6 +4894,8 @@ function DirectoryCreateForm({
         file: null,
       });
       setSelectedLevelIds([]);
+      setUseAdditionalMaterialTargets(false);
+      setAdditionalMaterialTargets([]);
       onSaved();
     }
   }
@@ -4978,22 +5078,43 @@ function DirectoryCreateForm({
         )}
         {(section === "materials" || section === "assignments") && (
           <>
-            <select
-              required
-              className={selectClass}
-              value={values.course_id}
-              onChange={(e) => {
-                setValues({ ...values, course_id: e.target.value, unit_id: "" });
-                setSelectedLevelIds([]);
-              }}
-            >
-              <option value="">Select course</option>
-              {optionsQuery.data?.courses.map((course) => (
-                <option key={course.id} value={course.id}>
-                  {course.title}
-                </option>
-              ))}
-            </select>
+            {section === "materials" && (
+              <LearningMaterialTargetFields
+                title="Primary class"
+                courses={optionsQuery.data?.courses ?? []}
+                target={{
+                  courseId: values.course_id,
+                  levelId: values.level_id,
+                  unitId: values.unit_id,
+                }}
+                onChange={(target) =>
+                  setValues({
+                    ...values,
+                    course_id: target.courseId,
+                    level_id: target.levelId,
+                    unit_id: target.unitId,
+                  })
+                }
+              />
+            )}
+            {section === "assignments" && (
+              <select
+                required
+                className={selectClass}
+                value={values.course_id}
+                onChange={(e) => {
+                  setValues({ ...values, course_id: e.target.value, unit_id: "" });
+                  setSelectedLevelIds([]);
+                }}
+              >
+                <option value="">Select course</option>
+                {optionsQuery.data?.courses.map((course) => (
+                  <option key={course.id} value={course.id}>
+                    {course.title}
+                  </option>
+                ))}
+              </select>
+            )}
             {section === "assignments" && (
               <select
                 required
@@ -5034,6 +5155,62 @@ function DirectoryCreateForm({
         )}
         {section === "materials" && (
           <>
+            <label className="flex items-center gap-2 text-sm font-medium sm:col-span-2">
+              <input
+                type="checkbox"
+                checked={useAdditionalMaterialTargets}
+                onChange={(event) => {
+                  const checked = event.target.checked;
+                  setUseAdditionalMaterialTargets(checked);
+                  if (checked && additionalMaterialTargets.length === 0) {
+                    setAdditionalMaterialTargets([
+                      { id: crypto.randomUUID(), courseId: "", levelId: "", unitId: "" },
+                    ]);
+                  }
+                  if (!checked) setAdditionalMaterialTargets([]);
+                }}
+              />
+              Also publish to another course, level, or unit
+            </label>
+            {useAdditionalMaterialTargets && (
+              <div className="space-y-3 sm:col-span-2">
+                {additionalMaterialTargets.map((target, index) => (
+                  <LearningMaterialTargetFields
+                    key={target.id}
+                    title={`Additional class ${index + 1}`}
+                    courses={optionsQuery.data?.courses ?? []}
+                    target={target}
+                    onChange={(updated) =>
+                      setAdditionalMaterialTargets((current) =>
+                        current.map((item) =>
+                          item.id === target.id ? { ...item, ...updated } : item,
+                        ),
+                      )
+                    }
+                    onRemove={() => {
+                      const remaining = additionalMaterialTargets.filter(
+                        (item) => item.id !== target.id,
+                      );
+                      setAdditionalMaterialTargets(remaining);
+                      if (!remaining.length) setUseAdditionalMaterialTargets(false);
+                    }}
+                  />
+                ))}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    setAdditionalMaterialTargets((current) => [
+                      ...current,
+                      { id: crypto.randomUUID(), courseId: "", levelId: "", unitId: "" },
+                    ])
+                  }
+                >
+                  Add another class
+                </Button>
+              </div>
+            )}
             <Input
               className="sm:col-span-2"
               type="url"

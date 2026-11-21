@@ -1931,6 +1931,13 @@ matching unit result is published. Student learning notifications are
 email-only and deduplicated per event, student, and channel. Delivery failures
 are retried up to five times.
 
+Apply `drizzle/migrations/0067_learning_material_level_targets.sql` before
+publishing newly targeted learning materials. Admins choose a course, level,
+and unit for each class; optional additional class targets reuse the uploaded
+file while student row-level and storage policies restrict access to matching
+course-level enrollments. Legacy materials without level targets remain
+available to students enrolled in their course.
+
 Deploy `supabase/functions/send-application-notifications` and configure these
 Edge Function secrets: `RESEND_API_KEY`, `SCHOOL_EMAIL_FROM`,
 `PUBLIC_SITE_URL`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`,

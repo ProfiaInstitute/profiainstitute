@@ -495,6 +495,7 @@ function FacilitatorWorkspace({ userId, email }: { userId: string; email: string
     videoUrl: "",
     file: null as File | null,
   });
+  const [materialLevelIds, setMaterialLevelIds] = useState<string[]>([]);
   const [resultDraft, setResultDraft] = useState({
     studentId: "",
     score: "",
@@ -512,6 +513,10 @@ function FacilitatorWorkspace({ userId, email }: { userId: string; email: string
     levelIds: [] as string[],
     downloadFile: null as File | null,
   });
+
+  useEffect(() => {
+    setMaterialLevelIds(activeUnitLevelId ? [activeUnitLevelId] : []);
+  }, [activeUnitId, activeUnitLevelId]);
   const [questions, setQuestions] = useState([initialQuestion()]);
   const [catDraftUnitId, setCatDraftUnitId] = useState("");
   const [catDraftRestored, setCatDraftRestored] = useState(false);
@@ -661,6 +666,10 @@ function FacilitatorWorkspace({ userId, email }: { userId: string; email: string
   async function createMaterial(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!activeUnit) return;
+    if (!materialLevelIds.length) {
+      toast.error("Select at least one course level for this learning material.");
+      return;
+    }
     if (!materialDraft.file && !materialDraft.videoUrl.trim()) {
       toast.error("Choose a file or enter a video/resource link.");
       return;
@@ -688,6 +697,7 @@ function FacilitatorWorkspace({ userId, email }: { userId: string; email: string
     const { error } = await supabase.from("learning_materials").insert({
       course_id: activeUnit.unit.course_id,
       unit_id: activeUnit.unit_id,
+      level_ids: materialLevelIds,
       title: materialDraft.title.trim(),
       description: materialDraft.description.trim() || null,
       material_type: materialDraft.file
@@ -712,6 +722,7 @@ function FacilitatorWorkspace({ userId, email }: { userId: string; email: string
     }
     toast.success("Learning material published");
     setMaterialDraft({ title: "", description: "", videoUrl: "", file: null });
+    setMaterialLevelIds(activeUnit.unit.level_id ? [activeUnit.unit.level_id] : []);
     await queryClient.invalidateQueries({
       queryKey: ["facilitator", "materials", activeUnit.unit_id],
     });
@@ -1796,6 +1807,12 @@ function FacilitatorWorkspace({ userId, email }: { userId: string; email: string
                         file: event.target.files?.[0] ?? null,
                       })
                     }
+                  />
+                  <LevelTargetPicker
+                    courseId={activeUnit.unit.course_id}
+                    selectedLevelIds={materialLevelIds}
+                    onChange={setMaterialLevelIds}
+                    allowedLevelId={activeUnit.unit.level_id}
                   />
                   <Textarea
                     rows={2}

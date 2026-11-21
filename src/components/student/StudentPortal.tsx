@@ -28,6 +28,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 import { signOutWithAudit, useUser } from "@/lib/auth";
+import { filterMaterialsForLevel } from "@/lib/learning-materials";
 import { isAssignmentOpenForSubmission, submissionFilePaths } from "@/lib/assignments";
 import { downloadContentAttachment } from "@/lib/content-download";
 import { StudentCatsSection } from "@/components/student/StudentCatsSection";
@@ -977,6 +978,10 @@ function StudentWorkspace({
             {section === "learning" && (
               <LearningSection
                 courseId={activeCourse?.course_id ?? null}
+                levelId={
+                  activeCourse?.level_id ??
+                  (activeCourse?.course_id === student.course_id ? student.level_id : null)
+                }
                 studentId={student.id}
                 enrolled={activeCourse?.statuses.includes("active") ?? false}
               />
@@ -1556,15 +1561,17 @@ function OnlineStudentOverview({
 
 function LearningSection({
   courseId,
+  levelId,
   studentId,
   enrolled,
 }: {
   courseId: string | null;
+  levelId: string | null;
   studentId: string;
   enrolled: boolean;
 }) {
   const query = useQuery({
-    queryKey: ["student", "materials", courseId],
+    queryKey: ["student", "materials", courseId, levelId],
     enabled: !!courseId,
     queryFn: async () => {
       const { data, error } = await supabase
@@ -1574,7 +1581,7 @@ function LearningSection({
         .eq("published", true)
         .order("created_at", { ascending: false });
       if (error) throw error;
-      return data;
+      return filterMaterialsForLevel(data, levelId);
     },
   });
   return (

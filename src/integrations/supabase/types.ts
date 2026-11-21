@@ -1421,6 +1421,7 @@ export type Database = {
           external_url: string | null;
           file_path: string | null;
           id: string;
+          level_ids: string[] | null;
           material_type: string;
           published: boolean;
           title: string;
@@ -1435,6 +1436,7 @@ export type Database = {
           external_url?: string | null;
           file_path?: string | null;
           id?: string;
+          level_ids?: string[] | null;
           material_type?: string;
           published?: boolean;
           title: string;
@@ -1449,6 +1451,7 @@ export type Database = {
           external_url?: string | null;
           file_path?: string | null;
           id?: string;
+          level_ids?: string[] | null;
           material_type?: string;
           published?: boolean;
           title?: string;
