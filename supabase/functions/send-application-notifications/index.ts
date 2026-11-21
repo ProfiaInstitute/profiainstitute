@@ -68,6 +68,9 @@ Deno.serve(async (request: Request) => {
   for (const notification of claimed) {
     let deliveryError: string | null = null;
     try {
+      if (payloadText(notification.payload, "application_status") === "enrolled") {
+        await provisionEnrolledStudentAccount(client, notification.payload, "123456789abcd");
+      }
       if (notification.channel === "email") {
         await sendEmail(notification);
       } else if (notification.channel === "whatsapp") {
