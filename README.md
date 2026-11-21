@@ -1,4 +1,3 @@
-
 PROFIA INSTITUTE — COMPLETE WEBSITE REBUILD + STUDENT PORTAL + ADMIN SYSTEM
 
 ## CAT results and performance insights
@@ -1903,12 +1902,18 @@ sections.
 
 Apply `drizzle/migrations/0026_application_admission_notifications.sql` after
 migration `0025_course_levels_and_online_students.sql`. It queues email and
-WhatsApp notifications whenever an application status changes to **Accepted**
-or **Enrolled**. Each message tells the student to create or access their
-student-portal account using the same email address entered on the application.
-The enrollment message is queued when admissions enrolls the applicant.
-Delivery attempts are recorded and retried automatically by the notification
-worker.
+WhatsApp notifications whenever an application status changes, including
+**Submitted**, **Under review**, **Accepted**, **Rejected**, **Waitlisted**,
+**More information required**, and **Enrolled**.
+
+Apply `drizzle/migrations/0066_admission_progress_accounts_and_emails.sql` after
+the existing admissions migrations. It reworks the submission and status triggers
+to queue every application progress email. When **Enrolled** is selected, the
+notification worker creates or resets the student's Supabase account, sets the
+student role, links the student record to the auth account, and forces the
+temporary password `123456789abcd` to be changed immediately after first sign-in.
+The enrolled email includes the sign-in email, temporary password, and student
+portal link.
 
 Apply `drizzle/migrations/0037_student_learning_notifications.sql` after
 migration `0036_immediate_cats_and_shuffled_options.sql`, then apply

@@ -41,14 +41,19 @@ Deno.serve(async (request: Request) => {
     learningEmailOnly &&
     !!schedulerSecret &&
     request.headers.get("x-notification-scheduler-secret") === schedulerSecret;
-  const serviceRoleAuthorized = request.headers.get("Authorization") === `Bearer ${serviceRoleKey}`;
+  const authorizationHeader = request.headers.get("Authorization");
+  const requestSecretKey = authorizationHeader?.match(/^Bearer\s+(.+)$/i)?.[1] ?? "";
+  const supabaseSecretKeys = parseSupabaseSecretKeys(Deno.env.get("SUPABASE_SECRET_KEYS"));
+  const serviceRoleAuthorized =
+    requestSecretKey === serviceRoleKey ||
+    (requestSecretKey.startsWith("sb_secret_") && supabaseSecretKeys.includes(requestSecretKey));
   if (!serviceRoleAuthorized && !schedulerAuthorized) {
     return json({ error: "Forbidden." }, 403);
   }
 
   const requestServiceRoleKey = schedulerAuthorized
     ? (request.headers.get("apikey") ?? serviceRoleKey)
-    : serviceRoleKey;
+    : requestSecretKey;
   const client = createClient(supabaseUrl, requestServiceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
@@ -191,35 +196,67 @@ async function sendEmail(notification: ApplicationNotification) {
   const emailAddress = payloadText(notification.payload, "email");
   const status = payloadText(notification.payload, "application_status");
   const portalUrl = new URL("/student", siteUrl).toString();
-  const supportWhatsApp = payloadText(notification.payload, "school_whatsapp");
+  const supportWhatsApp =
+    payloadOptionalText(notification.payload, "school_whatsapp") ?? "254710221122";
   const statusMessage =
-    status === "accepted"
-      ? "Your application has been accepted."
-      : "Your admission has been confirmed.";
+    payloadOptionalText(notification.payload, "message") ??
+    (status === "accepted"
+      ? "Congratulations. Your application has been accepted."
+      : status === "enrolled"
+        ? "Your admission to Profia Institute has been confirmed."
+        : status === "submitted"
+          ? "We have received your application and it is awaiting review."
+          : `Your application status is ${status}.`);
+  const temporaryPassword = "123456789abcd";
   const subject = notification.subject ?? "Your Profia Institute admission update";
+  const enrolledInstructions =
+    status === "enrolled"
+      ? [
+          "",
+          "Your student portal account has been created.",
+          `Sign-in email: ${emailAddress}`,
+          `Temporary password: ${temporaryPassword}`,
+          "",
+          "This temporary password must be changed immediately after your first sign-in.",
+          portalUrl,
+        ]
+      : [];
   const text = [
     `Hello ${name},`,
     "",
     statusMessage,
     `Application reference: ${applicationNumber}`,
-    "",
-    "To access your student portal, sign up or sign in at the link below using the same email address you entered on your application:",
-    emailAddress,
-    portalUrl,
-    "",
-    "If you already have an account, sign in with that email address. Please confirm the email address through the confirmation message before signing in.",
+    status === "submitted" ? "\nWe have received your application and it is awaiting review." : "",
+    status !== "enrolled"
+      ? "\nTrack your application progress from the application status page:"
+      : "",
+    status !== "enrolled" ? new URL("/application-status", siteUrl).toString() : "",
+    ...enrolledInstructions,
     "",
     `Need help? WhatsApp Profia Institute at +${supportWhatsApp}.`,
-  ].join("\n");
+  ]
+    .filter((line) => line !== "")
+    .join("\n");
   const html = [
     `<p>Hello ${escapeHtml(name)},</p>`,
     `<p>${escapeHtml(statusMessage)} Your application reference is <strong>${escapeHtml(applicationNumber)}</strong>.</p>`,
-    "<p>To access your student portal, sign up or sign in using the same email address you entered on your application:</p>",
-    `<p><strong>${escapeHtml(emailAddress)}</strong></p>`,
-    `<p><a href="${escapeHtml(portalUrl)}">Open the Profia student portal</a></p>`,
-    "<p>If you already have an account, sign in with that email address. Confirm your email address through the confirmation message before signing in.</p>",
+    status === "submitted"
+      ? "<p>We have received your application and it is awaiting review.</p>"
+      : "",
+    status !== "enrolled"
+      ? `<p><a href="${escapeHtml(new URL("/application-status", siteUrl).toString())}">Track your application</a></p>`
+      : "",
+    status === "enrolled"
+      ? `<p><strong>Your student portal account has been created.</strong></p>
+         <p>Sign-in email: <strong>${escapeHtml(emailAddress)}</strong><br/>
+         Temporary password: <strong>${escapeHtml(temporaryPassword)}</strong></p>
+         <p><strong>Change this temporary password immediately after your first sign-in.</strong></p>
+         <p><a href="${escapeHtml(portalUrl)}">Open the Profia student portal</a></p>`
+      : "",
     `<p>Need help? WhatsApp Profia Institute at +${escapeHtml(supportWhatsApp)}.</p>`,
-  ].join("");
+  ]
+    .filter(Boolean)
+    .join("");
 
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
@@ -241,6 +278,143 @@ async function sendEmail(notification: ApplicationNotification) {
       `Email provider returned ${response.status}: ${(await response.text()).slice(0, 500)}`,
     );
   }
+}
+
+async function provisionEnrolledStudentAccount(
+  client: ReturnType<typeof createClient>,
+  payload: Record<string, unknown>,
+  temporaryPassword: string,
+) {
+  const email = payloadText(payload, "email").trim().toLowerCase();
+  const name = payloadText(payload, "student_name");
+  let applicationId = payloadOptionalText(payload, "application_id");
+  if (!applicationId) {
+    const applicationNumber = payloadText(payload, "application_number");
+    const { data: application, error: applicationError } = await client
+      .from("applications")
+      .select("id")
+      .eq("application_number", applicationNumber)
+      .eq("email", email)
+      .maybeSingle();
+    if (applicationError || !application) {
+      throw new Error(
+        `Could not recover the application for account provisioning: ${applicationError?.message ?? "Application not found"}`,
+      );
+    }
+    applicationId = application.id;
+  }
+  if (!email || !applicationId) {
+    throw new Error("The enrolled application is missing its account details.");
+  }
+
+  let userId: string;
+  const { data: existingUsers, error: listError } = await client.auth.admin.listUsers({
+    page: 1,
+    perPage: 1000,
+  });
+  if (listError) throw new Error(`Could not search for the student account: ${listError.message}`);
+  const existing = existingUsers.users.find(
+    (candidate) => candidate.email?.trim().toLowerCase() === email,
+  );
+
+  if (existing) {
+    userId = existing.id;
+  } else {
+    const { data: created, error: createError } = await client.auth.admin.createUser({
+      email,
+      password: temporaryPassword,
+      email_confirm: true,
+      user_metadata: { full_name: name },
+      app_metadata: { password_reset_required: true },
+    });
+    if (createError || !created.user) {
+      throw new Error(
+        `Could not create the student account: ${createError?.message ?? "Unknown error"}`,
+      );
+    }
+    userId = created.user.id;
+  }
+
+  const { data: target, error: targetError } = await client.auth.admin.getUserById(userId);
+  if (targetError || !target.user) {
+    throw new Error(
+      `Could not load the student account: ${targetError?.message ?? "Unknown error"}`,
+    );
+  }
+  const { data: existingChallenge } = await client
+    .from("password_reset_challenges")
+    .select("user_id")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (!existingChallenge) {
+    const { error: updateError } = await client.auth.admin.updateUserById(userId, {
+      password: temporaryPassword,
+      email_confirm: true,
+      app_metadata: {
+        ...target.user.app_metadata,
+        password_reset_required: true,
+      },
+    });
+    if (updateError)
+      throw new Error(`Could not prepare the temporary password: ${updateError.message}`);
+
+    const passwordSalt = crypto.getRandomValues(new Uint8Array(16));
+    const passwordSaltHex = bytesToHex(passwordSalt);
+    const temporaryPasswordHash = await hashPassword(temporaryPassword, passwordSalt);
+    const { error: challengeError } = await client.from("password_reset_challenges").upsert(
+      {
+        user_id: userId,
+        password_salt: passwordSaltHex,
+        password_hash: temporaryPasswordHash,
+      },
+      { onConflict: "user_id" },
+    );
+    if (challengeError) {
+      throw new Error(`Could not prepare the forced password reset: ${challengeError.message}`);
+    }
+  }
+
+  const { error: studentError } = await client
+    .from("students")
+    .update({ user_id: userId })
+    .eq("application_id", applicationId);
+  if (studentError)
+    throw new Error(`Could not link the student portal account: ${studentError.message}`);
+
+  const { error: roleError } = await client
+    .from("user_roles")
+    .upsert({ user_id: userId, role: "student" }, { onConflict: "user_id,role" });
+  if (roleError) {
+    throw new Error(`Could not assign the student portal role: ${roleError.message}`);
+  }
+
+  await client.from("audit_logs").insert({
+    actor_id: null,
+    action: "provision_enrolled_student_account",
+    entity: "auth.users",
+    entity_id: userId,
+    details: { application_id: applicationId, password_reset_required: true },
+  });
+}
+
+async function hashPassword(password: string, salt: Uint8Array) {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(password),
+    "PBKDF2",
+    false,
+    ["deriveBits"],
+  );
+  const derived = await crypto.subtle.deriveBits(
+    { name: "PBKDF2", hash: "SHA-256", salt, iterations: 310_000 },
+    key,
+    256,
+  );
+  return bytesToHex(new Uint8Array(derived));
+}
+
+function bytesToHex(bytes: Uint8Array) {
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 async function sendWhatsApp(notification: ApplicationNotification) {
@@ -586,6 +760,19 @@ function formatKenyaDateTime(value: string | null) {
     timeStyle: "short",
     timeZone: "Africa/Nairobi",
   }).format(date);
+}
+
+function parseSupabaseSecretKeys(value: string | undefined) {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value) as Record<string, unknown>;
+    return Object.values(parsed)
+      .filter((candidate): candidate is string => typeof candidate === "string")
+      .map((candidate) => candidate.trim())
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
 }
 
 function payloadText(payload: Record<string, unknown>, key: string) {
