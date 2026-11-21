@@ -269,7 +269,7 @@ function RootComponent() {
           });
           return false;
         }
-        toast.info("You were signed out after 60 days of inactivity.");
+        toast.info("You were signed out after 5 minutes of inactivity.");
         if (result.error) {
           toast.error("The session ended, but sign-out activity could not be fully recorded.", {
             description: result.error.message,

@@ -1,4 +1,4 @@
-export const SESSION_IDLE_TIMEOUT_MS = 60 * 24 * 60 * 60_000;
+export const SESSION_IDLE_TIMEOUT_MS = 5 * 60_000;
 
 const STORAGE_KEY_PREFIX = "profia:last-activity:v1:";
 const STORAGE_SYNC_INTERVAL_MS = 5_000;

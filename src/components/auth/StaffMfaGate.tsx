@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
 import { requiresStaffMfa, signOutWithAudit, useRoles, useUser } from "@/lib/auth";
+import { clearTrustedMfa, markMfaTrusted, readTrustedMfa } from "@/lib/staff-mfa-trust";
 
 export function StaffMfaGate({ children }: { children: ReactNode }) {
   const { user } = useUser();
@@ -28,7 +29,9 @@ export function StaffMfaGate({ children }: { children: ReactNode }) {
       ]);
       if (assurance.error) throw assurance.error;
       if (factors.error) throw factors.error;
-      setAal2(assurance.data.currentLevel === "aal2");
+      const verifiedNow = assurance.data.currentLevel === "aal2";
+      if (verifiedNow) markMfaTrusted(user.id);
+      setAal2(verifiedNow || readTrustedMfa(user.id));
       setFactorId(factors.data.totp.find((factor) => factor.status === "verified")?.id ?? null);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Could not verify your MFA status.");
@@ -98,6 +101,7 @@ export function StaffMfaGate({ children }: { children: ReactNode }) {
   }
 
   async function signOut() {
+    if (user) clearTrustedMfa(user.id);
     const result = await signOutWithAudit("global");
     if (result.error) {
       setError(

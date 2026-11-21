@@ -35,14 +35,14 @@ describe("session inactivity guard", () => {
     window.localStorage.clear();
   });
 
-  it("ends a session after 60 days without activity", async () => {
+  it("ends a session after 5 minutes without activity", async () => {
     const onIdle = vi.fn().mockResolvedValue(true);
     const stop = watchSessionInactivity("student-1", onIdle);
 
-    await vi.advanceTimersByTimeAsync(30 * 24 * 60 * 60_000);
+    await vi.advanceTimersByTimeAsync(4 * 60_000);
     expect(onIdle).not.toHaveBeenCalled();
 
-    await vi.advanceTimersByTimeAsync(SESSION_IDLE_TIMEOUT_MS - 30 * 24 * 60 * 60_000 - 1);
+    await vi.advanceTimersByTimeAsync(60_000 - 1);
     expect(onIdle).not.toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(1);
