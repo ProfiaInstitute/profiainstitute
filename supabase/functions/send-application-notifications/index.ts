@@ -194,7 +194,7 @@ async function sendEmail(notification: ApplicationNotification) {
   const name = payloadText(notification.payload, "student_name");
   const applicationNumber = payloadText(notification.payload, "application_number");
   const emailAddress = payloadText(notification.payload, "email");
-  const status = payloadText(notification.payload, "application_status");
+  const status = payloadText(notification.payload, "application_status").replaceAll(" ", "_");
   const portalUrl = new URL("/student", siteUrl).toString();
   const supportWhatsApp =
     payloadOptionalText(notification.payload, "school_whatsapp") ?? "254710221122";
@@ -237,26 +237,17 @@ async function sendEmail(notification: ApplicationNotification) {
   ]
     .filter((line) => line !== "")
     .join("\n");
-  const html = [
-    `<p>Hello ${escapeHtml(name)},</p>`,
-    `<p>${escapeHtml(statusMessage)} Your application reference is <strong>${escapeHtml(applicationNumber)}</strong>.</p>`,
-    status === "submitted"
-      ? "<p>We have received your application and it is awaiting review.</p>"
-      : "",
-    status !== "enrolled"
-      ? `<p><a href="${escapeHtml(new URL("/application-status", siteUrl).toString())}">Track your application</a></p>`
-      : "",
-    status === "enrolled"
-      ? `<p><strong>Your student portal account has been created.</strong></p>
-         <p>Sign-in email: <strong>${escapeHtml(emailAddress)}</strong><br/>
-         Temporary password: <strong>${escapeHtml(temporaryPassword)}</strong></p>
-         <p><strong>Change this temporary password immediately after your first sign-in.</strong></p>
-         <p><a href="${escapeHtml(portalUrl)}">Open the Profia student portal</a></p>`
-      : "",
-    `<p>Need help? WhatsApp Profia Institute at +${escapeHtml(supportWhatsApp)}.</p>`,
-  ]
-    .filter(Boolean)
-    .join("");
+  const emailTemplate = renderApplicationEmail({
+    name,
+    applicationNumber,
+    status,
+    statusMessage,
+    emailAddress,
+    temporaryPassword: status === "enrolled" ? temporaryPassword : null,
+    trackUrl: new URL("/application-status", siteUrl).toString(),
+    portalUrl,
+    supportWhatsApp,
+  });
 
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
@@ -270,13 +261,106 @@ async function sendEmail(notification: ApplicationNotification) {
       to: [notification.recipient],
       subject,
       text,
-      html,
+      html: emailTemplate.html,
     }),
   });
   if (!response.ok) {
     throw new Error(
       `Email provider returned ${response.status}: ${(await response.text()).slice(0, 500)}`,
     );
+  }
+}
+
+function renderApplicationEmail(details: {
+  name: string;
+  applicationNumber: string;
+  status: string;
+  statusMessage: string;
+  emailAddress: string;
+  temporaryPassword: string | null;
+  trackUrl: string;
+  portalUrl: string;
+  supportWhatsApp: string;
+}) {
+  const e = escapeHtml;
+  const presentation = applicationEmailPresentation(details.status);
+  const actionUrl = details.status === "enrolled" ? details.portalUrl : details.trackUrl;
+  const actionLabel =
+    details.status === "enrolled" ? "Open student portal" : "Track your application";
+  const temporaryPasswordPanel = details.temporaryPassword
+    ? `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:20px 0 24px;background:#f6f3ee;border:1px solid #e8e1dc;border-radius:10px">
+          <tr><td style="padding:16px 18px">
+            <div style="font-size:12px;color:#625b58;text-transform:uppercase;letter-spacing:1px">Student portal sign-in</div>
+            <div style="margin-top:8px;font-size:14px;line-height:22px;color:#282525">Email: <strong>${e(details.emailAddress)}</strong></div>
+            <div style="font-size:14px;line-height:22px;color:#282525">Temporary password: <strong>${e(details.temporaryPassword)}</strong></div>
+          </td></tr>
+        </table>
+        <p style="margin:0 0 24px;font-size:14px;line-height:1.6;color:#680915"><strong>Change this temporary password immediately after your first sign-in.</strong></p>`
+    : "";
+  const previewText = `${presentation.heading} — Application ${details.applicationNumber}`;
+  const html = `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="x-apple-disable-message-reformatting">
+    <title>${e(presentation.heading)}</title>
+  </head>
+  <body style="margin:0;padding:0;background:#f6f3ee;font-family:Arial,Helvetica,sans-serif;color:#282525">
+    <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent">${e(previewText)}&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;</div>
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f6f3ee;padding:32px 12px">
+      <tr><td align="center">
+        <table role="presentation" width="600" cellspacing="0" cellpadding="0" style="max-width:600px;width:100%;background:#fff;border:1px solid #e8e1dc;border-radius:12px;overflow:hidden">
+          <tr><td align="center" style="padding:28px 24px 20px;border-bottom:4px solid #e56b32">
+            <a href="https://www.profiainstitute.com" style="text-decoration:none"><img src="https://www.profiainstitute.com/_next/static/media/logo.0114ddc1.png" width="150" alt="Profia Institute" style="display:block;width:150px;height:auto;border:0"></a>
+          </td></tr>
+          <tr><td style="padding:32px 32px 36px">
+            <p style="margin:0 0 16px;font-size:16px;line-height:1.6">Hello ${e(details.name)},</p>
+            <h1 style="margin:0 0 16px;color:#680915;font-size:24px;line-height:1.3">${e(presentation.heading)}</h1>
+            <p style="margin:0 0 24px;font-size:16px;line-height:1.6">${e(details.statusMessage)}</p>
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0 0 24px;background:#f6f3ee;border:1px solid #e8e1dc;border-radius:10px">
+              <tr><td style="padding:16px 18px">
+                <div style="font-size:11px;line-height:16px;color:#625b58;text-transform:uppercase;letter-spacing:1px">Application reference</div>
+                <div style="margin-top:5px;color:#282525;font-size:17px;line-height:24px;font-weight:700">${e(details.applicationNumber)}</div>
+              </td></tr>
+            </table>
+            ${temporaryPasswordPanel}
+            <table role="presentation" cellspacing="0" cellpadding="0" style="margin:28px 0 0"><tr><td align="center" bgcolor="#680915" style="border-radius:6px">
+              <a href="${e(actionUrl)}" style="display:inline-block;padding:14px 24px;border:1px solid #680915;border-radius:6px;color:#fff;text-decoration:none;font-size:14px;line-height:18px;font-weight:700">${e(actionLabel)}</a>
+            </td></tr></table>
+            <p style="margin:24px 0 0;color:#625b58;font-size:13px;line-height:1.6">If the button does not work, copy and paste this link into your browser:</p>
+            <p style="margin:8px 0 0;overflow-wrap:anywhere;font-size:13px;line-height:1.6"><a href="${e(actionUrl)}" style="color:#680915">${e(actionUrl)}</a></p>
+            <p style="margin:24px 0 0;color:#625b58;font-size:13px;line-height:1.6">Need help? WhatsApp Profia Institute at +${e(details.supportWhatsApp)}.</p>
+          </td></tr>
+          <tr><td align="center" style="padding:18px 24px;background:#680915;color:#fff;font-size:12px;line-height:1.6">
+            Profia Institute · Homa Bay, Kenya<br><a href="https://www.profiainstitute.com" style="color:#fff">www.profiainstitute.com</a><br>This is an automated application notification.
+          </td></tr>
+        </table>
+      </td></tr>
+    </table>
+  </body>
+</html>`;
+  return { html, action: actionLabel };
+}
+
+function applicationEmailPresentation(status: string) {
+  switch (status) {
+    case "submitted":
+      return { heading: "Application received" };
+    case "under_review":
+      return { heading: "Application under review" };
+    case "accepted":
+      return { heading: "Application accepted" };
+    case "rejected":
+      return { heading: "Application update" };
+    case "waitlisted":
+      return { heading: "Application waitlisted" };
+    case "more_info_required":
+      return { heading: "More information required" };
+    case "enrolled":
+      return { heading: "Admission confirmed" };
+    default:
+      return { heading: "Application status update" };
   }
 }
 

@@ -1914,6 +1914,11 @@ student role, links the student record to the auth account, and forces the
 temporary password `123456789abcd` to be changed immediately after first sign-in.
 The enrolled email includes the sign-in email, temporary password, and student
 portal link.
+Application emails use the same branded Profia Institute HTML layout as the
+learning notifications, with status-specific headings and an application
+reference panel. Submitted applications link to application tracking; accepted,
+waitlisted, rejected, under-review, and more-information messages use that same
+tracking flow, while enrolled emails link to the student portal.
 
 Apply `drizzle/migrations/0037_student_learning_notifications.sql` after
 migration `0036_immediate_cats_and_shuffled_options.sql`, then apply
